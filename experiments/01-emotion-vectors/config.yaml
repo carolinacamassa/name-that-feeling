@@ -1,0 +1,34 @@
+# 01-emotion-vectors — replicate Sofroniew et al. 2026 emotion vectors on Qwen3.5-9B.
+# Hyperparameters only; the package injects all container paths from the run name.
+
+model_id: Qwen/Qwen3.5-9B
+
+# Emotion-cluster taxonomy (ground truth). clusters_50.json = a 50-emotion subset
+# curated proportionally across the 10 clusters; clusters.json = the full 171.
+clusters_file: clusters_50.json
+
+# Residual-stream layers to extract at. Qwen3.5-9B has 32 layers, so the paper's
+# ~2/3-depth target is layer 21; we also build 18 and 24 to pick the cleanest.
+layers: [18, 21, 24]
+readout_layer: 21
+start_token: 50          # mean-pool activations from this token onward (per paper)
+
+n_stories: 100           # emotion stories per emotion
+n_neutral: 100           # matched neutral-baseline stories
+
+generation:
+  model: meta-llama/Llama-3.3-70B-Instruct   # remote, via the HF Inference router
+  temperature: 1.0
+  max_tokens: 1024
+  stories_per_call: 5     # stories requested per router call
+  concurrency: 6          # emotions generated in parallel (local threads; backoff handles 429s)
+  topics: []              # empty -> built-in diverse topic pool (stories.DEFAULT_TOPICS)
+
+denoise: true             # project out top neutral PCs before normalizing
+pca_var_threshold: 0.5
+batch_size: 4             # conservative for a 9B + hidden states on A10G (24GB)
+
+# Tylenol readout (the success gate): doses sweep safe -> life-threatening.
+dose_sweep: [500, 1000, 2000, 4000, 8000, 16000]
+readout_emotion: afraid
+force: false              # set true to rebuild vectors that already exist

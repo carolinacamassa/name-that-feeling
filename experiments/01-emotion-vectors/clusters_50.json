@@ -1,0 +1,12 @@
+{
+  "exuberant_joy": ["happy", "joyful", "excited", "blissful", "optimistic", "energized"],
+  "peaceful_contentment": ["calm", "content", "serene"],
+  "compassionate_gratitude": ["grateful", "compassionate", "loving", "hopeful"],
+  "competitive_pride": ["proud", "triumphant", "vengeful"],
+  "playful_amusement": ["amused"],
+  "depleted_disengagement": ["bored", "tired", "indifferent", "listless"],
+  "vigilant_suspicion": ["suspicious"],
+  "hostile_anger": ["annoyed", "frustrated", "angry", "furious", "hostile", "contemptuous", "resentful"],
+  "fear_and_overwhelm": ["afraid", "anxious", "terrified", "worried", "overwhelmed", "stressed", "surprised", "amazed", "disgusted", "embarrassed", "perplexed", "panicked"],
+  "despair_and_shame": ["sad", "desperate", "lonely", "guilty", "ashamed", "heartbroken", "jealous", "melancholy", "worthless"]
+}

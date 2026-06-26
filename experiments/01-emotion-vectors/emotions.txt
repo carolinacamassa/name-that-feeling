@@ -1,0 +1,21 @@
+Emotion Probe Clusters
+Exuberant Joy 20
+blissful, cheerful, delighted, eager, ecstatic, elated, energized, enthusiastic, euphoric, excited, exuberant, happy, invigorated, joyful, jubilant, optimistic, pleased, stimulated, thrilled, vibrant
+Peaceful Contentment 9
+at ease, calm, content, patient, peaceful, refreshed, relaxed, safe, serene
+Compassionate Gratitude 15
+compassionate, empathetic, fulfilled, grateful, hope, hopeful, inspired, kind, loving, rejuvenated, relieved, satisfied, sentimental, sympathetic, thankful
+Competitive Pride 9
+greedy, proud, self-confident, smug, spiteful, triumphant, valiant, vengeful, vindictive
+Playful Amusement 2
+amused, playful
+Depleted Disengagement 15
+bored, depressed, docile, droopy, indifferent, lazy, listless, resigned, restless, sleepy, sluggish, sullen, tired, weary, worn out
+Vigilant Suspicion 3
+paranoid, suspicious, vigilant
+Hostile Anger 25
+angry, annoyed, contemptuous, defiant, disdainful, enraged, exasperated, frustrated, furious, grumpy, hateful, hostile, impatient, indignant, insulted, irate, irritated, mad, obstinate, offended, outraged, resentful, scornful, skeptical, stubborn
+Fear and Overwhelm 41
+afraid, alarmed, alert, amazed, anxious, aroused, astonished, awestruck, bewildered, disgusted, disoriented, distressed, disturbed, dumbstruck, embarrassed, frightened, horrified, hysterical, mortified, mystified, nervous, on edge, overwhelmed, panicked, perplexed, puzzled, rattled, scared, self-conscious, sensitive, shaken, shocked, stressed, surprised, tense, terrified, uneasy, unnerved, unsettled, upset, worried
+Despair and Shame 32
+ashamed, bitter, brooding, dependent, desperate, dispirited, envious, gloomy, grief-stricken, guilty, heartbroken, humiliated, hurt, infatuated, jealous, lonely, melancholy, miserable, nostalgic, reflective, regretful, remorseful, sad, self-critical, sorry, stuck, tormented, trapped, troubled, unhappy, vulnerable, worthless
