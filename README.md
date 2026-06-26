@@ -36,45 +36,33 @@ These questions bear directly on AI welfare. Much of the work on assessing wheth
 The experimental design — the core deliverable — lives in `docs/methods.md` (sections 3.1–3.7); read it before writing experiment code. The code is split into a reusable package and per-run experiment directories:
 
 ```
-src/name_that_feeling/   # installable package — reusable building blocks
-├── infra.py             # shared Modal: image, Volumes, HF secret, path constants
+src/name_that_feeling/      # installable package — reusable building blocks
+├── infra.py                # shared Modal: images, Volumes, HF secret, path constants
+├── emotion_vectors/        # replicate Sofroniew et al. 2026 emotion vectors (methods §3.1)
+│   ├── stories.py          # generate per-emotion + neutral synthetic stories (HF router)
+│   ├── taxonomy.py         # the 10-cluster / 171-emotion taxonomy + cluster lookup
+│   ├── extraction.py       # run Qwen3.5-9B on Modal, pool residual-stream activations
+│   ├── vectors.py          # difference-of-means vector (+ PCA denoise) -> vectors Volume
+│   └── readout.py          # the Tylenol dose-sweep sanity check that validates a vector
 ├── training/
-│   └── axolotl_sft.py   # train_sft: QLoRA SFT via Axolotl -> checkpoints Volume
+│   └── axolotl_sft.py      # train_sft: QLoRA SFT via Axolotl -> checkpoints Volume
 ├── serving/
-│   └── endpoint.py      # (stub) Modal endpoint serving base + adapter from the Volume
+│   └── endpoint.py         # (stub) Modal endpoint serving base + adapter from the Volume
 └── evals/
-    └── tasks.py         # (stub) inspect-ai tasks (format compliance, held-out gen, …)
+    └── tasks.py            # (stub) inspect-ai tasks (format compliance, held-out gen, …)
 
-experiments/NN-name/     # one specific configuration of a run
-├── description.md       # what the experiment tests
-├── config.yaml          # hyperparameters only — never infra/container paths
-├── data/                # that run's dataset(s)
-└── train.py             # thin entrypoint: reads this dir's config + data, calls the package
+experiments/                # one directory per run, numbered in sequence
+├── 00-scenario-generation/ # two-stage prompts that synthesize the SFT <emotion>-tag data
+├── 01-emotion-vectors/     # §3.1 gating replication: emotion vectors + Tylenol readout
+└── 01-pilot/               # single-turn QLoRA SFT smoke test that installs the <emotion> tag
 ```
+
+Each `experiments/NN-name/` is one self-contained run: a `description.md` (what it tests), a `config.yaml` (hyperparameters only — never infra/container paths), its `data/`, and a thin entrypoint (`train.py` or `run.py`) that hands config + data to a reusable function in the package.
 
 ### The src ↔ experiments split
 
-- `src/name_that_feeling/` = reusable building blocks (training, serving, evals, shared infra). Installable via `uv sync`, so experiments import it directly (e.g. `from name_that_feeling.training.axolotl_sft import train_sft`).
-- `experiments/NN-name/` = one specific configuration of a run: a `config.yaml` (hyperparameters only), its `data/`, and a thin `train.py` that hands both to the reusable trainer.
+- `src/name_that_feeling/` = reusable building blocks (emotion-vector replication, training, serving, evals, shared infra). Installable via `uv sync`, so experiments import it directly (e.g. `from name_that_feeling.training.axolotl_sft import train_sft`).
+- `experiments/NN-name/` = one specific configuration of a run (see the per-run shape above).
 
-`train_sft` injects the container paths and output location from the `run_name`, so experiment configs stay infra-agnostic and two runs can't collide.
+The reusable code injects container paths and output locations from each run's `run_name` (e.g. `train_sft` sets the dataset path, `output_dir`, and prepared-dataset path; the emotion-vector functions namespace the vectors Volume), so experiment configs stay infra-agnostic and two runs can't collide.
 
-## Running the pilot
-
-Everything goes through `uv`. No local ML deps are needed — Axolotl and torch live in the Modal image, not the local venv.
-
-```bash
-uv sync                                       # install/resolve deps; also installs the package editable
-
-# Cheap end-to-end smoke run (the pilot config caps it at max_steps: 10):
-uv run modal run experiments/01-pilot/train.py
-
-# Inspect the saved adapter in the Volume:
-uv run modal volume ls name-that-feeling-checkpoints 01-pilot
-```
-
-To go from smoke run to a real run, edit `experiments/01-pilot/config.yaml`: delete `max_steps`, set `sample_packing: true`, and set `sequence_len` from a token-length percentile of the real data. Bump the GPU per run with `train_sft.with_options(gpu="L40S")` if you want headroom.
-
-## Adding an experiment
-
-Create `experiments/NN-name/` with a `config.yaml`, a `data/` file, and a `train.py` modeled on `01-pilot/train.py` (import `app` + `train_sft`, pass a unique `run_name`). Put any genuinely new reusable logic in `src/name_that_feeling/`, not in the experiment script.
