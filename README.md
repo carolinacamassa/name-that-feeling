@@ -31,38 +31,4 @@ These questions bear directly on AI welfare. Much of the work on assessing wheth
 
 [^3]: We expect different training stages to produce different results. Post-training pushes the Assistant toward a measured, low-arousal register and away from overt emotional display (Soligo et al., 2026).
 
-## Repository layout
-
-The experimental design — the core deliverable — lives in `docs/methods.md` (sections 3.1–3.7); read it before writing experiment code. The code is split into a reusable package and per-run experiment directories:
-
-```
-src/name_that_feeling/      # installable package — reusable building blocks
-├── infra.py                # shared Modal: images, Volumes, HF secret, path constants
-├── emotion_vectors/        # replicate Sofroniew et al. 2026 emotion vectors (methods §3.1)
-│   ├── stories.py          # generate per-emotion + neutral synthetic stories (HF router)
-│   ├── taxonomy.py         # the 10-cluster / 171-emotion taxonomy + cluster lookup
-│   ├── extraction.py       # run Qwen3.5-9B on Modal, pool residual-stream activations
-│   ├── vectors.py          # difference-of-means vector (+ PCA denoise) -> vectors Volume
-│   └── readout.py          # the Tylenol dose-sweep sanity check that validates a vector
-├── training/
-│   └── axolotl_sft.py      # train_sft: QLoRA SFT via Axolotl -> checkpoints Volume
-├── serving/
-│   └── endpoint.py         # (stub) Modal endpoint serving base + adapter from the Volume
-└── evals/
-    └── tasks.py            # (stub) inspect-ai tasks (format compliance, held-out gen, …)
-
-experiments/                # one directory per run, numbered in sequence
-├── 00-scenario-generation/ # two-stage prompts that synthesize the SFT <emotion>-tag data
-├── 01-emotion-vectors/     # §3.1 gating replication: emotion vectors + Tylenol readout
-└── 01-pilot/               # single-turn QLoRA SFT smoke test that installs the <emotion> tag
-```
-
-Each `experiments/NN-name/` is one self-contained run: a `description.md` (what it tests), a `config.yaml` (hyperparameters only — never infra/container paths), its `data/`, and a thin entrypoint (`train.py` or `run.py`) that hands config + data to a reusable function in the package.
-
-### The src ↔ experiments split
-
-- `src/name_that_feeling/` = reusable building blocks (emotion-vector replication, training, serving, evals, shared infra). Installable via `uv sync`, so experiments import it directly (e.g. `from name_that_feeling.training.axolotl_sft import train_sft`).
-- `experiments/NN-name/` = one specific configuration of a run (see the per-run shape above).
-
-The reusable code injects container paths and output locations from each run's `run_name` (e.g. `train_sft` sets the dataset path, `output_dir`, and prepared-dataset path; the emotion-vector functions namespace the vectors Volume), so experiment configs stay infra-agnostic and two runs can't collide.
 
