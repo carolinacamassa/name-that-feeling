@@ -1,0 +1,19 @@
+# Per-emotion candidate triage (experiment 00).
+#
+# For each emotion in the taxonomy, decide whether it can be the *assistant's own*
+# reaction to a user message and, if so, sketch a few situations. Skipping is a
+# last resort (see scenarios/prompts.py). Hyperparameters only -- no infra paths.
+
+# Taxonomy to triage. Repo-relative; the 171-emotion clusters live with exp 01.
+# Swap to clusters_50.json to triage only the 50-emotion ground-truth set.
+clusters_file: experiments/01-emotion-vectors/clusters.json
+
+# Distinct situations to collect per kept emotion (material for clustering later).
+scenarios_per_emotion: 4
+
+generation:
+  provider: openrouter            # hf | openrouter (key read from .env)
+  model: anthropic/claude-opus-4.8
+  temperature: 0.7
+  max_tokens: 3000
+  concurrency: 8
