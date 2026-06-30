@@ -95,6 +95,55 @@ class ActivationExtractor:
             "hidden_shape": list(hs[len(hs) // 2].shape),
         }
 
+    @modal.method()
+    def extract_message_activations(self, messages: list[str], config: dict, run_name: str) -> dict:
+        """Extract each message's assistant-colon activation and save it to the Volume.
+
+        Renders each message as a single user turn ending at the assistant
+        response-prep position (the colon; ``build_chat_texts``, left-padded so the
+        colon is index ``-1``) and takes ``hidden_states[L][:, -1, :]`` -- the position
+        the emotion vectors were validated to read at. Saves the colon activations to
+        ``<run_name>/activations.safetensors`` (keys ``layer_<L>``). Projection onto the
+        emotion vectors is a separate CPU step (``project_messages``) so it can be
+        re-run after the vectors change without re-extracting.
+        """
+        import os
+
+        import numpy as np
+        from safetensors.numpy import save_file
+
+        from . import readout as R
+
+        torch = self.torch
+        layers = config["layers"]
+        batch_size = config.get("batch_size", 8)
+        self.tokenizer.padding_side = "left"  # colon at index -1
+        self.tokenizer.truncation_side = "left"  # keep the assistant header (colon) at the end
+
+        acc: dict[int, list] = {L: [] for L in layers}
+        for i in range(0, len(messages), batch_size):
+            chat_texts = R.build_chat_texts(messages[i : i + batch_size], self.tokenizer)
+            enc = self.tokenizer(
+                chat_texts, return_tensors="pt", padding=True, truncation=True, max_length=1024
+            ).to("cuda")
+            with torch.inference_mode():
+                # Call the base transformer (no lm_head): we only need hidden states,
+                # and computing full-vocab logits over long inputs OOMs the A10G.
+                base = getattr(self.model, "model", self.model)
+                hidden_states = base(**enc, output_hidden_states=True).hidden_states
+            for L in layers:
+                acc[L].append(hidden_states[L][:, -1, :].float().cpu().numpy().astype(np.float32))
+            print(f"  extracted {min(i + batch_size, len(messages))}/{len(messages)}")
+        tensors = {f"layer_{L}": np.concatenate(acc[L], axis=0) for L in layers}
+
+        out_dir = os.path.join(VECTORS_DIR, run_name)
+        os.makedirs(out_dir, exist_ok=True)
+        save_file(tensors, os.path.join(out_dir, "activations.safetensors"))
+        vectors_volume.commit()
+        shape = list(tensors[f"layer_{layers[0]}"].shape)
+        print(f"[{run_name}] saved colon activations {shape} at layers {layers}")
+        return {"n_messages": len(messages), "layers": layers, "shape": shape}
+
     def _pool_layers(
         self, texts: list[str], layers: list[int], start_token: int, batch_size: int
     ) -> dict:
@@ -375,6 +424,70 @@ def recenter_vectors(config: dict, run_name: str) -> dict:
     vectors_volume.commit()
     print(f"[recenter] done: {summary}")
     return summary
+
+
+@app.function(
+    image=vectors_image,
+    volumes={VECTORS_DIR: vectors_volume},
+    timeout=1 * HOURS,
+)
+def project_messages(meta: list[dict], config: dict, run_name: str) -> dict:
+    """Project cached colon activations onto every emotion vector -> readout.json (CPU).
+
+    Reads ``<run_name>/activations.safetensors`` (from ``extract_message_activations``)
+    and the centered emotion ``unit`` vectors, and writes the self-contained
+    ``<run_name>/readout.json``: per message its original ``emotion``/``cluster`` (plus
+    frame/split/axis from ``meta``, in activation-row order) and ``projections`` =
+    ``{emotion: value}``. Re-runnable with no GPU -- refresh after the vectors change.
+    """
+    import datetime
+    import glob
+    import json
+    import os
+
+    import numpy as np
+    from safetensors.numpy import load_file
+
+    from . import vectors as V
+
+    layers = config["layers"]
+    readout_layer = config.get("readout_layer", layers[len(layers) // 2])
+    vectors_run = config.get("vectors_run", "01-emotion-vectors")
+    out_dir = os.path.join(VECTORS_DIR, run_name)
+
+    acts = load_file(os.path.join(out_dir, "activations.safetensors"))[f"layer_{readout_layer}"]
+    glob_pat = os.path.join(VECTORS_DIR, vectors_run, "vectors", "*", f"layer_{readout_layer}", "*.safetensors")
+    names, units = [], []
+    for p in sorted(glob.glob(glob_pat)):
+        tv, _ = V.load_vector(p)
+        names.append(os.path.splitext(os.path.basename(p))[0])
+        units.append(tv["unit"])
+    U = np.stack(units, axis=0) if units else np.zeros((0, acts.shape[1]), np.float32)
+
+    proj = acts @ U.T  # [N, E]; units are already all-emotion-mean-centered
+    rows = [
+        {**m, "projections": {names[j]: float(proj[i, j]) for j in range(len(names))}}
+        for i, m in enumerate(meta)
+    ]
+    missing = sorted({slugify(m["emotion"]) for m in meta} - set(names))
+    sidecar = {
+        "model": config.get("model_id"),
+        "layers": layers,
+        "readout_layer": readout_layer,
+        "vectors_run": vectors_run,
+        "position": "assistant_colon",
+        "projection": "onto all-emotion-mean-centered unit vectors",
+        "n_messages": len(meta),
+        "n_emotion_vectors": len(names),
+        "missing_emotion_vectors": missing,
+        "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "messages": rows,
+    }
+    with open(os.path.join(out_dir, "readout.json"), "w", encoding="utf-8") as f:
+        json.dump(sidecar, f, ensure_ascii=False, indent=2)
+    vectors_volume.commit()
+    print(f"[{run_name}] projected {len(meta)} messages x {len(names)} vectors; {len(missing)} missing")
+    return {"n_messages": len(meta), "n_emotion_vectors": len(names), "missing": missing}
 
 
 def _plot_readout(doses, values, emotion, layer, monotonic, rho, png_path):
