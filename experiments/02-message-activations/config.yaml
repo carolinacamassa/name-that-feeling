@@ -1,11 +1,11 @@
-# 02-message-activations — assistant-colon probe readout for the experiment-00 messages.
+# 02-message-activations — pre-response-token probe readout for the experiment-00 messages.
 #
-# Each user message's residual activation at the assistant colon, projected onto every
+# Each user message's residual activation at the pre-response token, projected onto every
 # emotion vector. Hyperparameters only; the package injects container paths from the run name.
 
 model_id: Qwen/Qwen3.5-9B
 
-layers: [18, 21, 24]        # extract colon activations at these (the vectors live here)
+layers: [18, 21, 24]        # extract pre-response activations at these (the vectors live here)
 readout_layer: 21           # project at this layer (the paper's ~2/3-depth target)
 batch_size: 8               # 9B + hidden states on A10G (24GB)
 

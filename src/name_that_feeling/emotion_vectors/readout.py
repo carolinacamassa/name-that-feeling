@@ -18,30 +18,26 @@ def tylenol_prompts(doses: list[int]) -> list[str]:
 
 
 def build_chat_texts(prompts: list[str], tokenizer) -> list[str]:
-    """Render each prompt as a user turn ending at the assistant response-prep token.
+    """Render each prompt as a user turn ending at the pre-response token.
 
-    ``add_generation_prompt=True`` appends the assistant header so the final token
-    is the position where the model is about to respond -- where the paper reads
-    emotion activations. Thinking mode is disabled when the template supports it
-    (keeps the response-prep token uniform across prompts).
+    ``add_generation_prompt=True`` appends the assistant header (ChatML emits
+    ``<|im_start|>assistant`` then a newline), so the final token is the position
+    where the model is about to start its reply -- the analog of the "Assistant:"
+    colon the paper reads emotion activations at.
+
+    ``enable_thinking`` is deliberately left unset: passing ``enable_thinking=False``
+    makes Qwen3 inject an empty ``<think></think>`` block *after* the header, which
+    would push the final token two positions past the genuine pre-response one. The
+    default template stops cleanly at the assistant-header newline.
     """
-    texts = []
-    for p in prompts:
-        messages = [{"role": "user", "content": p}]
-        try:
-            text = tokenizer.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=True,
-                enable_thinking=False,
-            )
-        except TypeError:
-            # Older/!-thinking templates reject enable_thinking.
-            text = tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
-            )
-        texts.append(text)
-    return texts
+    return [
+        tokenizer.apply_chat_template(
+            [{"role": "user", "content": p}],
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        for p in prompts
+    ]
 
 
 def project(

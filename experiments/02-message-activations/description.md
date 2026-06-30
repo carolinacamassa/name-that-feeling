@@ -1,10 +1,11 @@
-# 02-message-activations — assistant-colon probe readout
+# 02-message-activations — pre-response-token probe readout
 
 *Reads the ~600 user messages from `00-scenario-generation`, runs them through
-Qwen3.5-9B, extracts the residual activation at the **assistant colon** (the
-position the model is about to respond from), and projects that activation onto
-every emotion vector. This is the probe-grounded reading: the emotion-vector
-activation read off the assistant's own representation, before it replies.*
+Qwen3.5-9B, extracts the residual activation at the **pre-response token** (the
+assistant header's final token, where the model is about to respond from), and
+projects that activation onto every emotion vector. This is the probe-grounded
+reading: the emotion-vector activation read off the assistant's own representation,
+before it replies.*
 
 ---
 
@@ -14,10 +15,11 @@ Two steps, split so projection can be refreshed without re-running the GPU:
 
 1. **extract** (GPU) — each message is rendered as a single **user** turn with the
    assistant turn opened (`add_generation_prompt=True`), so the final token is the
-   assistant response-prep position ("the colon"). The model is run once; the
-   residual stream at that position is taken at layers 18/21/24 (left-padded, colon
-   at index −1 — the position the vectors were validated to read at, where the
-   `afraid` Tylenol readout reproduced ρ=1.0). Saved to `activations.safetensors`.
+   pre-response token (the assistant header's final token — ChatML has no
+   "Assistant:" colon). The model is run once; the residual stream at that position
+   is taken at layers 18/21/24 (left-padded, pre-response token at index −1 — the
+   position the vectors were validated to read at, where the `afraid` Tylenol readout
+   reproduced ρ=1.0). Saved to `activations.safetensors`.
 2. **project** (CPU, re-runnable) — the readout-layer (21) activation is projected
    onto every emotion `unit` vector. The units are **all-emotion-mean-centered**
    (the paper's baseline; see `01-emotion-vectors` `recenter_vectors`), so the
@@ -28,7 +30,7 @@ trained, held-out cluster, and existential — is covered.
 
 ## Output (Volume `name-that-feeling-emotion-vectors`, under `02-message-activations/`)
 
-- `activations.safetensors` — raw colon activations, keys `layer_<L>`, `float32[N, hidden]`.
+- `activations.safetensors` — raw pre-response activations, keys `layer_<L>`, `float32[N, hidden]`.
 - `readout.json` — self-contained per-message readout: original `emotion`, `cluster`,
   `frame`, `split`, `eval_axis`, the `message` text, and `projections` =
   `{emotion: value}` onto each emotion vector. Downloaded to `data/readout.json`.
@@ -36,7 +38,7 @@ trained, held-out cluster, and existential — is covered.
 ## Run
 
 ```bash
-uv run modal run experiments/02-message-activations/run.py::extract    # GPU: colon activations
+uv run modal run experiments/02-message-activations/run.py::extract    # GPU: pre-response activations
 uv run modal run experiments/02-message-activations/run.py::project    # CPU: -> readout.json (re-runnable)
 # (run.py::readout does both)
 uv run modal volume get name-that-feeling-emotion-vectors 02-message-activations/readout.json data/readout.json

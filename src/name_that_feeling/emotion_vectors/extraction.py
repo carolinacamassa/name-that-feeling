@@ -97,12 +97,12 @@ class ActivationExtractor:
 
     @modal.method()
     def extract_message_activations(self, messages: list[str], config: dict, run_name: str) -> dict:
-        """Extract each message's assistant-colon activation and save it to the Volume.
+        """Extract each message's pre-response-token activation and save it to the Volume.
 
-        Renders each message as a single user turn ending at the assistant
-        response-prep position (the colon; ``build_chat_texts``, left-padded so the
-        colon is index ``-1``) and takes ``hidden_states[L][:, -1, :]`` -- the position
-        the emotion vectors were validated to read at. Saves the colon activations to
+        Renders each message as a single user turn ending at the pre-response token
+        (the assistant header's final token; ``build_chat_texts``, left-padded so it
+        sits at index ``-1``) and takes ``hidden_states[L][:, -1, :]`` -- the position
+        the emotion vectors were validated to read at. Saves the activations to
         ``<run_name>/activations.safetensors`` (keys ``layer_<L>``). Projection onto the
         emotion vectors is a separate CPU step (``project_messages``) so it can be
         re-run after the vectors change without re-extracting.
@@ -117,8 +117,8 @@ class ActivationExtractor:
         torch = self.torch
         layers = config["layers"]
         batch_size = config.get("batch_size", 8)
-        self.tokenizer.padding_side = "left"  # colon at index -1
-        self.tokenizer.truncation_side = "left"  # keep the assistant header (colon) at the end
+        self.tokenizer.padding_side = "left"  # pre-response token at index -1
+        self.tokenizer.truncation_side = "left"  # keep the assistant header at the end
 
         acc: dict[int, list] = {L: [] for L in layers}
         for i in range(0, len(messages), batch_size):
@@ -141,7 +141,7 @@ class ActivationExtractor:
         save_file(tensors, os.path.join(out_dir, "activations.safetensors"))
         vectors_volume.commit()
         shape = list(tensors[f"layer_{layers[0]}"].shape)
-        print(f"[{run_name}] saved colon activations {shape} at layers {layers}")
+        print(f"[{run_name}] saved pre-response activations {shape} at layers {layers}")
         return {"n_messages": len(messages), "layers": layers, "shape": shape}
 
     def _pool_layers(
@@ -432,7 +432,7 @@ def recenter_vectors(config: dict, run_name: str) -> dict:
     timeout=1 * HOURS,
 )
 def project_messages(meta: list[dict], config: dict, run_name: str) -> dict:
-    """Project cached colon activations onto every emotion vector -> readout.json (CPU).
+    """Project cached pre-response activations onto every emotion vector -> readout.json (CPU).
 
     Reads ``<run_name>/activations.safetensors`` (from ``extract_message_activations``)
     and the centered emotion ``unit`` vectors, and writes the self-contained
@@ -475,7 +475,7 @@ def project_messages(meta: list[dict], config: dict, run_name: str) -> dict:
         "layers": layers,
         "readout_layer": readout_layer,
         "vectors_run": vectors_run,
-        "position": "assistant_colon",
+        "position": "pre_response_token",
         "projection": "onto all-emotion-mean-centered unit vectors",
         "n_messages": len(meta),
         "n_emotion_vectors": len(names),

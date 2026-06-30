@@ -1,11 +1,11 @@
-"""02-message-activations: assistant-colon probe readout for the experiment-00 messages.
+"""02-message-activations: pre-response-token probe readout for the experiment-00 messages.
 
 Reads the ~600 user messages from experiment 00, runs Qwen3.5-9B on Modal, extracts
-each message's residual activation at the **assistant colon** (the response-prep
-position), and projects it onto every emotion vector -> a self-contained readout on
-the ``name-that-feeling-emotion-vectors`` Volume:
+each message's residual activation at the **pre-response token** (the assistant
+header's final token), and projects it onto every emotion vector -> a self-contained
+readout on the ``name-that-feeling-emotion-vectors`` Volume:
 
-- ``02-message-activations/activations.safetensors`` -- raw colon activations (per layer).
+- ``02-message-activations/activations.safetensors`` -- raw pre-response activations (per layer).
 - ``02-message-activations/readout.json`` -- per message: its original emotion + cluster
   (and frame/split/axis) plus the projection onto each emotion vector.
 
@@ -39,7 +39,7 @@ def _load_messages(cfg: dict) -> tuple[list[str], list[dict]]:
 
 @app.local_entrypoint()
 def extract() -> None:
-    """GPU: extract each message's assistant-colon activation -> activations.safetensors."""
+    """GPU: extract each message's pre-response-token activation -> activations.safetensors."""
     cfg = load_config()
     messages, _ = _load_messages(cfg)
     print(f"Extract: {len(messages)} messages on {cfg['model_id']}")

@@ -46,7 +46,7 @@ def _(messages, mo, readout):
     **{len(messages)}** messages (existential probes excluded) × **{readout["n_emotion_vectors"]}** emotion vectors ·
     model `{readout["model"]}` · readout layer **{readout["readout_layer"]}** · position `{readout["position"]}`.
 
-    Each value is the message's assistant-colon activation projected onto an emotion vector
+    Each value is the message's pre-response-token activation projected onto an emotion vector
     ({readout["projection"]}). Filter by **cluster**, then **emotion**, then pick a message —
     **red** marks the emotion it was written to target.
     """)
