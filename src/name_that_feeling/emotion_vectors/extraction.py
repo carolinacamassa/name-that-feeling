@@ -129,7 +129,10 @@ class ActivationExtractor:
             counts = include.sum(dim=1, keepdim=True).clamp(min=1)  # [B, 1]
 
             with torch.inference_mode():
-                hidden_states = self.model(**enc, output_hidden_states=True).hidden_states
+                # Call the base transformer (no lm_head): we only need hidden states,
+                # and computing full-vocab logits over long inputs OOMs the A10G.
+                base = getattr(self.model, "model", self.model)
+                hidden_states = base(**enc, output_hidden_states=True).hidden_states
             for L in layers:
                 hs = hidden_states[L].float()  # [B, T, H]
                 pooled = (hs * include[:, :, None]).sum(dim=1) / counts  # [B, H]
@@ -172,12 +175,14 @@ class ActivationExtractor:
         config: dict,
         run_name: str,
     ) -> dict:
-        """Build + save the emotion vector for each configured layer, organized by cluster.
+        """Pool an emotion's stories and save its raw neutral-diff vector per layer.
 
-        Emotion stories are passed in; the neutral baseline is loaded from the
-        cache written by ``cache_neutral`` (call that first). Vectors land at
-        ``vectors/<cluster>/layer_<L>/<emotion>.safetensors``. Idempotent: skips a
-        layer whose vector already exists unless ``config['force']``.
+        Stores ``raw = mean(emotion) - mean(neutral)`` (the ``mu_e - mu_neutral``
+        primitive) at ``vectors/<cluster>/layer_<L>/<emotion>.safetensors``. The
+        canonical centered ``unit`` is filled in afterwards by ``recenter_vectors``,
+        which needs every emotion present to subtract the across-emotion mean. The
+        neutral baseline is loaded from the ``cache_neutral`` cache. Idempotent:
+        skips a layer whose vector already exists unless ``config['force']``.
         """
         import datetime
         import os
@@ -189,8 +194,6 @@ class ActivationExtractor:
         layers = config["layers"]
         start_token = config.get("start_token", 50)
         batch_size = config.get("batch_size", 8)
-        denoise = config.get("denoise", True)
-        var_threshold = config.get("pca_var_threshold", 0.5)
         force = config.get("force", False)
         name = slugify(emotion)
 
@@ -208,9 +211,7 @@ class ActivationExtractor:
         paths = {}
         for L in todo:
             neutral_acts = np.load(_neutral_path(run_name, L))  # cached by cache_neutral
-            v_raw = V.difference_of_means(pooled_e[L], neutral_acts)
-            v = V.pca_denoise(v_raw, neutral_acts, var_threshold) if denoise else v_raw
-            unit = V.l2_normalize(v)
+            raw = V.difference_of_means(pooled_e[L], neutral_acts)  # mu_e - mu_neutral
             metadata = {
                 "emotion": emotion,
                 "cluster": cluster,
@@ -219,16 +220,14 @@ class ActivationExtractor:
                 "n_emotion": len(emotion_texts),
                 "n_neutral": int(neutral_acts.shape[0]),
                 "start_token": start_token,
-                "baseline": "neutral",
-                "denoise": denoise,
-                "pca_var_threshold": var_threshold if denoise else None,
+                "baseline": "neutral_diff (raw); unit added by recenter_vectors",
                 "paper": "Sofroniew et al. 2026 (arXiv:2604.07729)",
                 "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             }
             paths[L] = V.save_vector(
-                _vectors_dir(run_name, cluster, L), name, unit, v_raw, neutral_acts.mean(axis=0), metadata
+                _vectors_dir(run_name, cluster, L), name, raw, neutral_acts.mean(axis=0), metadata
             )
-            print(f"[{cluster}/{emotion}] layer {L}: saved {paths[L]}")
+            print(f"[{cluster}/{emotion}] layer {L}: saved raw -> {paths[L]}")
 
         vectors_volume.commit()
         return {
@@ -304,6 +303,78 @@ class ActivationExtractor:
         }
         print(f"[{emotion}] layer {layer}: monotonic={monotonic} spearman={rho:.3f}")
         return result
+
+
+@app.function(
+    image=vectors_image,
+    volumes={VECTORS_DIR: vectors_volume},
+    timeout=1 * HOURS,
+)
+def recenter_vectors(config: dict, run_name: str) -> dict:
+    """Fill in the canonical centered ``unit`` for every emotion vector (CPU; no GPU).
+
+    The all-emotion centering is a global op, so it runs once after the per-emotion
+    ``build_vector`` map -- or standalone, to rebuild existing vectors in place. Per
+    layer: load every ``raw`` (``mu_e - mu_neutral``), center across emotions (the
+    neutral term cancels, giving ``mu_e - mu_bar``), project off the cached neutral
+    PCs, L2-normalize, and re-save as ``unit``. ``raw``/``neutral_mean`` are preserved
+    so the neutral-baseline (single-emotion / steering) uses stay available.
+    """
+    import datetime
+    import glob
+    import os
+
+    import numpy as np
+
+    from . import vectors as V
+
+    layers = config["layers"]
+    denoise = config.get("denoise", True)
+    var_threshold = config.get("pca_var_threshold", 0.5)
+    stamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    summary: dict[str, int] = {}
+
+    for L in layers:
+        pattern = os.path.join(VECTORS_DIR, run_name, "vectors", "*", f"layer_{L}", "*.safetensors")
+        paths = sorted(glob.glob(pattern))
+        if not paths:
+            continue
+        raws, neutral_means, metas = [], [], []
+        for p in paths:
+            tensors, meta = V.load_vector(p)
+            raws.append(tensors["raw"])
+            neutral_means.append(tensors["neutral_mean"])
+            metas.append(meta)
+        centered = V.center_across_emotions(np.stack(raws))  # mu_e - mu_bar
+        basis = (
+            V.neutral_pc_basis(np.load(_neutral_path(run_name, L)), var_threshold)
+            if denoise
+            else np.zeros((0, centered.shape[1]), centered.dtype)
+        )
+        for i, p in enumerate(paths):
+            unit = V.l2_normalize(V.project_out(centered[i], basis))
+            meta = {
+                **metas[i],
+                "baseline": "all_emotions_mean",
+                "centered": True,
+                "denoise": denoise,
+                "pca_var_threshold": var_threshold if denoise else None,
+                "recentered": stamp,
+            }
+            V.save_vector(
+                os.path.dirname(p),
+                os.path.splitext(os.path.basename(p))[0],
+                raws[i],
+                neutral_means[i],
+                meta,
+                unit=unit,
+            )
+        summary[str(L)] = len(paths)
+        print(f"[recenter] layer {L}: {len(paths)} units (centered, denoise={denoise})")
+
+    vectors_volume.commit()
+    print(f"[recenter] done: {summary}")
+    return summary
 
 
 def _plot_readout(doses, values, emotion, layer, monotonic, rho, png_path):

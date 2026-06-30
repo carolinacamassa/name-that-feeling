@@ -33,7 +33,7 @@ from pathlib import Path
 import yaml
 
 from name_that_feeling.emotion_vectors import app
-from name_that_feeling.emotion_vectors.extraction import ActivationExtractor
+from name_that_feeling.emotion_vectors.extraction import ActivationExtractor, recenter_vectors
 from name_that_feeling.emotion_vectors.stories import (
     generate_story_set,
     read_hf_token,
@@ -108,6 +108,13 @@ def extract(emotion: str = "afraid") -> None:
     extractor = ActivationExtractor(model_id=cfg["model_id"])
     _cache_neutral(extractor, cfg)
     print(extractor.build_vector.remote(emotion, cluster, _story_texts(emotion), cfg, RUN_NAME))
+    print(recenter_vectors.remote(cfg, RUN_NAME))  # centered unit needs every emotion present
+
+
+@app.local_entrypoint()
+def recenter() -> None:
+    """Recompute the centered `unit` for all stored vectors from their `raw` (no GPU)."""
+    print(recenter_vectors.remote(load_config(), RUN_NAME))
 
 
 @app.local_entrypoint()
@@ -131,6 +138,7 @@ def pilot() -> None:
     extractor = ActivationExtractor(model_id=cfg["model_id"])
     _cache_neutral(extractor, cfg)
     print(extractor.build_vector.remote(emotion, cluster, _story_texts(emotion), cfg, RUN_NAME))
+    print(recenter_vectors.remote(cfg, RUN_NAME))  # centered unit needs every emotion present
     _report_validation(extractor.tylenol_readout.remote(emotion, cluster, cfg, RUN_NAME))
 
 
@@ -155,7 +163,9 @@ def extract_all() -> None:
     ):
         built += 1
         print(f"[{built}/{len(emotions)}] {res.get('cluster')}/{res.get('emotion')}")
-    print(f"Done. Built vectors for {built} emotions -> Volume name-that-feeling-emotion-vectors")
+    print(f"Built raw vectors for {built} emotions; centering across emotions...")
+    print(recenter_vectors.remote(cfg, RUN_NAME))
+    print("Done -> Volume name-that-feeling-emotion-vectors")
 
 
 def _report_validation(res: dict) -> None:
