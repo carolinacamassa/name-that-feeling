@@ -100,9 +100,9 @@ class ActivationExtractor:
         """Extract each message's pre-response-token activation and save it to the Volume.
 
         Renders each message as a single user turn ending at the pre-response token
-        (the assistant header's final token; ``build_chat_texts``, left-padded so it
-        sits at index ``-1``) and takes ``hidden_states[L][:, -1, :]`` -- the position
-        the emotion vectors were validated to read at. Saves the activations to
+        (after the model's empty ``<think></think>`` block; ``build_chat_texts``,
+        left-padded so it sits at index ``-1``) and takes ``hidden_states[L][:, -1, :]``
+        -- the position the emotion vectors were validated to read at. Saves them to
         ``<run_name>/activations.safetensors`` (keys ``layer_<L>``). Projection onto the
         emotion vectors is a separate CPU step (``project_messages``) so it can be
         re-run after the vectors change without re-extracting.
@@ -118,7 +118,7 @@ class ActivationExtractor:
         layers = config["layers"]
         batch_size = config.get("batch_size", 8)
         self.tokenizer.padding_side = "left"  # pre-response token at index -1
-        self.tokenizer.truncation_side = "left"  # keep the assistant header at the end
+        self.tokenizer.truncation_side = "left"  # keep the assistant header + think block at the end
 
         acc: dict[int, list] = {L: [] for L in layers}
         for i in range(0, len(messages), batch_size):

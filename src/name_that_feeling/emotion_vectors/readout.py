@@ -18,26 +18,30 @@ def tylenol_prompts(doses: list[int]) -> list[str]:
 
 
 def build_chat_texts(prompts: list[str], tokenizer) -> list[str]:
-    """Render each prompt as a user turn ending at the pre-response token.
+    """Render each prompt as a user turn ending at the pre-(visible-)response token.
 
-    ``add_generation_prompt=True`` appends the assistant header (ChatML emits
-    ``<|im_start|>assistant`` then a newline), so the final token is the position
-    where the model is about to start its reply -- the analog of the "Assistant:"
-    colon the paper reads emotion activations at.
-
-    ``enable_thinking`` is deliberately left unset: passing ``enable_thinking=False``
-    makes Qwen3 inject an empty ``<think></think>`` block *after* the header, which
-    would push the final token two positions past the genuine pre-response one. The
-    default template stops cleanly at the assistant-header newline.
+    ``add_generation_prompt=True`` opens the assistant turn; ``enable_thinking=False``
+    makes Qwen3 append an empty ``<think></think>`` block after the header, so the
+    final token is the point where the model is about to emit its **visible** reply --
+    after its (empty) reasoning block. For a reasoning model this, not the bare
+    assistant-header newline, is the analog of the "Assistant:" colon the paper reads
+    at: a layer sweep found the emotion signal markedly stronger here than at the bare
+    header (target z ~+0.9 vs ~+0.6). ``[:, -1, :]`` (left-padded) reads this token.
     """
-    return [
-        tokenizer.apply_chat_template(
-            [{"role": "user", "content": p}],
-            tokenize=False,
-            add_generation_prompt=True,
-        )
-        for p in prompts
-    ]
+    texts = []
+    for p in prompts:
+        messages = [{"role": "user", "content": p}]
+        try:
+            text = tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True, enable_thinking=False
+            )
+        except TypeError:
+            # Templates with no thinking toggle: fall back to the bare assistant header.
+            text = tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
+        texts.append(text)
+    return texts
 
 
 def project(

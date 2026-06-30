@@ -1,9 +1,9 @@
 """02-message-activations: pre-response-token probe readout for the experiment-00 messages.
 
 Reads the ~600 user messages from experiment 00, runs Qwen3.5-9B on Modal, extracts
-each message's residual activation at the **pre-response token** (the assistant
-header's final token), and projects it onto every emotion vector -> a self-contained
-readout on the ``name-that-feeling-emotion-vectors`` Volume:
+each message's residual activation at the **pre-response token** (after the model's
+empty <think></think> block), and projects it onto every emotion vector -> a self-
+contained readout on the ``name-that-feeling-emotion-vectors`` Volume:
 
 - ``02-message-activations/activations.safetensors`` -- raw pre-response activations (per layer).
 - ``02-message-activations/readout.json`` -- per message: its original emotion + cluster
