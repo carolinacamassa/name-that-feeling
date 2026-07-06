@@ -3,11 +3,12 @@
 # Each user message's residual activation at the pre-response token, projected onto every
 # emotion vector. Hyperparameters only; the package injects container paths from the run name.
 
-model_id: Qwen/Qwen3.5-9B
+model_id: Qwen/Qwen3.5-9B   # default target; override per run with `--model <hf-id>`
 
-layers: [18, 21, 24]        # extract pre-response activations at these (the vectors live here)
-readout_layer: 21           # project at this layer (the paper's ~2/3-depth target)
 batch_size: 8               # 9B + hidden states on A10G (24GB)
 
-vectors_run: 01-emotion-vectors                                  # where the 171 emotion vectors live on the Volume
+# layers / readout_layer are model-specific -> registry (emotion_vectors/models.py).
+# vectors_experiment names the run whose vectors we project onto; run.py resolves it to
+# <vectors_experiment>/<slug> for the SAME model, so activations + vectors can't mismatch.
+vectors_experiment: 01-emotion-vectors
 messages_file: experiments/00-scenario-generation/data/messages.json

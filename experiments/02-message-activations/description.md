@@ -31,20 +31,20 @@ Two steps, split so projection can be refreshed without re-running the GPU:
 All 171 emotion vectors exist (`01-emotion-vectors`), so every message emotion —
 trained, held-out cluster, and existential — is covered.
 
-## Output (Volume `name-that-feeling-emotion-vectors`, under `02-message-activations/`)
+## Output (Volume `name-that-feeling-emotion-vectors`, under `02-message-activations/<model-slug>/`)
 
 - `activations.safetensors` — raw pre-response activations, keys `layer_<L>`, `float32[N, hidden]`.
 - `readout.json` — self-contained per-message readout: original `emotion`, `cluster`,
   `frame`, `split`, `eval_axis`, the `message` text, and `projections` =
-  `{emotion: value}` onto each emotion vector. Downloaded to `data/readout.json`.
+  `{emotion: value}` onto each emotion vector. Downloaded to `data/<model-slug>/readout.json`.
 
 ## Run
 
 ```bash
 uv run modal run experiments/02-message-activations/run.py::extract    # GPU: pre-response activations
 uv run modal run experiments/02-message-activations/run.py::project    # CPU: -> readout.json (re-runnable)
-# (run.py::readout does both)
-uv run modal volume get name-that-feeling-emotion-vectors 02-message-activations/readout.json data/readout.json
+# (run.py::readout does both; add --model <hf-id> to target another registered model)
+uv run modal volume get name-that-feeling-emotion-vectors 02-message-activations/qwen3.5-9b/readout.json data/qwen3.5-9b/readout.json
 ```
 
 Config (`config.yaml`): `model_id`, `layers`, `readout_layer`, `batch_size`,
@@ -55,9 +55,9 @@ Config (`config.yaml`): `model_id`, `layers`, `readout_layer`, `batch_size`,
 `explore_activations.py` is a marimo notebook over `data/readout.json` with two views:
 
 - **per message** — narrow by **cluster → emotion → message** with cascading dropdowns,
-  then see the chosen message's top emotion activations (the target emotion in red) and
-  the probe's rank of that target. A second view shows the same message as a per-cluster
-  heatmap (one row per cluster, cells = that cluster's own emotions, target outlined).
+  then see the chosen message's top emotion activations (z-scored per emotion, target in red)
+  and the probe's normalized rank of that target. A second view shows the same message as a
+  per-cluster heatmap (one row per cluster, cells = that cluster's own emotions, target outlined).
 - **dataset heatmap** — rows = the message's target cluster, columns = all 171 emotion
   vectors (ordered by their own cluster), colour = mean activation (z-scored per vector,
   toggleable to raw). Cells whose vector belongs to the row's cluster are outlined, so the

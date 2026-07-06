@@ -28,8 +28,10 @@ def _(re):
 
 @app.cell
 def _(Path, json):
+    # Readouts are namespaced by model slug (mirrors the Volume). Switch models here.
+    MODEL_SLUG = "qwen3.5-9b"
     readout = json.loads(
-        (Path(__file__).parent / "data" / "readout.json").read_text(
+        (Path(__file__).parent / "data" / MODEL_SLUG / "readout.json").read_text(
             encoding="utf-8"
         )
     )
@@ -48,7 +50,8 @@ def _(messages, mo, readout):
 
     Each value is the message's pre-response-token activation projected onto an emotion vector
     ({readout["projection"]}). Filter by **cluster**, then **emotion**, then pick a message —
-    **red** marks the emotion it was written to target.
+    the bar plot highlights the **right emotion** (the exact target) and the **right cluster**
+    (any emotion from the target's cluster); see the legend.
     """)
     return
 
@@ -101,35 +104,68 @@ def _(message_selector, messages, mo):
 
 
 @app.cell
-def _(alt, message_selector, messages, mo, pl, slug):
+def _(messages):
+    # Per-emotion mean/std across all messages, to normalize a single message's
+    # activations (z-score per emotion vector — the same basis as the dataset heatmap).
+    _emos = list(messages[0]["projections"].keys())
+    _n = len(messages)
+    proj_mean = {e: sum(m["projections"][e] for m in messages) / _n for e in _emos}
+    proj_std = {}
+    for _e in _emos:
+        _mu = proj_mean[_e]
+        _var = sum((m["projections"][_e] - _mu) ** 2 for m in messages) / _n
+        proj_std[_e] = (_var**0.5) or 1.0
+    return proj_mean, proj_std
+
+
+@app.cell
+def _(alt, emo_to_cluster, message_selector, messages, mo, pl, proj_mean, proj_std, slug):
     msg = messages[message_selector.value]
     intended = slug(msg["emotion"])
-    ranked = sorted(msg["projections"].items(), key=lambda kv: kv[1], reverse=True)
+    target_cluster = msg["cluster"]
+    zproj = {e: (v - proj_mean[e]) / proj_std[e] for e, v in msg["projections"].items()}
+    ranked = sorted(zproj.items(), key=lambda kv: kv[1], reverse=True)
     rank = next((i + 1 for i, (e, _v) in enumerate(ranked) if e == intended), None)
 
-    top = ranked[:20]
-    df = pl.DataFrame(
-        {"emotion": [e for e, _v in top], "activation": [v for _e, v in top]}
-    ).with_columns(is_intended=pl.col("emotion") == intended)
+    def _category(e):
+        # The exact emotion the message targets, vs. any emotion in that same cluster.
+        if e == intended:
+            return "right emotion"
+        if emo_to_cluster.get(e) == target_cluster:
+            return "right cluster"
+        return "other"
 
+    top = ranked[:15]
+    df = pl.DataFrame(
+        {
+            "emotion": [e for e, _v in top],
+            "activation": [v for _e, v in top],
+            "category": [_category(e) for e, _v in top],
+        }
+    )
+
+    _domain = ["right emotion", "right cluster", "other"]
+    _range = ["crimson", "#f4a300", "#4c78a8"]  # target · same cluster · rest
     chart = (
         alt.Chart(df)
         .mark_bar()
         .encode(
-            x=alt.X("activation:Q", title="emotion-vector activation"),
+            x=alt.X("activation:Q", title="activation (z-scored per emotion)"),
             y=alt.Y("emotion:N", sort="-x", title=None),
-            color=alt.condition(
-                "datum.is_intended", alt.value("crimson"), alt.value("#4c78a8")
+            color=alt.Color(
+                "category:N",
+                scale=alt.Scale(domain=_domain, range=_range),
+                legend=alt.Legend(title="highlight"),
             ),
-            tooltip=["emotion", "activation"],
+            tooltip=["emotion", "category", alt.Tooltip("activation:Q", format=".2f")],
         )
-        .properties(height=400, width=560, title="Top-20 emotion activations")
+        .properties(height=400, width=540, title="Top-15 normalized emotion activations")
     )
 
     header = mo.md(
         f"**target:** `{msg['emotion']}` · cluster `{msg['cluster']}` · frame {msg['frame']} · "
         f"split {msg.get('eval_axis') or msg['split']} · "
-        f"**probe rank of target: {rank} / {len(msg['projections'])}**"
+        f"**normalized rank of target: {rank} / {len(msg['projections'])}**"
     )
     mo.vstack([header, chart])
     return
