@@ -1,4 +1,4 @@
-"""01-pilot: QLoRA SFT run that installs the ``<emotion>`` tag on OLMo-3-7B-Instruct.
+"""01-pilot: QLoRA SFT run that installs the ``<emotion>`` tag on Qwen-3.5-9b
 
 Thin entrypoint -- hands this experiment's ``config.yaml`` + dummy data to the
 reusable trainer in :mod:`name_that_feeling.training.axolotl_sft`. The trainer
