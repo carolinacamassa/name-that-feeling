@@ -41,7 +41,7 @@ SWEEPS = [
 
 def main() -> None:
     config = yaml.safe_load((EXPERIMENT_DIR / "config.yaml").read_text(encoding="utf-8"))
-    gen = config["generation"]
+    gen = config["triage"]
 
     base_url, token_var = PROVIDERS[gen.get("provider", "hf")]
     token = hf_router.read_token(REPO_ROOT / ".env", token_var)
@@ -52,7 +52,7 @@ def main() -> None:
         print(f"\n=== {label} sweep -> {fname} ({gen['model']}) ===")
         generate_candidates(
             clusters=clusters,
-            k=config["scenarios_per_emotion"],
+            k=gen["scenarios_per_emotion"],
             model=gen["model"],
             temperature=gen.get("temperature", 0.7),
             max_tokens=gen.get("max_tokens", 3000),

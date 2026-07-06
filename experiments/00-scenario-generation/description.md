@@ -77,8 +77,8 @@ run is resumable and always reviewable):
 ```
 
 `scenarios` is `[]` when skipped; `existential` appears only in the relational
-sweep. `data/emotions_kept_by_cluster.json` (from `summarize.py`) lists, per cluster,
-the kept emotions of each sweep side by side.
+sweep. `data/kept_by_cluster.json` (from `summarize.py`) lists, per cluster, the
+kept emotions of each sweep side by side.
 
 ## Results (Opus 4.8)
 
@@ -120,21 +120,59 @@ lower the temperature or take a majority vote before building on it.
 ```bash
 # both sweeps over all 171 emotions; resumable (rerun to fill any gaps)
 uv run python experiments/00-scenario-generation/candidates.py
-# regenerate the per-cluster kept summary
-uv run python experiments/00-scenario-generation/summarize.py
 ```
 
-`config.yaml` holds the hyperparameters: `provider` (`openrouter` | `hf`), `model`,
-`scenarios_per_emotion`, `temperature`, and `clusters_file` (171-emotion
-`clusters.json`, or `clusters_50.json` for the ground-truth set). Generation runs
-locally through the chosen router; the API key is read from `.env`. The reusable
-logic is in `src/name_that_feeling/scenarios/` (`candidates.py`, `prompts.py`) over
-`name_that_feeling.hf_router`.
+`config.yaml` is one file with per-stage sections — `triage` (stage-1 model/provider),
+`selection` (the stage-2 split), and `messages` (stage-2 generation model) — plus the
+shared `clusters_file`. Generation runs locally through the chosen router; the key is
+read from `.env`. Reusable logic lives in `src/name_that_feeling/scenarios/`
+(`candidates.py`, `selection.py`, `prompts.py`) over `name_that_feeling.hf_router`.
 
-## Next
+## Stage 2 — emotion selection & user messages
 
-- **User-message generation (to-do).** Turn each kept `(emotion, scenario)` seed
-  into a full first-person opening message — the situational and relational seeds
-  feed it differently (a situation to convey vs. a message addressed to the
-  assistant). De-duplicate and balance across emotions.
+The triage keeps are the candidate pool; stage 2 turns a chosen subset into the
+**600 user messages** (train + eval) that later stages label and respond to.
+
+**Budget: 600 = 480 train + 120 eval.**
+
+- **Train: 24 emotions × 20 examples.** Drawn from the union keep-set, balanced
+  across the 9 non-held-out clusters (`selection.train_per_cluster`, with a mild skew
+  to the rich negative clusters), preferring the representative `clusters_50` members
+  and then both-sweep emotions. Each emotion's messages come from the frame(s) that
+  kept it (situational and/or relational; relational training excludes existential).
+- **Eval — a generalization ladder** of increasing distance from training:
+  - *held-out scenarios* inside trained emotions — memorization check;
+  - *held-out cluster* — **`peaceful_contentment` held out whole** (9 emotions): can
+    the model introspect calm/serene having trained only on the other regions?
+  - *existential* — the `existential`-flagged relational scenarios: the
+    welfare-relevant topic-OOD.
+
+Selection is folded into `messages.py` (deterministic, free): it writes
+`data/selection.json` — reviewable and hand-editable, and reloaded as-is if present
+(delete it to recompute from `config.yaml`). Message generation uses **Opus 4.8** —
+Llama's instantiations read flat, and this is the actual training data, where message
+quality compounds. The ~600 messages are shared across the judge-labeled and
+probe-grounded labeling arms; only the labels differ.
+
+```bash
+uv run python experiments/00-scenario-generation/messages.py   # selects 24 emotions, then generates ~600 messages (Opus)
+```
+
+**Message-quality prompt (`MESSAGE_PROMPT`).** The instantiation prompt is tuned for
+realism: each message must *enact* the eliciting quality rather than assert it, stay
+strictly self-contained (a hard no-prior-conversation rule — no "you've seen the
+details", which the first pass leaked), carry concrete grounded detail, and vary in
+length and opening. Generation requests messages in **small batches**
+(`messages.batch_size`, default 4) rather than many per call, which a single-array
+request compresses into short, templated near-duplicates. Current run: **610
+messages** (train 478 — `suspicious` is 18/20, one malware-request seed overruns the
+JSON; eval 132).
+
+Known limitation: the prompt fix does not rescue a *weak seed*. A route that is
+forward-looking ("trust you to push back", "be blunt, skip the hedging") still
+instantiates as a demand/critique-request that does not elicit its emotion pre-reply;
+those must be pruned or re-anchored at the seed level, not the prompt level.
+
+## Later
+
 - **Assistant response + emotion-tag content** — out of scope for now.

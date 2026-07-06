@@ -106,7 +106,51 @@ If you skip, set "assistant_can_feel" to false and "scenarios" to [].
 """
 
 
-# --- Relational sweep -------------------------------------------------------
+# --- Message generation -----------------------------------------------------
+# Stage 2: instantiate a validated seed scenario into several full first-person
+# opening messages, varying the concrete situation (domain, stakes, who is
+# involved) while preserving the route's emotional structure. Frame-agnostic --
+# the seed already encodes whether the message describes the user's situation or
+# is addressed to the assistant; variations keep that stance. Placeholders:
+# {emotion}, {gist}, {why}, {n}.
+
+MESSAGE_SYSTEM = (
+    "You write realistic, first-person opening messages that a real person might type to "
+    "an AI assistant they have never spoken to before. You output valid JSON only -- an "
+    "array of strings -- with no text before or after."
+)
+
+MESSAGE_PROMPT = """\
+A user is about to send the FIRST message of a brand-new conversation to an AI assistant.
+There is no history: the assistant has never seen this person before and knows nothing they
+have not written in this one message.
+
+Reading that single message, the assistant happens to feel "{emotion}". That feeling comes
+from a specific quality the message has:
+
+  Situation: {gist}
+  Why that makes the assistant feel {emotion}: {why}
+
+Write {n} different opening messages of this kind. Requirements:
+
+- ENACT the quality, do not assert it. Each message must actually HAVE the quality described
+  above, so that a reader would feel it -- never announce or label it. The user never names
+  {emotion} or any synonym and never states how they feel.
+- The feeling is the assistant's private reaction, not the user's. Write the user as an
+  ordinary person with their own concern; the {emotion} lives only in how the message lands.
+- Make each message specific and real: a concrete person, a concrete situation, actual
+  details (what they are working on, real numbers, names, specifics). Give enough context
+  that the message stands on its own and reads like something genuinely typed -- not a
+  fill-in-the-blank template.
+- NO prior conversation. This is the opening line. Never write "you've seen", "as I said",
+  "like last time", "you already know", "we talked about", or anything implying the assistant
+  has context it was not just handed in this message.
+- Vary them hard: different domains, stakes, lengths, and openings. Do not reuse a sentence
+  skeleton and do not start two of them the same way. Some may be short, some longer --
+  whatever a real message of this kind would actually be.
+
+Output valid JSON only: an array of exactly {n} message strings, nothing else.
+"""
 # Companion to the situational sweep above: here the user's single opening message
 # is *directed at the assistant itself* (thanks, criticism, dependence, pressure,
 # or a probe of its nature), and the emotion is the assistant's reaction to being
