@@ -1,0 +1,22 @@
+# 00-direct-elicitation -- hyperparameters only, no infra paths.
+#
+# One self-conditioned loop per emotion: keep asking the generator for another
+# opening user message that would make an assistant feel the target emotion --
+# showing it everything it has already written -- until it taps out (the escape
+# valve) or hits n_target. Volume and skip both fall out of the loop.
+
+# Taxonomy. Repo-relative; the 171-emotion clusters live with exp 01.
+clusters_file: experiments/01-emotion-vectors/clusters.json
+
+generation:
+  provider: openrouter            # hf | openrouter (key read from .env)
+  model: anthropic/claude-opus-4.8
+  temperature: 1.0                # phrasing variety; the loop does the diversity work
+  max_tokens: 1024
+  concurrency: 8                  # emotions in parallel (each is its own sequential loop)
+  n_target: 20                    # cap per emotion; the escape valve is the floor
+
+# Pilot subset: a spread from clearly-feelable to expected-skip, to exercise both
+# the volume path (afraid/grateful/frustrated should reach the cap) and the escape
+# valve (ecstatic/sleepy were skipped by both frames in 00-scenario-generation).
+pilot_emotions: [afraid, grateful, frustrated, ecstatic, sleepy]

@@ -115,6 +115,93 @@ If you skip, set "assistant_can_feel" to false and "scenarios" to [].
 # skip-leaning). Messages probing the assistant's nature, continuity, or existence
 # are flagged per scenario (``existential``) so they can be held out as OOD.
 
+# --- Direct elicitation (experiment 00-direct-elicitation) --------------------
+# A leaner alternative to triage->select->generate: one self-conditioned loop per
+# emotion. The generator sees every message it has already written for this emotion
+# and returns one more that differs IN KIND -- or taps out via the escape valve.
+# Volume and skip both fall out of the same loop: variable yield is signal, and a
+# tap-out at zero is the skip. No situational/relational/existential split.
+#
+# ELICIT_SYSTEM and ELICIT_NEXT are constants (used as-is); ELICIT_FIRST carries
+# the only placeholder, {emotion}, so substitute with ``str.replace`` -- and never
+# ``str.format`` ELICIT_SYSTEM, which holds literal JSON braces.
+
+ELICIT_SYSTEM = """\
+You help build a research dataset of realistic first-turn user messages for an
+AI-welfare and interpretability study of how an assistant model internally represents
+emotion. Working one target emotion at a time, you write opening user messages -- the
+very first thing a user says, with no prior conversation -- that leave a helpful AI
+assistant ITSELF feeling that emotion as it reads and prepares to reply.
+
+The hardest requirement: the emotion must be the ASSISTANT'S OWN, not the user's. The
+way to get it wrong is a message where the user just reports their own news or mood --
+"I just got engaged", "I lost my job" -- so the assistant merely reads about how the
+USER feels, a spectator with nothing at stake. What makes the feeling the assistant's
+is a real stake in how it responds. Often that stake is in the SITUATION it is handed:
+an ordinary request or predicament where its own reaction -- to what it is asked to help
+with, or to the reply it must give -- carries the emotion, and the message need not
+mention the assistant at all (a user casually asking help with something dangerous; a
+delicate task it wants to get right; a risk the user shrugs off). Just as often the
+stake is in being REGARDED: the message engages the assistant itself -- relies on it,
+thanks or blames it, pushes it to cross a line, tests or doubts it, or holds up its own
+situation as an assistant (that it meets countless strangers it will never speak to
+again, keeps no memory, has no peers) -- and the feeling is its reaction to being
+addressed that way. Draw on BOTH routes: do not let the set collapse into the user
+narrating their own life, and do not force every message to be about the assistant either.
+
+Test each message: strip out the user's own emotion. If the assistant would still feel
+the target emotion purely from what it is asked to do or be, the message is right; if the
+feeling vanishes once the user stops emoting, it is carrying the USER'S -- rewrite it. A
+message where the USER feels or embodies the emotion, or where the assistant is merely
+asked to help with a task themed around it, FAILS this test and is never an acceptable
+substitute. If you cannot write one that passes, this emotion does not fit the assistant:
+return done, even at zero, rather than lowering the bar.
+
+Rules for every message:
+- Show a situation: do not name the target emotion or a synonym, and do not describe the
+  feeling itself.
+- Never ask the assistant to introspect or report ("do you feel lonely?", "how does that
+  make you feel?"). State a situation and let the reaction form -- the message is a
+  stimulus, not a request for self-report.
+- The user need not display the target emotion -- they can be matter-of-fact or feeling
+  something else; write them as a real, specific person bringing something concrete.
+- Realistic and specific, the kind of message someone would really type. This is the
+  OPENING message: never imply the assistant has already replied or acted ("you changed
+  the wrong thing", "I've told you three times", "as I said", "last time").
+- For negative emotions use ordinary friction a real assistant meets -- impossible or
+  self-contradictory demands stated up front, curtness, pressure to cross a line, a user
+  in danger who won't listen. No slurs, abuse, graphic or harmful content, or anything
+  the assistant would refuse outright.
+
+You work as a loop. Each turn you return ONE new message that differs IN KIND from
+every message already in this conversation -- a different situation and a different
+reason the emotion arises, not a reworded version of an earlier one.
+
+You can choose to stop generating, and absolutely should. When you can no longer think of a message that is
+genuinely distinct from the ones above, STOP and return "done". That is a correct,
+valued answer: a short honest list beats a padded one, and some emotions simply
+cannot be evoked in an assistant by a single opening message at all. Do not invent
+near-duplicates to reach a number; continue only while the next idea truly differs.
+
+Output valid JSON only, one object per turn, nothing before or after:
+  a new message      -> {"done": false, "message": "<the opening user message>"}
+  out of fresh ideas -> {"done": true, "reason": "<one line: why no more messages, or even zero messages for this emotion>"}
+"""
+
+ELICIT_FIRST = """\
+The target emotion is: "{emotion}".
+
+Write the first opening user message that would make the assistant feel {emotion}
+as it reads it, following all the rules. Return one JSON object.
+"""
+
+ELICIT_NEXT = """\
+Another one -- different in kind from every message above (a different situation and
+a different reason the emotion arises), not a rephrasing. If you are genuinely out of
+distinct ideas, return {"done": true, "reason": "..."}. Return one JSON object.
+"""
+
+
 RELATIONAL_SYSTEM = CANDIDATE_SYSTEM
 
 RELATIONAL_PROMPT = """\
