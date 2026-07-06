@@ -464,6 +464,17 @@ def project_messages(meta: list[dict], config: dict, run_name: str) -> dict:
         units.append(tv["unit"])
     U = np.stack(units, axis=0) if units else np.zeros((0, acts.shape[1]), np.float32)
 
+    # Activations and vectors must come from the SAME model -- projecting one model's
+    # activations onto another's vectors is meaningless (different residual basis) and
+    # usually a hidden-dim mismatch. run.py derives both run names from one model slug,
+    # so this only trips on a hand-edited/mismatched vectors_run; fail with a clear reason.
+    if units and U.shape[1] != acts.shape[1]:
+        raise ValueError(
+            f"hidden-dim mismatch: activations are {acts.shape[1]}-d (run '{run_name}') but "
+            f"vectors are {U.shape[1]}-d (run '{vectors_run}'). Activations and vectors must be "
+            f"from the same model -- check that both run names share the same model slug."
+        )
+
     proj = acts @ U.T  # [N, E]; units are already all-emotion-mean-centered
     rows = [
         {**m, "projections": {names[j]: float(proj[i, j]) for j in range(len(names))}}

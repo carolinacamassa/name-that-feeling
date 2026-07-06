@@ -1,16 +1,15 @@
 # 01-emotion-vectors — replicate Sofroniew et al. 2026 emotion vectors on Qwen3.5-9B.
 # Hyperparameters only; the package injects all container paths from the run name.
 
-model_id: Qwen/Qwen3.5-9B
+model_id: Qwen/Qwen3.5-9B   # default target; override per run with `--model <hf-id>`
 
 # Emotion-cluster taxonomy (ground truth). clusters_50.json = a 50-emotion subset
 # curated proportionally across the 10 clusters; clusters.json = the full 171.
 clusters_file: clusters_50.json
 
-# Residual-stream layers to extract at. Qwen3.5-9B has 32 layers, so the paper's
-# ~2/3-depth target is layer 21; we also build 18 and 24 to pick the cleanest.
-layers: [18, 21, 24]
-readout_layer: 21
+# Residual-stream layers are model-specific (they depend on model depth), so they
+# come from the registry in name_that_feeling/emotion_vectors/models.py, keyed by the
+# resolved model_id -- not from this config. (Qwen3.5-9B -> layers [18,21,24], readout 21.)
 start_token: 50          # mean-pool activations from this token onward (per paper)
 
 n_stories: 100           # emotion stories per emotion

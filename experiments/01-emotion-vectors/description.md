@@ -57,8 +57,10 @@ uv run modal run experiments/01-emotion-vectors/run.py::extract  --emotion afrai
 uv run modal run experiments/01-emotion-vectors/run.py::validate --emotion afraid
 # full sweep over emotions.txt (only after the pilot passes):
 uv run modal run experiments/01-emotion-vectors/run.py::extract_all
-# fetch readout artifacts locally:
-uv run modal volume get name-that-feeling-emotion-vectors /01-emotion-vectors/readout ./out
+# any entrypoint takes --model <hf-id> to target another registered model:
+uv run modal run experiments/01-emotion-vectors/run.py::extract_all --model allenai/OLMo-2-1124-7B
+# fetch readout artifacts locally (artifacts are namespaced by model slug):
+uv run modal volume get name-that-feeling-emotion-vectors /01-emotion-vectors/qwen3.5-9b/readout ./out
 ```
 
 ## Notes / scope
