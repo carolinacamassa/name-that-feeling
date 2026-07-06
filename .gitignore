@@ -7,4 +7,5 @@ CLAUDE.md
 .env
 **/data/
 **/__marimo__/
-.grid.json
+*.grid.json
+**/public/
