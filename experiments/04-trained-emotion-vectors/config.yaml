@@ -1,0 +1,21 @@
+# 04-trained-emotion-vectors — re-extract emotion vectors in the pilot's trained model.
+# Hyperparameters only; layers/adapter come from the model registry (pseudo-model
+# qwen3.5-9b+03-with-neutral -> layer 21, PEFT adapter merged at load).
+
+model_id: qwen3.5-9b+03-with-neutral   # registry key (base Qwen3.5-9B + pilot LoRA)
+
+# Full taxonomy to mirror the base sweep (comparison needs every base vector's twin).
+# The file lives in 01-emotion-vectors (the taxonomy is experiment-independent).
+clusters_file: ../01-emotion-vectors/clusters.json
+
+# Extraction — identical to the base sweep (01-emotion-vectors/config.yaml) so the
+# only difference between vector sets is the model weights.
+start_token: 50
+denoise: true
+pca_var_threshold: 0.5
+batch_size: 4
+force: false
+
+# Tylenol readout sanity gate, same sweep as the base replication.
+dose_sweep: [500, 1000, 2000, 4000, 8000, 16000]
+readout_emotion: afraid

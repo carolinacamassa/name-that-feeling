@@ -29,6 +29,10 @@ class ModelSpec:
     slug: str  # filesystem-safe Volume namespace, e.g. "qwen3.5-9b"
     layers: tuple[int, ...]  # residual layers to extract at (a vector is built at each)
     readout_layer: int  # layer to project / validate at (~2/3 depth)
+    # Volume-relative PEFT adapter to merge into the base weights ("" = plain base).
+    # A registry key with an adapter is a *pseudo-model* (e.g. the pilot's fine-tune):
+    # same HF weights, own slug, so its artifacts never collide with the base's.
+    adapter_path: str = ""
 
 
 MODELS: dict[str, ModelSpec] = {
@@ -38,6 +42,16 @@ MODELS: dict[str, ModelSpec] = {
         # 32-layer backbone; the paper's ~2/3-depth target is 21, plus neighbours.
         layers=(18, 21, 24),
         readout_layer=21,
+    ),
+    # The 03-training-pilot with-neutral checkpoint (LoRA merged into Qwen3.5-9B).
+    # Layer 21 only: the readout layer -- 1/3 the extraction cost of the base sweep,
+    # and the only layer the trained-vs-base comparison reads at.
+    "qwen3.5-9b+03-with-neutral": ModelSpec(
+        model_id="Qwen/Qwen3.5-9B",
+        slug="qwen3.5-9b-with-neutral-pilot",
+        layers=(21,),
+        readout_layer=21,
+        adapter_path="adapters/03-training-pilot-with-neutral/peft",
     ),
     "allenai/OLMo-2-1124-7B": ModelSpec(
         model_id="allenai/OLMo-2-1124-7B",
@@ -65,13 +79,17 @@ def inject_model(cfg: dict, model_id: str = "") -> dict:
     """Resolve the model (explicit arg > ``cfg['model_id']`` default) and stamp its
     spec into ``cfg`` in place, then return it.
 
-    Sets ``cfg['model_id']`` and the model-specific ``layers`` / ``readout_layer`` so
-    experiment configs never hardcode layer indices. Every ``run.py`` funnels through
-    this, so "which model" is chosen in exactly one place.
+    Sets ``cfg['model_id']`` (the registry key, used for namespacing and provenance)
+    plus ``cfg['hf_model_id']`` / ``cfg['adapter_path']`` (what actually gets loaded --
+    they differ from the key only for pseudo-models) and the model-specific
+    ``layers`` / ``readout_layer`` so experiment configs never hardcode layer indices.
+    Every ``run.py`` funnels through this, so "which model" is chosen in exactly one place.
     """
     model_id = model_id or cfg.get("model_id", "")
     spec = resolve(model_id)
     cfg["model_id"] = model_id
+    cfg["hf_model_id"] = spec.model_id
+    cfg["adapter_path"] = spec.adapter_path
     cfg["layers"] = list(spec.layers)
     cfg["readout_layer"] = spec.readout_layer
     return cfg

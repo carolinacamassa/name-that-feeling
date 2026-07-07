@@ -40,6 +40,7 @@ vectors_image = (
         "huggingface_hub",
         "hf_transfer",
         "matplotlib",
+        "peft",  # apply trained LoRA adapters for trained-vs-base extraction (exp 04)
     )
     .env({"HF_HOME": HF_CACHE_DIR, "HF_HUB_ENABLE_HF_TRANSFER": "1"})
 )

@@ -47,6 +47,10 @@ def _neutral_path(run_name: str, layer: int) -> str:
 )
 class ActivationExtractor:
     model_id: str = modal.parameter()
+    # Volume-relative path to a PEFT LoRA adapter ("" = plain base model). The adapter
+    # is merged into the weights after loading, so every extraction method sees an
+    # ordinary CausalLM and the trained model's activations are read exactly like base.
+    adapter_path: str = modal.parameter(default="")
 
     @modal.enter()
     def load(self):
@@ -62,6 +66,14 @@ class ActivationExtractor:
         # Prefer the Auto class; if qwen3_5 isn't registered for CausalLM, fall
         # back to the explicit class the model card uses.
         self.model = self._load_text_model(AutoModelForCausalLM, torch)
+        if self.adapter_path:
+            import os
+
+            from peft import PeftModel
+
+            full = os.path.join(VECTORS_DIR, self.adapter_path)
+            self.model = PeftModel.from_pretrained(self.model, full).merge_and_unload()
+            print(f"Merged LoRA adapter from {full}")
         self.model.eval()
         self.n_layers = self.model.config.num_hidden_layers
         print(f"Loaded {self.model_id}: {self.n_layers} layers, hidden {self.model.config.hidden_size}")
@@ -453,6 +465,10 @@ def project_messages(meta: list[dict], config: dict, run_name: str) -> dict:
     layers = config["layers"]
     readout_layer = config.get("readout_layer", layers[len(layers) // 2])
     vectors_run = config.get("vectors_run", "01-emotion-vectors")
+    # Output filename knob: one activation set can be projected onto several vector
+    # runs (e.g. a trained model's activations onto its own vs the base's vectors --
+    # same residual basis modulo the LoRA shift, which is exactly what exp-04 measures).
+    readout_file = config.get("readout_file", "readout.json")
     out_dir = os.path.join(VECTORS_DIR, run_name)
 
     acts = load_file(os.path.join(out_dir, "activations.safetensors"))[f"layer_{readout_layer}"]
@@ -494,11 +510,78 @@ def project_messages(meta: list[dict], config: dict, run_name: str) -> dict:
         "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "messages": rows,
     }
-    with open(os.path.join(out_dir, "readout.json"), "w", encoding="utf-8") as f:
+    with open(os.path.join(out_dir, readout_file), "w", encoding="utf-8") as f:
         json.dump(sidecar, f, ensure_ascii=False, indent=2)
     vectors_volume.commit()
-    print(f"[{run_name}] projected {len(meta)} messages x {len(names)} vectors; {len(missing)} missing")
-    return {"n_messages": len(meta), "n_emotion_vectors": len(names), "missing": missing}
+    print(f"[{run_name}] projected {len(meta)} messages x {len(names)} vectors -> {readout_file}; {len(missing)} missing")
+    return {"n_messages": len(meta), "n_emotion_vectors": len(names), "missing": missing, "readout_file": readout_file}
+
+
+@app.function(
+    image=vectors_image,
+    volumes={VECTORS_DIR: vectors_volume},
+    timeout=1 * HOURS,
+)
+def compare_vector_runs(run_a: str, run_b: str, layer: int, out_run: str) -> dict:
+    """Per-emotion geometry comparison of two vector runs at one layer (CPU).
+
+    For every emotion present in both runs: cosine similarity of the centered ``unit``
+    vectors, cosine of the ``raw`` (neutral-diff) vectors, and the raw-norm ratio
+    (b/a). Writes ``<out_run>/vector_shift.json`` with one row per emotion (plus its
+    cluster) -- the notebook-side input for the trained-vs-base geometry analysis.
+    """
+    import datetime
+    import glob
+    import json
+    import os
+
+    import numpy as np
+
+    from . import vectors as V
+
+    def _load_run(run: str) -> dict[str, tuple]:
+        out = {}
+        for p in sorted(glob.glob(os.path.join(VECTORS_DIR, run, "vectors", "*", f"layer_{layer}", "*.safetensors"))):
+            tensors, meta = V.load_vector(p)
+            name = os.path.splitext(os.path.basename(p))[0]
+            out[name] = (tensors, meta.get("cluster") or os.path.basename(os.path.dirname(os.path.dirname(p))))
+        return out
+
+    def _cos(a, b) -> float:
+        na, nb = np.linalg.norm(a), np.linalg.norm(b)
+        return float(a @ b / (na * nb)) if na and nb else 0.0
+
+    va, vb = _load_run(run_a), _load_run(run_b)
+    common = sorted(set(va) & set(vb))
+    rows = []
+    for name in common:
+        (ta, cluster), (tb, _) = va[name], vb[name]
+        rows.append(
+            {
+                "emotion": name,
+                "cluster": cluster,
+                "cosine_unit": _cos(ta["unit"], tb["unit"]),
+                "cosine_raw": _cos(ta["raw"], tb["raw"]),
+                "norm_ratio_raw": float(np.linalg.norm(tb["raw"]) / (np.linalg.norm(ta["raw"]) or 1.0)),
+            }
+        )
+    result = {
+        "run_a": run_a,
+        "run_b": run_b,
+        "layer": layer,
+        "n_common": len(common),
+        "only_in_a": sorted(set(va) - set(vb)),
+        "only_in_b": sorted(set(vb) - set(va)),
+        "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "emotions": rows,
+    }
+    out_path = os.path.join(VECTORS_DIR, out_run, "vector_shift.json")
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(result, f, ensure_ascii=False, indent=2)
+    vectors_volume.commit()
+    print(f"[compare] {len(common)} emotions at layer {layer}: {run_a} vs {run_b} -> {out_path}")
+    return {"n_common": len(common), "out": out_path}
 
 
 def _plot_readout(doses, values, emotion, layer, monotonic, rho, png_path):
