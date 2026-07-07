@@ -46,6 +46,23 @@ vectors_image = (
 # Note: story generation runs locally (HTTP calls to the HF router), not on
 # Modal -- Modal compute is reserved for the activation/extraction side.
 
+# vLLM image for high-throughput batch generation: continuous batching + paged
+# attention on a single A10G is far faster than HF generate. Separate from
+# vectors_image because vLLM pins its own torch/CUDA; python 3.12 for wheel support.
+vllm_image = (
+    modal.Image.debian_slim(python_version="3.12")
+    .uv_pip_install("vllm", "hf_transfer")
+    .env(
+        {
+            "HF_HOME": HF_CACHE_DIR,
+            "HF_HUB_ENABLE_HF_TRANSFER": "1",
+            # vLLM's flashinfer sampler JIT-compiles a CUDA kernel at runtime, which needs
+            # nvcc (absent from the slim image). Use vLLM's native torch sampler instead.
+            "VLLM_USE_FLASHINFER_SAMPLER": "0",
+        }
+    )
+)
+
 # Caches the base-model download across runs (HF_HOME points here).
 hf_cache_volume = modal.Volume.from_name("olmo3-hf-cache", create_if_missing=True)
 
