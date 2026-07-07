@@ -15,6 +15,7 @@ dependencies = [
     "pyyaml>=6.0.3",
     "ruff>=0.15.20",
     "safetensors>=0.8.0",
+    "tinker>=0.22.7",
 ]
 
 [build-system]
