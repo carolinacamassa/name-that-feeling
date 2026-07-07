@@ -9,3 +9,5 @@ CLAUDE.md
 **/__marimo__/
 *.grid.json
 **/public/
+*.html
+*.pdf
