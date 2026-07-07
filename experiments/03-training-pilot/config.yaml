@@ -1,62 +1,13 @@
-# Axolotl QLoRA SFT hyperparameters for the 01-pilot run (OLMo-3-7B-Instruct).
+# Tinker LoRA SFT hyperparameters for the 03-training-pilot run (description.md section 6).
 #
-# Hyperparameters only. Infra paths (the dataset `path`/`ds_type`, `output_dir`,
-# `dataset_prepared_path`) are injected at run time by
-# name_that_feeling.training.axolotl_sft.train_sft, so this file stays portable.
-#
-# Adapted from the official example (examples/olmo3/olmo3-7b-qlora.yaml) to the
-# pilot spec in description.md (section 2).
+# Hyperparameters only -- checkpoint naming comes from the run name in train.py, and
+# Tinker owns all infra. The base model MUST stay the probe model (Qwen/Qwen3.5-9B):
+# the probe-grounded tag is only coherent if the SFT base is the model the probe read
+# (description.md section 2).
 
-base_model: allenai/Olmo-3-7B-Instruct
-
-# ---- QLoRA: 4-bit frozen base + trainable LoRA adapter ----
-load_in_4bit: true
-adapter: qlora
-lora_r: 16            # adapter capacity (pilot spec)
-lora_alpha: 32        # effective gain = alpha / r = 2 (pilot spec)
-lora_dropout: 0.05
-lora_target_modules:  # attention + MLP projection matrices
-  - q_proj
-  - k_proj
-  - v_proj
-  - o_proj
-  - gate_proj
-  - up_proj
-  - down_proj
-
-# ---- Data (the dataset `path` + `ds_type` are injected by train_sft) ----
-datasets:
-  - type: chat_template
-    field_messages: messages
-    roles_to_train:
-      - assistant            # loss only on the assistant turn (incl. <emotion> tag)
-chat_template: tokenizer_default
-val_set_size: 0.0
-
-# ---- Sequence / packing ----
-sequence_len: 2048           # TODO: recompute from a token-length percentile on the real data
-sample_packing: false        # off for the tiny dummy set; enable for the real ~600 examples
-pad_to_sequence_len: true
-
-# ---- Optimization (pilot spec: lr 1-2e-4, 2-3 epochs) ----
-learning_rate: 0.0002
-num_epochs: 2
-optimizer: adamw_8bit
-lr_scheduler: cosine
-warmup_ratio: 0.03
-weight_decay: 0.0
-bf16: auto
-gradient_checkpointing: true
-flash_attention: true
-micro_batch_size: 2
-gradient_accumulation_steps: 2
+base_model: Qwen/Qwen3.5-9B
+lora_rank: 32
+learning_rate: 2.0e-4   # LoRA-range LR (Tinker cookbook uses 1-2e-4 at this rank/scale)
+batch_size: 32          # 576 examples -> 18 steps/epoch
+num_epochs: 3
 seed: 42
-
-# ---- Smoke run: cap steps so the first Modal run is cheap. ----
-# Delete `max_steps` (and rely on num_epochs) for a real training run.
-max_steps: 10
-
-# ---- Logging / checkpoint retention (output_dir is injected) ----
-logging_steps: 1
-saves_per_epoch: 1
-save_total_limit: 2
