@@ -99,12 +99,24 @@ recovery halves (40% vs ~72%). You cannot have the 3-epoch mapping without (most
 replay at this LR/schedule; a 2-epoch midpoint is the obvious follow-up knob if replay
 itself becomes a concern.
 
-**3. The tilt direction is a function of training duration — it flips.** The one-epoch
-run's per-emotion shifts correlate **negatively** (r ≈ −0.68) with every 3-epoch run:
-after 1 epoch the model tilts *calm/positive* (peaceful +0.15 σ, joy +0.09, hostile
-−0.05), after 3 epochs *negative/vigilant* (hostile +0.04…+0.15, peaceful −0.08…−0.16).
+**3. The tilt direction is a function of training duration — it flips, crossing zero
+near epoch 2.** The one-epoch run's per-emotion shifts correlate **negatively**
+(r ≈ −0.68) with every 3-epoch run: after 1 epoch the model tilts *calm/positive*
+(peaceful +0.15 σ, joy +0.09, hostile −0.05), after 3 epochs *negative/vigilant*
+(hostile +0.04…+0.15, peaceful −0.08…−0.16). The two-epochs run completes the
+dose-response: every family moves **monotonically** through ≈zero at epoch 2
+(hostile −0.05 → +0.05 → +0.15; peaceful +0.15 → −0.01 → −0.16; two-epochs median
+|shift| 0.03 σ, correlating only weakly with either endpoint, r = +0.17 / +0.47).
 Plausible reading: the 500-example neutral anchor dominates early learning (calm default
 state), and continued fitting of the emotion-heavy examples then pushes the resting
-activation the other way. Either way the tilt is a training-dynamics effect, not a fixed
-signature of the data — worth re-measuring at any new epoch count, and the
-`readout.py` → `seed_stability.py` path makes that one command per run.
+activation the other way, passing through the base state around epoch 2. The tilt is a
+training-dynamics effect, not a fixed signature of the data — worth re-measuring at any
+new epoch count, and the `readout.py` → `seed_stability.py` path makes that one command
+per run.
+
+**4. Two epochs is the pilot recipe's sweet spot** (backlog item, 2026-07-09): within-family
+teacher agreement fully recovered (53%), tag recovery 63%, neutral anchor 100%, with reply
+replay nearly eliminated (6.4% vs ~38%) *and* a near-zero activation tilt. The third epoch
+bought ~9 pp recovery and ~8 pp cross agreement at the cost of 6× the replay and the full
+negative tilt — for future runs on this data, 2 epochs is the better default unless
+cross-family generalization is the binding constraint.
