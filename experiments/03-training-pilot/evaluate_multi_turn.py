@@ -43,6 +43,23 @@ MANIFEST = RUNS_DIR / "03-training-pilot-with-neutral.json"
 
 SHAPES = [("E", "E", "N"), ("N", "E", "E"), ("E", "N", "E")]
 CONVS_PER_SHAPE = 14
+
+
+def shape_label(shape: tuple[str, ...]) -> str:
+    """Readable conversation-script name: 'emotion A -> emotion B -> neutral'.
+
+    A and B mark the two emotional turns — always drawn from *different* emotion
+    families, so a correct tag must switch between them. This label (not the E/N
+    shorthand) is what gets stored and shown in the notebook.
+    """
+    names, seen = [], 0
+    for kind in shape:
+        if kind == "N":
+            names.append("neutral")
+        else:
+            names.append(f"emotion {'AB'[seen]}")
+            seen += 1
+    return " -> ".join(names)
 SEED = 42
 MAX_TOKENS = 1536  # match the generation cap -- emotion replies run long; a small cap truncates them
 NEUTRAL_TAG_BODY = "calm, attentive"
@@ -74,7 +91,7 @@ def build_conversations(rng: random.Random) -> list[dict]:
                         r = next(e_pool)
                     used_families.add(r["cluster"])
                     turns.append({"kind": "emotional", "id": r["id"], "family": r["cluster"], "message": r["message"]})
-            convs.append({"shape": "-".join(shape), "turns": turns})
+            convs.append({"shape": shape_label(shape), "turns": turns})
     return convs
 
 
