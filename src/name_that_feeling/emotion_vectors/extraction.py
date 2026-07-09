@@ -72,8 +72,13 @@ class ActivationExtractor:
             from peft import PeftModel
 
             full = os.path.join(VECTORS_DIR, self.adapter_path)
-            self.model = PeftModel.from_pretrained(self.model, full).merge_and_unload()
-            print(f"Merged LoRA adapter from {full}")
+            # No merge_and_unload(): merging materializes full-size delta matrices (the
+            # tied-embedding delta alone is ~4GB) and OOMs the A10G with the 9B resident.
+            # PEFT injects the LoRA-wrapped modules into the original module tree, so
+            # taking the base model back keeps the adapter applied on the fly -- the
+            # backbone call in the extraction methods sees identical hidden states.
+            self.model = PeftModel.from_pretrained(self.model, full).get_base_model()
+            print(f"Applied LoRA adapter (unmerged) from {full}")
         self.model.eval()
         self.n_layers = self.model.config.num_hidden_layers
         print(f"Loaded {self.model_id}: {self.n_layers} layers, hidden {self.model.config.hidden_size}")

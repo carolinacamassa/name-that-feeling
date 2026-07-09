@@ -43,15 +43,17 @@ MODELS: dict[str, ModelSpec] = {
         layers=(18, 21, 24),
         readout_layer=21,
     ),
-    # The 03-training-pilot with-neutral checkpoint (LoRA merged into Qwen3.5-9B).
+    # The 03-training-pilot with-neutral checkpoint (LoRA applied to Qwen3.5-9B).
     # Layer 21 only: the readout layer -- 1/3 the extraction cost of the base sweep,
-    # and the only layer the trained-vs-base comparison reads at.
+    # and the only layer the trained-vs-base comparison reads at. The adapter is the
+    # *causal-lm relayout* (fix_adapter.py): the raw cookbook export targets the
+    # multimodal wrapper's module tree and loads as mostly-init on Qwen3_5ForCausalLM.
     "qwen3.5-9b+03-with-neutral": ModelSpec(
         model_id="Qwen/Qwen3.5-9B",
         slug="qwen3.5-9b-with-neutral-pilot",
         layers=(21,),
         readout_layer=21,
-        adapter_path="adapters/03-training-pilot-with-neutral/peft",
+        adapter_path="adapters/03-training-pilot-with-neutral/peft-causal-lm",
     ),
     "allenai/OLMo-2-1124-7B": ModelSpec(
         model_id="allenai/OLMo-2-1124-7B",
@@ -61,6 +63,43 @@ MODELS: dict[str, ModelSpec] = {
         readout_layer=21,
     ),
 }
+
+
+def register_pseudo_model(
+    key: str,
+    *,
+    base_model_id: str,
+    slug: str,
+    adapter_path: str,
+    layers: tuple[int, ...] | None = None,
+) -> ModelSpec:
+    """Register a pseudo-model (base weights + LoRA adapter) at runtime.
+
+    For experiments with many checkpoints (e.g. 05's seed sweep) a hand-written MODELS
+    entry per run doesn't scale; instead the experiment derives one from its run name
+    and calls this before ``inject_model``. The spec inherits the base entry's layers
+    (defaulting to just the readout layer -- the only layer trained-vs-base comparisons
+    read at). The slug must be unique: it is the Volume namespace, and a collision
+    would let two models' artifacts mix.
+    """
+    base = resolve(base_model_id)
+    spec = ModelSpec(
+        model_id=base.model_id,
+        slug=slug,
+        layers=tuple(layers) if layers is not None else (base.readout_layer,),
+        readout_layer=base.readout_layer,
+        adapter_path=adapter_path,
+    )
+    existing = MODELS.get(key)
+    if existing is not None:
+        if existing != spec:
+            raise ValueError(f"pseudo-model {key!r} already registered with a different spec: {existing}")
+        return existing
+    clash = next((k for k, m in MODELS.items() if m.slug == slug), None)
+    if clash is not None:
+        raise ValueError(f"slug {slug!r} already used by {clash!r} -- Volume namespaces must not collide")
+    MODELS[key] = spec
+    return spec
 
 
 def resolve(model_id: str) -> ModelSpec:
