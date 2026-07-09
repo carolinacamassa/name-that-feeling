@@ -77,6 +77,7 @@ def train_sft(
     run_name: str,
     lora_rank: int = 32,
     learning_rate: float = 2e-4,
+    lr_schedule: str = "constant",
     batch_size: int = 32,
     num_epochs: int = 3,
     seed: int = 42,
@@ -87,8 +88,16 @@ def train_sft(
     optim_step per batch, saves a resumable state per epoch and sampler weights at the
     end. The manifest carries the ``tinker://`` checkpoint paths, per-step losses
     (mean NLL over supervised tokens), and token stats.
+
+    ``lr_schedule``: ``"constant"`` or ``"linear"`` (decay to 0 over the run -- the
+    schedule the consciousness-cluster paper trains with). ``seed`` controls the data
+    shuffle; whether Tinker seeds the LoRA init server-side is not documented, so a
+    "reseeded" run measures the total run-to-run variance the API exposes.
     """
     import tinker
+
+    if lr_schedule not in ("constant", "linear"):
+        raise ValueError(f"unknown lr_schedule {lr_schedule!r} (expected 'constant' or 'linear')")
 
     service = tinker.ServiceClient()
     client = service.create_lora_training_client(base_model=base_model, rank=lora_rank)
@@ -103,8 +112,8 @@ def train_sft(
         f"supervised tokens total {int(sum(supervised))}"
     )
 
-    adam = tinker.AdamParams(learning_rate=learning_rate)
     steps_per_epoch = (len(datums) + batch_size - 1) // batch_size
+    total_steps = steps_per_epoch * num_epochs
     history: list[dict] = []
     state_paths: list[str] = []
     step = 0
@@ -114,17 +123,18 @@ def train_sft(
         random.Random(seed + epoch).shuffle(order)
         for i in range(0, len(order), batch_size):
             idx = order[i : i + batch_size]
+            lr = learning_rate if lr_schedule == "constant" else learning_rate * (1 - step / total_steps)
             fb_future = client.forward_backward([datums[j] for j in idx], loss_fn="cross_entropy")
-            opt_future = client.optim_step(adam)
+            opt_future = client.optim_step(tinker.AdamParams(learning_rate=lr))
             fb = fb_future.result()
             opt_future.result()
             step += 1
             weight_sum = sum(supervised[j] for j in idx)
             loss = float(fb.metrics["loss:sum"]) / weight_sum
-            history.append({"step": step, "epoch": epoch + 1, "loss": round(loss, 4)})
+            history.append({"step": step, "epoch": epoch + 1, "loss": round(loss, 4), "lr": lr})
             print(
-                f"[{run_name}] step {step}/{steps_per_epoch * num_epochs} "
-                f"(epoch {epoch + 1}) loss {loss:.4f} ({time.time() - t0:.0f}s)",
+                f"[{run_name}] step {step}/{total_steps} "
+                f"(epoch {epoch + 1}) loss {loss:.4f} lr {lr:.2e} ({time.time() - t0:.0f}s)",
                 flush=True,
             )
         state = client.save_state(name=f"{run_name}-epoch{epoch + 1}").result()
@@ -139,6 +149,7 @@ def train_sft(
         "hyperparameters": {
             "lora_rank": lora_rank,
             "learning_rate": learning_rate,
+            "lr_schedule": lr_schedule,
             "batch_size": batch_size,
             "num_epochs": num_epochs,
             "seed": seed,
