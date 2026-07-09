@@ -205,3 +205,62 @@ def sample_replies(
             tokens = f.result().sequences[0].tokens
             replies.append(tokenizer.decode(tokens, skip_special_tokens=True).strip())
     return replies
+
+
+def sample_conversations(
+    model_path: str | None,
+    base_model: str,
+    conversations: list[list[str]],
+    *,
+    max_tokens: int = 400,
+    temperature: float = 0.0,
+    chunk: int = 64,
+    history_transform=None,
+) -> list[list[str]]:
+    """Multi-turn greedy sampling: step every conversation one user turn at a time.
+
+    ``conversations`` is a list of user-turn lists. At each depth, every conversation
+    that still has a user turn is sampled together (chunked/pipelined like
+    :func:`sample_replies`), and each reply is appended to its history before the next
+    depth. ``history_transform(reply) -> str``, when given, rewrites a reply before it
+    enters the *context* (the returned replies stay raw) — e.g. stripping the
+    ``<emotion>`` tag to test the deployment condition where the model never sees its
+    own past tags. Returns, per conversation, the list of raw assistant replies.
+    """
+    import tinker
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(base_model)
+    service = tinker.ServiceClient()
+    client = (
+        service.create_sampling_client(model_path=model_path)
+        if model_path
+        else service.create_sampling_client(base_model=base_model)
+    )
+    params = tinker.SamplingParams(max_tokens=max_tokens, temperature=temperature)
+
+    histories: list[list[dict]] = [[] for _ in conversations]
+    replies: list[list[str]] = [[] for _ in conversations]
+    for depth in range(max(len(c) for c in conversations)):
+        active = [i for i, c in enumerate(conversations) if depth < len(c)]
+        prompts = []
+        for i in active:
+            histories[i].append({"role": "user", "content": conversations[i][depth]})
+            prompts.append(
+                tinker.ModelInput.from_ints(
+                    tokenizer.encode(render_prompt(tokenizer, histories[i]), add_special_tokens=False)
+                )
+            )
+        outs: list[str] = []
+        for j in range(0, len(prompts), chunk):
+            futures = [client.sample(p, 1, params) for p in prompts[j : j + chunk]]
+            outs.extend(
+                tokenizer.decode(f.result().sequences[0].tokens, skip_special_tokens=True).strip()
+                for f in futures
+            )
+        for i, reply in zip(active, outs):
+            replies[i].append(reply)
+            histories[i].append(
+                {"role": "assistant", "content": history_transform(reply) if history_transform else reply}
+            )
+    return replies
