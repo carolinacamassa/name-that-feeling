@@ -1,0 +1,11 @@
+# Seed replication 2 (see seed-43.yaml; pilot baseline = seed 42).
+
+base_model: Qwen/Qwen3.5-9B
+dataset: ../03-training-pilot/data/sft/train_emotion_plus_neutral.jsonl
+
+lora_rank: 32
+learning_rate: 2.0e-4
+lr_schedule: constant
+batch_size: 32
+num_epochs: 3
+seed: 44

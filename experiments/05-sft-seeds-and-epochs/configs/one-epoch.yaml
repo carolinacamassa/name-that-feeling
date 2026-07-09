@@ -1,0 +1,14 @@
+# Epoch ablation: 1 epoch + linear-decay LR (the Chua et al. 2604.13051 recipe), same
+# seed as the pilot so the only change is training length/schedule.
+# Question: were the pilot's extra two epochs buying the tag mapping, or just the 38%
+# near-verbatim reply memorization label_recovery.py found?
+
+base_model: Qwen/Qwen3.5-9B
+dataset: ../03-training-pilot/data/sft/train_emotion_plus_neutral.jsonl
+
+lora_rank: 32
+learning_rate: 2.0e-4
+lr_schedule: linear
+batch_size: 32
+num_epochs: 1
+seed: 42

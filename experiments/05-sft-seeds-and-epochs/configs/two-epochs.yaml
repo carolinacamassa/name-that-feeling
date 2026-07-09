@@ -1,0 +1,16 @@
+# Epoch midpoint: the pilot recipe at 2 epochs, everything else identical (constant LR,
+# seed 42) so epoch count is the ONLY change vs the pilot -- unlike one-epoch, which also
+# switched to linear decay (the Chua et al. recipe).
+# Questions (docs/experiment-backlog.md): where do the mapping and the replay sit between
+# 1 and 3 epochs, and which way does the activation tilt point (it flips: calm/positive
+# at 1 epoch, negative/vigilant at 3)?
+
+base_model: Qwen/Qwen3.5-9B
+dataset: ../03-training-pilot/data/sft/train_emotion_plus_neutral.jsonl
+
+lora_rank: 32
+learning_rate: 2.0e-4
+lr_schedule: constant
+batch_size: 32
+num_epochs: 2
+seed: 42

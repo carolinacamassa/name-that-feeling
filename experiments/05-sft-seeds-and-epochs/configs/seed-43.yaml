@@ -1,0 +1,13 @@
+# Seed replication 1: the pilot's with-neutral recipe, only the seed changed.
+# Question: do the pilot's findings (metrics, and especially the small hostile-up /
+# peaceful-down activation tilt) reproduce under a different data order / init draw?
+
+base_model: Qwen/Qwen3.5-9B   # must stay the probe model (03 description.md section 2)
+dataset: ../03-training-pilot/data/sft/train_emotion_plus_neutral.jsonl
+
+lora_rank: 32
+learning_rate: 2.0e-4
+lr_schedule: constant
+batch_size: 32
+num_epochs: 3
+seed: 43
