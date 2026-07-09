@@ -35,6 +35,7 @@ HERE = Path(__file__).parent
 EXPERIMENT = "04-trained-emotion-vectors"
 STORIES_DIR = HERE.parent / "01-emotion-vectors" / "data"
 EVAL_DIR = HERE.parent / "03-training-pilot" / "data" / "sft"
+COMPLETIONS = HERE.parent / "03-training-pilot" / "data" / "completions" / "unconditioned.jsonl"
 BASE_MODEL_KEY = "Qwen/Qwen3.5-9B"  # the untouched twin every comparison is against
 
 
@@ -62,6 +63,43 @@ def _held_out_messages() -> tuple[list[str], list[dict]]:
             if line.strip():
                 r = json.loads(line)
                 meta.append({k: r[k] for k in ("id", "emotion", "cluster", "message")})
+    return [m["message"] for m in meta], meta
+
+
+def _all_messages() -> tuple[list[str], list[dict]]:
+    """All 1972 elicited messages (completions-file order), each stamped with its pilot split.
+
+    ``split`` is the locked pilot assignment: ``train`` (trained on), ``eval_within`` /
+    ``eval_cross`` (held out), or ``unused`` (never selected). Baked into the readout so
+    the notebook can ask "did the probe move MORE where training supervised it?" without
+    re-deriving the split.
+    """
+
+    def _ids(path: Path) -> set[str]:
+        return {json.loads(x)["id"] for x in path.read_text(encoding="utf-8").splitlines() if x.strip()}
+
+    split_of = {}
+    for split, fname in (
+        ("train", "train_tags.jsonl"),
+        ("eval_within", "eval_within.jsonl"),
+        ("eval_cross", "eval_cross.jsonl"),
+    ):
+        for msg_id in _ids(EVAL_DIR / fname):
+            split_of[msg_id] = split
+
+    meta: list[dict] = []
+    for line in COMPLETIONS.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            r = json.loads(line)
+            meta.append(
+                {
+                    "id": r["id"],
+                    "emotion": r["scenario"]["emotion"],
+                    "cluster": r["scenario"]["cluster"],
+                    "message": r["scenario"]["message"],
+                    "split": split_of.get(r["id"], "unused"),
+                }
+            )
     return [m["message"] for m in meta], meta
 
 
@@ -119,11 +157,18 @@ def validate() -> None:
 def readout() -> None:
     """Trained-model activations on the 337 held-out messages, projected onto BOTH vector sets."""
     cfg = load_config()
-    rn = run_name(cfg)
-    messages, meta = _held_out_messages()
+    messages, _ = _held_out_messages()
     print(f"Readout: {len(messages)} held-out messages on {cfg['model_id']}")
-    print(_extractor(cfg).extract_message_activations.remote(messages, cfg, rn))
+    print(_extractor(cfg).extract_message_activations.remote(messages, cfg, run_name(cfg)))
+    project()
 
+
+@app.local_entrypoint()
+def project() -> None:
+    """Projection only (CPU) -- re-runnable over the saved activations, both vector sets."""
+    cfg = load_config()
+    rn = run_name(cfg)
+    _, meta = _held_out_messages()
     for vectors_run, readout_file in (
         (rn, "readout.json"),  # trained activations onto trained vectors
         (base_vectors_run(), "readout_base_vectors.json"),  # ... onto BASE vectors
@@ -132,6 +177,39 @@ def readout() -> None:
             meta, {**cfg, "vectors_run": vectors_run, "readout_file": readout_file}, rn
         )
         print(f"{readout_file}: {res}")
+
+
+@app.local_entrypoint()
+def readout_full() -> None:
+    """Trained-model activations on ALL 1972 elicited messages, projected onto both vector sets.
+
+    Lives under ``<run>/full`` so it never clobbers the 337-message readout above. The
+    base-model twin of this readout already exists: the 02-elicited-activations readout
+    (carried per record in the pilot's unconditioned.jsonl) covers the same 1972 messages
+    on the untouched model.
+    """
+    cfg = load_config()
+    messages, _ = _all_messages()
+    rn_full = f"{run_name(cfg)}/full"
+    print(f"Full readout: {len(messages)} messages on {cfg['model_id']} -> {rn_full}")
+    print(_extractor(cfg).extract_message_activations.remote(messages, cfg, rn_full))
+    project_full()
+
+
+@app.local_entrypoint()
+def project_full() -> None:
+    """Projection only (CPU) for the full readout -- re-runnable, both vector sets."""
+    cfg = load_config()
+    rn_full = f"{run_name(cfg)}/full"
+    _, meta = _all_messages()
+    for vectors_run, readout_file in (
+        (run_name(cfg), "readout.json"),  # trained activations onto trained vectors
+        (base_vectors_run(), "readout_base_vectors.json"),  # ... onto BASE vectors
+    ):
+        res = project_messages.remote(
+            meta, {**cfg, "vectors_run": vectors_run, "readout_file": readout_file}, rn_full
+        )
+        print(f"full/{readout_file}: {res}")
 
 
 @app.local_entrypoint()
@@ -145,5 +223,12 @@ def compare() -> None:
 def fetch() -> None:
     """Print the volume-get commands that pull the notebook's inputs into data/."""
     rn = run_name(load_config())
-    for f in ("vector_shift.json", "readout.json", "readout_base_vectors.json"):
-        print(f"uv run modal volume get --force name-that-feeling-emotion-vectors {rn}/{f} {HERE / 'data' / f}")
+    pulls = [(f"{rn}/{f}", f) for f in ("vector_shift.json", "readout.json", "readout_base_vectors.json")]
+    # Full-dataset readout (readout_full entrypoint) for the activation_shift notebook.
+    pulls.append((f"{rn}/full/readout.json", "readout_full.json"))
+    pulls.append((f"{rn}/full/readout_base_vectors.json", "readout_full_base_vectors.json"))
+    # Tylenol readouts for the trained model and its base twin (overlay chart).
+    pulls.append((f"{rn}/readout/tylenol_afraid_layer21.csv", "tylenol_afraid_trained.csv"))
+    pulls.append((f"{base_vectors_run()}/readout/tylenol_afraid_layer21.csv", "tylenol_afraid_base.csv"))
+    for src, dst in pulls:
+        print(f"uv run modal volume get --force name-that-feeling-emotion-vectors {src} {HERE / 'data' / dst}")
