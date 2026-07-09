@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.23.13"
+__generated_with = "0.23.10"
 app = marimo.App(width="medium")
 
 
@@ -36,7 +36,7 @@ def _():
 
 @app.cell
 def _(Path, json, load_clusters, response_shift, tag_eval):
-    HERE = Path(__file__).parent
+    HERE = Path(__file__).parents[1]
     RUNS = HERE / "data" / "runs"
 
     SAMPLES = json.loads((RUNS / "eval_samples.json").read_text(encoding="utf-8"))
@@ -72,8 +72,7 @@ def _(Path, json, load_clusters, response_shift, tag_eval):
 
 @app.cell
 def _(PAIRS, mo):
-    mo.md(
-        f"""
+    mo.md(f"""
     # Did training change the *replies themselves*? (tag ignored)
 
     The `<emotion>` tag is supposed to be the **only** thing SFT added — the visible reply
@@ -88,8 +87,7 @@ def _(PAIRS, mo):
       length, structure — computed from text alone;
     - **judged** (Llama-3.3-70B): valence and expressiveness of the assistant's voice, whether
       the two replies carry the same content, and which is the better answer.
-    """
-    )
+    """)
     return
 
 

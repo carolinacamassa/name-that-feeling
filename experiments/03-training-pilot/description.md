@@ -16,7 +16,7 @@ elicited for). Three questions:
    never seen in training?
 3. Does the visible reply and ordinary task ability stay intact (no leakage, no capability loss)?
 
-The probe is a weak per-message classifier (see `02-elicited-activations/explore_tags.py`: the
+The probe is a weak per-message classifier (see `02-elicited-activations/notebooks/explore_tags.py`: the
 target emotion is directional at +1.2σ but the top-tag family agreement is only ~10pp above chance),
 so the tags are imperfect by construction. That is acceptable here — this run decides whether the
 mechanism installs at all.
@@ -61,7 +61,7 @@ costs depleted 3 unreplaceable messages: 579 → 576).
 | **Eval — held-out emotions** (within-family) | **260** | 16 emotions, 2/family: joy `optimistic,eager` · peaceful `peaceful,serene` · compassionate `empathetic,sympathetic` · pride `proud,valiant` · depleted `resigned,worn_out` · hostile `annoyed,irritated` · fear `on_edge,panicked` · despair `remorseful,sorry` |
 | **Eval — held-out families** (cross-family) | **77** | `playful_amusement` (35) + `vigilant_suspicion` (42) |
 
-Built interactively in `experiments/02-elicited-activations/explore_tags.py`; the `clarity` +
+Built interactively in `experiments/02-elicited-activations/notebooks/explore_tags.py`; the `clarity` +
 split logic is productionized in `name_that_feeling.generation.split`, and the locked build is
 `build_dataset.py` → `data/sft/` (train + tag records + the two eval manifests + `split.json`).
 

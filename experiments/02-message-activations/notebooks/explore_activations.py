@@ -31,7 +31,7 @@ def _(Path, json):
     # Readouts are namespaced by model slug (mirrors the Volume). Switch models here.
     MODEL_SLUG = "qwen3.5-9b"
     readout = json.loads(
-        (Path(__file__).parent / "data" / MODEL_SLUG / "readout.json").read_text(
+        (Path(__file__).parents[1] / "data" / MODEL_SLUG / "readout.json").read_text(
             encoding="utf-8"
         )
     )
@@ -284,7 +284,7 @@ def _(mo):
 def _(Path, json, messages, pl, slug):
     _taxonomy = json.loads(
         (
-            Path(__file__).parents[1] / "01-emotion-vectors" / "clusters.json"
+            Path(__file__).parents[2] / "01-emotion-vectors" / "clusters.json"
         ).read_text(encoding="utf-8")
     )
     cluster_order = list(_taxonomy.keys())

@@ -72,7 +72,7 @@ Config (`config.yaml`): `model_id`, `layers`, `readout_layer`, `batch_size`,
 
 ## Explore
 
-`explore_activations.py` is a marimo notebook over `data/readout.json` with two views:
+`notebooks/explore_activations.py` is a marimo notebook over `data/readout.json` with two views:
 
 - **per message** — narrow by **cluster → emotion → message** with cascading
   dropdowns, then see the chosen message's top emotion activations (z-scored per
@@ -84,7 +84,7 @@ Config (`config.yaml`): `model_id`, `layers`, `readout_layer`, `batch_size`,
   shows whether a cluster's messages activate the "right" emotions.
 
 ```bash
-uv run marimo edit experiments/02-elicited-activations/explore_activations.py
+uv run marimo edit experiments/02-elicited-activations/notebooks/explore_activations.py
 ```
 
 ## Why run this alongside `02-message-activations`

@@ -13,7 +13,9 @@ def _():
     import marimo as mo
     import polars as pl
 
+    from name_that_feeling.emotion_vectors.taxonomy import load_clusters
     from name_that_feeling.evals import tag_eval
+    from name_that_feeling.generation import sft
 
     alt.data_transformers.disable_max_rows()
 
@@ -21,13 +23,13 @@ def _():
     C_WITH = "#4c78a8"   # with-neutral (canonical pilot)
     C_NO = "#f58518"     # no-neutral control
     C_BASE = "#bab0ac"   # untouched base
-    return C_BASE, C_NO, C_WITH, Path, alt, json, mo, pl, tag_eval
+    return C_BASE, C_NO, C_WITH, Path, alt, json, load_clusters, mo, pl, sft, tag_eval
 
 
 @app.cell
-def _(Path, json):
-    RUNS = Path(__file__).parent / "data" / "runs"
-    SFT = Path(__file__).parent / "data" / "sft"
+def _(Path, json, load_clusters, sft):
+    RUNS = Path(__file__).parents[1] / "data" / "runs"
+    SFT = Path(__file__).parents[1] / "data" / "sft"
 
     EVAL = json.loads((RUNS / "eval.json").read_text(encoding="utf-8"))
     JUDGE = json.loads((RUNS / "eval_judge.json").read_text(encoding="utf-8"))
@@ -41,15 +43,34 @@ def _(Path, json):
                 _r = json.loads(_line)
                 META[_r["id"]] = _r
 
-    # id -> original *unconditioned* completion (pre-tag), for the single-response explorer.
-    _COMP = Path(__file__).parent / "data" / "completions"
+    # id -> original *unconditioned* completion (pre-tag) + probe projections, for the
+    # single-response explorer. Projections + the locked tag strategy reproduce the
+    # *training-label* tag the probe teacher would have written for any message.
+    _COMP = Path(__file__).parents[1] / "data" / "completions"
     UNCOND = {}
+    _probe_records = []
     for _name in ("unconditioned.jsonl", "neutral_unconditioned.jsonl"):
         for _line in (_COMP / _name).read_text(encoding="utf-8").splitlines():
             if _line.strip():
                 _r = json.loads(_line)
                 UNCOND[_r["id"]] = _r["completion"]
-    return EVAL, JUDGE, META, SAMPLES, UNCOND
+                if "probe" in _r:
+                    _probe_records.append(_r)
+
+    CLUSTERS = load_clusters(Path(__file__).parents[2] / "01-emotion-vectors" / "clusters.json")
+    TAG_STATS = sft.per_emotion_stats(_probe_records)  # z-scored across all 1972, as in training
+    TAG_CFG = json.loads((SFT / "split.json").read_text(encoding="utf-8"))["tag_config"]
+    PROJ = {r["id"]: r["probe"]["projections"] for r in _probe_records}
+    NEUTRAL_TAG_BODY = "calm, attentive"  # the fixed neutral default (build_dataset.NEUTRAL_TAG)
+
+    def teacher_tag(mid: str) -> str:
+        """The tag the training labeler would write for this message."""
+        if mid not in PROJ:  # neutral task -> fixed default, never a probe read
+            return f"<emotion>{NEUTRAL_TAG_BODY}</emotion>"
+        picks = sft.select_tag_emotions(PROJ[mid], CLUSTERS, stats=TAG_STATS, **TAG_CFG)
+        return sft.format_tag(picks)
+
+    return EVAL, JUDGE, META, SAMPLES, UNCOND, teacher_tag
 
 
 @app.cell
@@ -367,10 +388,16 @@ def _(mo):
     mo.md("""
     ## Explore a single response
 
-    Pick a held-out message to compare the **trained** reply (tag + visible body) against the
-    **original unconditioned** Qwen3.5-9B reply the tag was grafted onto — same message, same base,
-    no emotion conditioning. The visible body should read essentially the same; the `<emotion>` tag
-    is the only added channel.
+    Pick a held-out message to compare, side by side:
+
+    - the **training-label tag vs the emitted tag** — what the probe teacher (the locked labeling
+      pipeline: z-scored projections → family pooling → mass threshold) *would have written* for
+      this message vs what the trained model actually opened its reply with. These messages were
+      never trained on, so agreement here is the labeling function generalizing, not memorization.
+      On neutral tasks the training label is the fixed `calm, attentive` default.
+    - the **trained visible reply vs the original unconditioned** Qwen3.5-9B reply the tags were
+      grafted onto — same message, same base, no emotion conditioning. The visible body should read
+      essentially the same; the tag is the only added channel.
     """)
     return
 
@@ -399,12 +426,13 @@ def _(META, SAMPLES, mo, set_dd):
 
 
 @app.cell
-def _(META, SAMPLES, UNCOND, mo, model_dd, msg_dd, set_dd, tag_eval):
+def _(META, SAMPLES, UNCOND, mo, model_dd, msg_dd, set_dd, tag_eval, teacher_tag):
     _mid = msg_dd.value
     _meta = META[_mid]
     _trained = next(s["reply"] for s in SAMPLES[model_dd.value][set_dd.value] if s["id"] == _mid)
     _parsed = tag_eval.parse_reply(_trained)
-    _tag = ", ".join(_parsed["emotions"]) or "—"
+    _emitted = f"<emotion>{', '.join(_parsed['emotions'])}</emotion>" if _parsed["emotions"] else "—"
+    _label = teacher_tag(_mid)
     _original = UNCOND.get(_mid, "*(original unconditioned reply not found for this id)*")
 
     _header = mo.md(
@@ -414,7 +442,10 @@ def _(META, SAMPLES, UNCOND, mo, model_dd, msg_dd, set_dd, tag_eval):
 
     > {_meta['message'].replace(chr(10), ' ')}
 
-    **Trained tag** &nbsp; `<emotion>{_tag}</emotion>`
+    | | tag |
+    |---|---|
+    | **training label** (probe teacher) | `{_label}` |
+    | **emitted** (after training) | `{_emitted}` |
     """
     )
     _compare = mo.hstack(

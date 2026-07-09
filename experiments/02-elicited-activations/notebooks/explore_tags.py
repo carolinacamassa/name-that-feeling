@@ -64,9 +64,9 @@ def _(mo):
 
 @app.cell
 def _(Path, json, load_clusters):
-    READOUT = Path(__file__).parent / "data" / "qwen3.5-9b" / "readout.json"
+    READOUT = Path(__file__).parents[1] / "data" / "qwen3.5-9b" / "readout.json"
     CLUSTERS = (
-        Path(__file__).parent.parent / "01-emotion-vectors" / "clusters.json"
+        Path(__file__).parents[2] / "01-emotion-vectors" / "clusters.json"
     )
 
     readout = json.loads(READOUT.read_text(encoding="utf-8"))
