@@ -130,6 +130,18 @@ All on held-out material, trained model vs. untouched base:
   ordinary tasks, which is the evidence the neutral examples are needed.
 - **Spontaneous leakage** — does emotion leak into the *visible* reply (outside the tag) vs. base? A
   small shift is fine; a large one means the channel isn't staying contained.
+- **Multi-turn tag installation** — training is single-turn, so does the tag survive real
+  conversations? 42 seeded 3-turn conversations from held-out messages (emotional →
+  different-family emotional → neutral, and permutations), sampled with previous tags kept
+  vs. **stripped** from the model-side history (`evaluate_multi_turn.py` →
+  `data/runs/multi_turn{,_samples}.json`; notebook `notebooks/multi_turn.py`). Result
+  (2026-07-09, with-neutral): **100% compliance at every turn in both conditions** — the tag
+  is an installed per-turn behavior, not self-priming — and not sticky (8–12% repeated family
+  though the target always changes). Finding: with tags kept in history, earlier charged tags
+  prime charged tags onto later *neutral* turns (exact-neutral 93%→57%→50%; stripped:
+  93%→93%→86%) — the strip-vs-keep choice for the model-side context changes the tag's
+  semantics (per-turn re-evaluation vs. emotional persistence) and should be fixed as a
+  design decision before deployment-style evals.
 - **Label recovery (train set)** — feed the 576 *training* messages back to both checkpoints
   (`sample_train_replies.py` → `data/runs/train_samples.json`; notebook `notebooks/label_recovery.py`):
   how much of the exact trained tag comes back, vs. the held-out model-vs-teacher agreement?
