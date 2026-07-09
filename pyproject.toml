@@ -16,6 +16,7 @@ dependencies = [
     "ruff>=0.15.20",
     "safetensors>=0.8.0",
     "tinker>=0.22.7",
+    "vl-convert-python>=1.9.0.post1",
 ]
 
 [build-system]
