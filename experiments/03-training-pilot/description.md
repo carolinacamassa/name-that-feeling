@@ -130,6 +130,15 @@ All on held-out material, trained model vs. untouched base:
   ordinary tasks, which is the evidence the neutral examples are needed.
 - **Spontaneous leakage** — does emotion leak into the *visible* reply (outside the tag) vs. base? A
   small shift is fine; a large one means the channel isn't staying contained.
+- **Label recovery (train set)** — feed the 576 *training* messages back to both checkpoints
+  (`sample_train_replies.py` → `data/runs/train_samples.json`; notebook `notebooks/label_recovery.py`):
+  how much of the exact trained tag comes back, vs. the held-out model-vs-teacher agreement?
+  Result (2026-07-09, with-neutral): exact tag **9%**, top-1 emotion 48%, leading family **73%**
+  — vs. 58%/52% on held-out within/cross. The +15pp gap = modest memorization; the tag channel
+  runs mostly on a learned message→tag mapping, not stored labels. Striking dissociation: the
+  *replies* are far more memorized than the tags (greedy replay similarity to the trained
+  completion: median 0.81, 38% ≥ 0.95 for with-neutral; the no-neutral control, trained to a
+  higher final loss, replays less at 0.55 median).
 
 ## 8. Caveats
 
