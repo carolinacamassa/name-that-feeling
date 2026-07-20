@@ -36,7 +36,11 @@ from pathlib import Path
 import yaml
 
 from name_that_feeling.emotion_vectors import app
-from name_that_feeling.emotion_vectors.extraction import ActivationExtractor, recenter_vectors
+from name_that_feeling.emotion_vectors.extraction import (
+    ActivationExtractor,
+    emotion_similarity_matrix,
+    recenter_vectors,
+)
 from name_that_feeling.emotion_vectors.models import inject_model, run_name_for
 from name_that_feeling.emotion_vectors.stories import (
     generate_story_set,
@@ -129,6 +133,22 @@ def recenter(model: str = "") -> None:
     """Recompute the centered `unit` for all stored vectors from their `raw` (no GPU)."""
     cfg = load_config(model)
     print(recenter_vectors.remote(cfg, run_name(cfg)))
+
+
+@app.local_entrypoint()
+def similarity(model: str = "") -> None:
+    """Emotion x emotion cosine-similarity matrix of the stored unit vectors, per layer."""
+    cfg = load_config(model)
+    rn = run_name(cfg)
+    for layer in cfg["layers"]:
+        print(emotion_similarity_matrix.remote(rn, layer))
+    dest = DATA_DIR / "similarity"
+    print("Fetch locally (per file -- a directory get flattens to one file on Windows):")
+    for layer in cfg["layers"]:
+        print(
+            f"  uv run modal volume get --force name-that-feeling-emotion-vectors "
+            f"/{rn}/similarity/layer_{layer}.json {dest / f'layer_{layer}.json'}"
+        )
 
 
 @app.local_entrypoint()

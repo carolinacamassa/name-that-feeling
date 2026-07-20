@@ -589,6 +589,62 @@ def compare_vector_runs(run_a: str, run_b: str, layer: int, out_run: str) -> dic
     return {"n_common": len(common), "out": out_path}
 
 
+@app.function(
+    image=vectors_image,
+    volumes={VECTORS_DIR: vectors_volume},
+    timeout=1 * HOURS,
+)
+def emotion_similarity_matrix(run_name: str, layer: int) -> dict:
+    """Emotion x emotion cosine-similarity matrix of one run's ``unit`` vectors (CPU).
+
+    The centered ``unit`` vectors are L2-normalized, so the Gram matrix of the stacked
+    set is the full pairwise cosine matrix. Writes
+    ``<run_name>/similarity/layer_<L>.json`` with the ordered emotion slugs, each slug's
+    cluster, and the matrix (rows/cols in ``emotions`` order) -- the artifact behind the
+    distance-based tag metrics (``evals/similarity.py``).
+    """
+    import datetime
+    import glob
+    import json
+    import os
+
+    import numpy as np
+
+    from . import vectors as V
+
+    pattern = os.path.join(VECTORS_DIR, run_name, "vectors", "*", f"layer_{layer}", "*.safetensors")
+    names, clusters, units = [], {}, []
+    for p in sorted(glob.glob(pattern)):
+        tensors, meta = V.load_vector(p)
+        name = os.path.splitext(os.path.basename(p))[0]
+        names.append(name)
+        clusters[name] = meta.get("cluster") or os.path.basename(os.path.dirname(os.path.dirname(p)))
+        units.append(tensors["unit"])
+    if not names:
+        raise FileNotFoundError(f"no vectors under {pattern}")
+
+    U = np.stack(units).astype(np.float64)
+    U /= np.linalg.norm(U, axis=1, keepdims=True)  # units are stored normalized; re-normalize defensively
+    matrix = np.round(U @ U.T, 6)
+
+    result = {
+        "vectors_run": run_name,
+        "layer": layer,
+        "n_emotions": len(names),
+        "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "emotions": names,
+        "clusters": clusters,
+        "matrix": matrix.tolist(),
+    }
+    out_path = os.path.join(VECTORS_DIR, run_name, "similarity", f"layer_{layer}.json")
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(result, f, ensure_ascii=False)
+    vectors_volume.commit()
+    print(f"[similarity] {len(names)} emotions at layer {layer} -> {out_path}")
+    return {"n_emotions": len(names), "layer": layer, "out": out_path}
+
+
 def _plot_readout(doses, values, emotion, layer, monotonic, rho, png_path):
     import matplotlib
 
