@@ -1,0 +1,65 @@
+{
+  "loss_trajectories": {
+    "file": "loss_trajectories.svg",
+    "caption": "Training loss per optimizer step for the pilot checkpoints and every 05 run.",
+    "takeaway": "Loss keeps falling through epoch 3 (0.43 -> 0.07 for the pilot recipe), but the curve alone cannot show that the late descent buys reply replay rather than a better tag mapping.",
+    "notebook": "epochs_vs_memorization.py",
+    "updated": "2026-07-20"
+  },
+  "reply_memorization_by_epochs": {
+    "file": "reply_memorization_by_epochs.svg",
+    "caption": "Distribution over training messages of text similarity between the reply each model samples (greedy) on a training prompt and the reply it was trained on, at 1, 2, and 3 epochs (seed 42).",
+    "takeaway": "Replies sampled on training prompts reproduce the trained completion near-verbatim (similarity >= 0.95) in ~38% of cases after 3 epochs, 6.4% after 2, and 1.6% after 1.",
+    "notebook": "epochs_vs_memorization.py",
+    "updated": "2026-07-09"
+  },
+  "metrics_by_epoch_count": {
+    "file": "metrics_by_epoch_count.svg",
+    "caption": "Five evaluation metrics at 1, 2, and 3 training epochs (seed 42): verbatim reproduction of training replies; recovery of the trained tag's emotion cluster on training messages; agreement with the probe-derived labels on held-out messages from trained and from unseen emotion clusters; and the share of neutral prompts receiving the neutral tag.",
+    "takeaway": "At 2 epochs, verbatim reproduction of training replies falls to 6.4% (from ~38% at 3 epochs) while held-out agreement with the probe-derived labels remains 53% and all neutral prompts receive the neutral tag. At 1 epoch, reproduction falls further to 1.6%, but held-out agreement drops to 36% and training-tag recovery to 40%.",
+    "notebook": "epochs_vs_memorization.py",
+    "updated": "2026-07-09"
+  },
+  "metrics_across_seeds": {
+    "file": "metrics_across_seeds.svg",
+    "caption": "The same five metrics for three runs of the 3-epoch recipe that differ only in random seed (42, 43, 44).",
+    "takeaway": "Reseeding the 3-epoch recipe changes each evaluation metric by at most 3-6 percentage points (about 4 for recovery and reproduction), providing the run-to-run variability baseline for the epoch comparison.",
+    "notebook": "epochs_vs_memorization.py",
+    "updated": "2026-07-09"
+  },
+  "reply_memorization": {
+    "file": "reply_memorization.svg",
+    "caption": "Distribution over train messages of similarity between the greedy emitted reply and the reply trained on, per run.",
+    "takeaway": "Near-verbatim replay (similarity >= 0.95) collapses with shorter training: ~38% at 3 epochs -> 6.4% at 2 -> 1.6% at 1.",
+    "notebook": "epochs_vs_memorization.py",
+    "updated": "2026-07-20"
+  },
+  "memorization_vs_mapping": {
+    "file": "memorization_vs_mapping.svg",
+    "caption": "Reply replay, train-tag recovery (family), held-out within/cross-family agreement vs the probe teacher, and neutral-anchor exactness, per run.",
+    "takeaway": "2 epochs is the sweet spot: replay 6.4% (vs ~38% at 3 epochs) with within-family generalization still at teacher level (53%) and the neutral anchor perfect (100%); 1 epoch kills replay (1.6%) but halves the mapping (within 36%, recovery 40%).",
+    "notebook": "epochs_vs_memorization.py",
+    "updated": "2026-07-20"
+  },
+  "metrics_by_epochs": {
+    "file": "metrics_by_epochs.svg",
+    "caption": "Five evaluation rates against training-epoch count for the pilot training configuration. The 3-epoch point averages the pilot and two reseeded replicas; the vertical bar is the min-max range across those seeds. The 1- and 2-epoch runs are single seeds. Held-out agreement is measured against the probe-derived labels.",
+    "takeaway": "Two epochs retains the mapping at the 3-epoch level (53% agreement with the probe-derived labels on held-out messages from trained families; 100% neutral tags on neutral tasks) while verbatim reproduction of training replies falls from 33-38% (the 3-epoch seed range) to 6.4%. One epoch reduces reproduction to 1.6%, but held-out agreement drops to 36% and trained-tag recovery to 40%.",
+    "notebook": "epochs_vs_memorization.py",
+    "updated": "2026-07-20"
+  },
+  "graded_tag_similarity_by_run": {
+    "file": "graded_tag_similarity_by_run.svg",
+    "caption": "Mean rank percentile of the emitted tag's first emotion among the 171 emotions ordered by vector similarity to the elicited emotion, on the 260 held-out messages from trained families. Dashed line: the 0.5 expectation under a random guess.",
+    "takeaway": "The graded metric reproduces the family-level ordering on a cleaner scale: every 2- and 3-epoch configuration places the emitted tag at the 0.69-0.71 percentile of the 171 candidate emotions by similarity to the elicited emotion (permutation z = 11.5-12.7), against 0.60 after one epoch (z = 6.8) and 0.5 for a random guess. The two-epochs configuration matches the 3-epoch runs on graded similarity, as it does on family agreement.",
+    "notebook": "epochs_vs_memorization.py",
+    "updated": "2026-07-20"
+  },
+  "cross_family_near_miss_signal": {
+    "file": "cross_family_near_miss_signal.svg",
+    "caption": "Mean cosine similarity between the emitted tag's first emotion and the elicited emotion on the 77 held-out messages from the two never-trained families, per run, against the permutation null (elicited targets shuffled across messages) and the probe teacher's own tags scored the same way.",
+    "takeaway": "On messages from the two never-trained families \u2014 where family-level agreement sits at the 55% largest-family baseline and had read as a null result \u2014 the emitted tags are systematically closer to the elicited emotion than the permutation null in every accurate run (mean cosine 0.30-0.46 vs null 0.16-0.26; z = 2.8-4.7), and closer than the probe teacher's own tags (0.21). The near-misses on unseen families carry real signal that family bucketing discards.",
+    "notebook": "epochs_vs_memorization.py",
+    "updated": "2026-07-20"
+  }
+}
