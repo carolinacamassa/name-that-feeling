@@ -30,6 +30,8 @@ PILOT = HERE.parent / "03-training-pilot"
 SFT_DIR = PILOT / "data" / "sft"
 COMPLETIONS = PILOT / "data" / "completions" / "unconditioned.jsonl"
 CLUSTERS_FILE = HERE.parent / "01-emotion-vectors" / "clusters.json"
+# Emotion-emotion cosine matrix at the readout layer (01's run.py::similarity + fetch).
+SIMILARITY_FILE = HERE.parent / "01-emotion-vectors" / "data" / "similarity" / "layer_21.json"
 
 BASE_MODEL_KEY = "Qwen/Qwen3.5-9B"  # the probe model; every run must train from it
 

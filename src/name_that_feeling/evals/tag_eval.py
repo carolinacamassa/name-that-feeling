@@ -20,6 +20,7 @@ scored for family).
 from __future__ import annotations
 
 import difflib
+import random
 import re
 from collections import Counter
 from statistics import median
@@ -160,6 +161,128 @@ def recovery_metrics(samples: list[dict], trained_of: dict, completion_of: dict,
         "reply_similarity_median": round(median(sims), 4),
         "reply_replay_rate": round(sum(x >= 0.95 for x in sims) / n, 4),  # near-verbatim
     }
+
+
+def _first_in_taxonomy(emotions: list[str], sim) -> str | None:
+    """First emitted emotion the similarity matrix knows (mirrors ``top_family``'s precedence)."""
+    for e in emotions:
+        if sim.index(e) is not None:
+            return slugify(e)
+    return None
+
+
+def _best_in_taxonomy(emotions: list[str], target: str, sim) -> str | None:
+    """The emitted emotion most similar to ``target`` (lenient: did any part of the tag land?)."""
+    scored = [(s, slugify(e)) for e in emotions if (s := sim.sim(e, target)) is not None]
+    return max(scored)[1] if scored else None
+
+
+def distance_records(samples: list[dict], id_to_emotion: dict[str, str], teacher_of=None) -> list[dict]:
+    """Build ``distance_scores`` records from sampled replies (``[{id, reply}]``).
+
+    ``id_to_emotion`` maps each id to its elicited leaf emotion (the ``emotion`` field
+    of the eval-set files); ``teacher_of`` optionally recomputes the probe teacher's
+    tag for an id. The re-scoring entry point for stored ``eval_samples.json``.
+    """
+    records = []
+    for s in samples:
+        r = {
+            "id": s["id"],
+            "elicited_emotion": id_to_emotion[s["id"]],
+            "model_emotions": parse_reply(s["reply"])["emotions"],
+        }
+        if teacher_of is not None:
+            r["teacher_emotions"] = teacher_of(s["id"])
+        records.append(r)
+    return records
+
+
+def distance_scores(records: list[dict], sim) -> list[dict]:
+    """Per-record graded similarity between the emitted tag and the elicited *leaf* emotion.
+
+    The distance-based counterpart of the family-bucket metrics
+    (docs/tag-accuracy-distance-metric.md): each record needs ``elicited_emotion`` (the
+    leaf the message was elicited for) + ``model_emotions``; ``teacher_emotions`` is
+    optional. ``sim`` is an ``evals.similarity.EmotionSimilarity``. Scores are raw
+    cosine (signed: negative = opposite-valence error) and rank percentile (1.0 = the
+    target itself, 0.5 = chance under a uniform guess); ``None`` where the tag has no
+    in-taxonomy emotion.
+    """
+    rows = []
+    for r in records:
+        target = slugify(r["elicited_emotion"])
+        first = _first_in_taxonomy(r["model_emotions"], sim)
+        best = _best_in_taxonomy(r["model_emotions"], target, sim)
+        row = {
+            "id": r.get("id"),
+            "elicited_emotion": target,
+            "model_first": first,
+            "model_cosine_first": sim.sim(first, target),
+            "model_rank_pct_first": sim.rank_percentile(target, first),
+            "model_cosine_best": sim.sim(best, target),
+            "model_rank_pct_best": sim.rank_percentile(target, best),
+        }
+        if "teacher_emotions" in r:
+            t_first = _first_in_taxonomy(r["teacher_emotions"], sim)
+            row["teacher_first"] = t_first
+            row["teacher_cosine_first"] = sim.sim(t_first, target)
+            row["teacher_rank_pct_first"] = sim.rank_percentile(target, t_first)
+            row["model_vs_teacher_cosine"] = sim.sim(first, t_first)
+        rows.append(row)
+    return rows
+
+
+def distance_generalization(records: list[dict], sim, n_permutations: int = 1000, seed: int = 0) -> dict:
+    """Aggregate distance metrics over held-out records, with a permutation null.
+
+    Means/medians of the ``distance_scores`` fields (over scorable records), plus a
+    null for the model-vs-elicited ``first`` scores obtained by shuffling the elicited
+    targets across records ``n_permutations`` times -- this replaces the
+    guess-the-biggest-family chance baseline and is what a collapsed constant-emitter
+    run must match. ``*_z_vs_null`` is the observed mean in null standard deviations.
+    """
+    rows = distance_scores(records, sim)
+    out: dict = {"n": len(rows)}
+    keys = (
+        "model_cosine_first",
+        "model_rank_pct_first",
+        "model_cosine_best",
+        "model_rank_pct_best",
+        "teacher_cosine_first",
+        "teacher_rank_pct_first",
+        "model_vs_teacher_cosine",
+    )
+    for key in keys:
+        vals = [v for r in rows if (v := r.get(key)) is not None]
+        if vals:
+            out[f"{key}_mean"] = round(sum(vals) / len(vals), 4)
+            out[f"{key}_median"] = round(median(vals), 4)
+            out[f"{key}_n"] = len(vals)
+
+    rng = random.Random(seed)
+    targets = [r["elicited_emotion"] for r in rows]
+    firsts = [r["model_first"] for r in rows]
+    null_cos, null_pct = [], []
+    for _ in range(n_permutations):
+        shuffled = targets[:]
+        rng.shuffle(shuffled)
+        cos = [v for f, t in zip(firsts, shuffled) if (v := sim.sim(f, t)) is not None]
+        pct = [v for f, t in zip(firsts, shuffled) if (v := sim.rank_percentile(t, f)) is not None]
+        if cos:
+            null_cos.append(sum(cos) / len(cos))
+        if pct:
+            null_pct.append(sum(pct) / len(pct))
+    for label, null in (("cosine", null_cos), ("rank_pct", null_pct)):
+        if not null:
+            continue
+        mu = sum(null) / len(null)
+        std = (sum((x - mu) ** 2 for x in null) / len(null)) ** 0.5
+        out[f"null_{label}_first_mean"] = round(mu, 4)
+        out[f"null_{label}_first_std"] = round(std, 4)
+        obs = out.get(f"model_{label}_first_mean")
+        if obs is not None and std > 0:
+            out[f"model_{label}_first_z_vs_null"] = round((obs - mu) / std, 2)
+    return out
 
 
 def neutral_anchor(replies: list[str], neutral_tag_body: str = "calm, attentive") -> dict:

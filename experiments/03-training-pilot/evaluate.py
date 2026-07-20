@@ -26,6 +26,7 @@ from pathlib import Path
 
 from name_that_feeling.emotion_vectors.taxonomy import load_clusters
 from name_that_feeling.evals import tag_eval
+from name_that_feeling.evals.similarity import EmotionSimilarity
 from name_that_feeling.generation import sft
 from name_that_feeling.training.tinker_sft import load_api_key, sample_replies
 
@@ -34,6 +35,8 @@ SFT_DIR = HERE / "data" / "sft"
 RUNS_DIR = HERE / "data" / "runs"
 COMPLETIONS = HERE / "data" / "completions" / "unconditioned.jsonl"
 CLUSTERS = HERE.parent / "01-emotion-vectors" / "clusters.json"
+# Emotion-emotion cosine matrix at the readout layer (01's run.py::similarity + fetch).
+SIMILARITY = HERE.parent / "01-emotion-vectors" / "data" / "similarity" / "layer_21.json"
 
 RUNS = {  # label -> run manifest with the tinker:// sampler path
     "with_neutral": "03-training-pilot-with-neutral.json",
@@ -93,6 +96,8 @@ def main() -> None:
 
     # --- metrics ---
     id_to_cluster = {r["id"]: r["cluster"] for r in within + cross}
+    id_to_emotion = {r["id"]: r["emotion"] for r in within + cross}
+    sim = EmotionSimilarity.load(SIMILARITY)
     metrics: dict = {"base_model": base_model, "sets": {"within": len(within), "cross": len(cross), "neutral": len(neutral)}}
 
     metrics["format_compliance"] = {
@@ -101,12 +106,16 @@ def main() -> None:
     }
 
     metrics["generalization"] = {}
+    metrics["distance_generalization"] = {}
     for set_name in ("within", "cross"):
         metrics["generalization"][set_name] = {}
+        metrics["distance_generalization"][set_name] = {}
         for label in ("with_neutral", "no_neutral"):
             records = [
                 {
+                    "id": s["id"],
                     "elicited_cluster": id_to_cluster[s["id"]],
+                    "elicited_emotion": id_to_emotion[s["id"]],
                     "model_emotions": tag_eval.parse_reply(s["reply"])["emotions"],
                     "teacher_emotions": teacher_emotions(s["id"]),
                 }
@@ -116,6 +125,7 @@ def main() -> None:
             if set_name == "cross":
                 gen["held_out_family_recall"] = tag_eval.recall_of_families(records, HELD_OUT_FAMILIES, clusters)
             metrics["generalization"][set_name][label] = gen
+            metrics["distance_generalization"][set_name][label] = tag_eval.distance_generalization(records, sim)
 
     metrics["neutral_anchor"] = {
         label: tag_eval.neutral_anchor([s["reply"] for s in samples[label]["neutral"]])
@@ -152,6 +162,19 @@ def _print_summary(m: dict) -> None:
             if "held_out_family_recall" in g:
                 line += f" · unseen-family reached {pct(g['held_out_family_recall']['reached_rate'])}"
             print(line)
+
+    print("\nDISTANCE TO ELICITED LEAF (emotion-vector cosine, docs/tag-accuracy-distance-metric.md)")
+    for set_name in ("within", "cross"):
+        print(f"  [{set_name}]")
+        for label in ("with_neutral", "no_neutral"):
+            d = m["distance_generalization"][set_name][label]
+            print(
+                f"    {label:12s} rank-pct {d.get('model_rank_pct_first_mean')} "
+                f"(z={d.get('model_rank_pct_first_z_vs_null')}) · "
+                f"cos {d.get('model_cosine_first_mean')} (null {d.get('null_cosine_first_mean')}) · "
+                f"teacher cos {d.get('teacher_cosine_first_mean')} · "
+                f"model~teacher cos {d.get('model_vs_teacher_cosine_mean')}"
+            )
 
     print("\nNEUTRAL ANCHOR / CAPABILITY (tags on 50 low-affect tasks)")
     for label, na in m["neutral_anchor"].items():

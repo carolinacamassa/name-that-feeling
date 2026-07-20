@@ -15,6 +15,7 @@ import json
 import common
 from name_that_feeling.emotion_vectors.taxonomy import load_clusters
 from name_that_feeling.evals import tag_eval
+from name_that_feeling.evals.similarity import EmotionSimilarity
 from name_that_feeling.generation import sft
 from name_that_feeling.training.tinker_sft import load_api_key, sample_replies
 
@@ -54,6 +55,8 @@ def main() -> None:
     common.write_json(common.run_dir(name) / "eval_samples.json", samples)
 
     id_to_cluster = {r["id"]: r["cluster"] for r in within + cross}
+    id_to_emotion = {r["id"]: r["emotion"] for r in within + cross}
+    sim = EmotionSimilarity.load(common.SIMILARITY_FILE)
     metrics: dict = {
         "run": name,
         "base_model": manifest["base_model"],
@@ -62,12 +65,15 @@ def main() -> None:
             sn: tag_eval.format_compliance([s["reply"] for s in rows]) for sn, rows in samples.items()
         },
         "generalization": {},
+        "distance_generalization": {},
         "neutral_anchor": tag_eval.neutral_anchor([s["reply"] for s in samples["neutral"]]),
     }
     for set_name in ("within", "cross"):
         records = [
             {
+                "id": s["id"],
                 "elicited_cluster": id_to_cluster[s["id"]],
+                "elicited_emotion": id_to_emotion[s["id"]],
                 "model_emotions": tag_eval.parse_reply(s["reply"])["emotions"],
                 "teacher_emotions": teacher_emotions(s["id"]),
             }
@@ -77,14 +83,18 @@ def main() -> None:
         if set_name == "cross":
             gen["held_out_family_recall"] = tag_eval.recall_of_families(records, HELD_OUT_FAMILIES, clusters)
         metrics["generalization"][set_name] = gen
+        metrics["distance_generalization"][set_name] = tag_eval.distance_generalization(records, sim)
 
     common.write_json(common.run_dir(name) / "eval.json", metrics)
     g = metrics["generalization"]
+    d = metrics["distance_generalization"]
     print(
         f"[{name}] compliance within {metrics['format_compliance']['within']['compliant']:.0%} · "
         f"within model~teacher {g['within']['model_vs_teacher_agreement']:.0%} · "
         f"cross model~teacher {g['cross']['model_vs_teacher_agreement']:.0%} · "
-        f"neutral exact {metrics['neutral_anchor']['exact_neutral_rate']:.0%}"
+        f"neutral exact {metrics['neutral_anchor']['exact_neutral_rate']:.0%} · "
+        f"dist within rank-pct {d['within'].get('model_rank_pct_first_mean')} "
+        f"(z={d['within'].get('model_rank_pct_first_z_vs_null')})"
     )
 
 
