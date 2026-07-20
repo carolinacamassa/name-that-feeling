@@ -1,0 +1,9 @@
+{
+  "elicitation_yield": {
+    "file": "elicitation_yield.svg",
+    "caption": "Number of emotions (of 171) by how many usable messages the elicitation loop produced before stopping; the cap is 20 messages per emotion.",
+    "takeaway": "Yield varies by emotion and the variation is informative: 17 of 171 emotions reach the 20-message cap, most stop earlier with a stated reason, and 11 yield nothing \u2014 the empirical equivalent of a triage skip. The loop produced 1,972 usable messages in total.",
+    "notebook": "elicitation_yield.py",
+    "updated": "2026-07-10"
+  }
+}
