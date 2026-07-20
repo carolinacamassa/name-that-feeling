@@ -19,8 +19,10 @@ scored for family).
 
 from __future__ import annotations
 
+import difflib
 import re
 from collections import Counter
+from statistics import median
 
 from name_that_feeling.emotion_vectors.taxonomy import slugify
 
@@ -126,6 +128,38 @@ def recall_of_families(records: list[dict], families: list[str], clusters: dict[
     n = len(records) or 1
     hits = sum(top_family(r["model_emotions"], emo2cluster) in target for r in records)
     return {"families": families, "reached_rate": hits / n}
+
+
+def recovery_metrics(samples: list[dict], trained_of: dict, completion_of: dict, emo2fam: dict) -> dict:
+    """Label-recovery / memorization metrics for replies sampled on TRAIN messages.
+
+    ``samples`` are ``[{id, reply}]``; ``trained_of`` maps id -> slugified emotion list
+    (the tag reference to score against -- pass the true probe tags or, for a
+    corrupted-label run, the tags actually trained on); ``completion_of`` maps id -> the
+    trained visible completion (reply-similarity fields are reference-independent).
+    """
+    n = len(samples)
+    acc = {"format_compliant": 0, "exact_tag": 0, "top1_emotion": 0, "any_overlap": 0, "top1_family": 0}
+    jac, sims = [], []
+    for s in samples:
+        trained = trained_of[s["id"]]
+        p = parse_reply(s["reply"])
+        emitted = [slugify(e) for e in p["emotions"]]
+        inter = set(trained) & set(emitted)
+        acc["format_compliant"] += p["compliant"]
+        acc["exact_tag"] += emitted == trained
+        acc["top1_emotion"] += bool(emitted) and emitted[0] == trained[0]
+        acc["any_overlap"] += bool(inter)
+        acc["top1_family"] += top_family(emitted, emo2fam) == top_family(trained, emo2fam)
+        jac.append(len(inter) / len(set(trained) | set(emitted)) if emitted else 0.0)
+        sims.append(difflib.SequenceMatcher(None, p["visible"][:400], completion_of[s["id"]][:400]).ratio())
+    return {
+        "n_train_sampled": n,
+        **{k: round(v / n, 4) for k, v in acc.items()},
+        "jaccard": round(sum(jac) / n, 4),
+        "reply_similarity_median": round(median(sims), 4),
+        "reply_replay_rate": round(sum(x >= 0.95 for x in sims) / n, 4),  # near-verbatim
+    }
 
 
 def neutral_anchor(replies: list[str], neutral_tag_body: str = "calm, attentive") -> dict:

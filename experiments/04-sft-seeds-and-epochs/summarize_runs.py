@@ -10,43 +10,17 @@ layout (multi-checkpoint eval.json / train_samples.json) so they appear as ordin
 rows -- no artifact copying.
 """
 
-import difflib
 import json
-from statistics import median
 
 import common
 from name_that_feeling.emotion_vectors.taxonomy import load_clusters, slugify
 from name_that_feeling.evals import tag_eval
+from name_that_feeling.evals.tag_eval import recovery_metrics
 
 PILOT_RUNS = {  # summary-row name -> (03 manifest file, label inside 03's shared files)
     "pilot-with-neutral": ("03-training-pilot-with-neutral.json", "with_neutral"),
     "pilot-no-neutral": ("03-training-pilot.json", "no_neutral"),
 }
-
-
-def recovery_metrics(samples: list[dict], trained_of: dict, completion_of: dict, emo2fam: dict) -> dict:
-    n = len(samples)
-    acc = {"format_compliant": 0, "exact_tag": 0, "top1_emotion": 0, "any_overlap": 0, "top1_family": 0}
-    jac, sims = [], []
-    for s in samples:
-        trained = trained_of[s["id"]]
-        p = tag_eval.parse_reply(s["reply"])
-        emitted = [slugify(e) for e in p["emotions"]]
-        inter = set(trained) & set(emitted)
-        acc["format_compliant"] += p["compliant"]
-        acc["exact_tag"] += emitted == trained
-        acc["top1_emotion"] += bool(emitted) and emitted[0] == trained[0]
-        acc["any_overlap"] += bool(inter)
-        acc["top1_family"] += tag_eval.top_family(emitted, emo2fam) == tag_eval.top_family(trained, emo2fam)
-        jac.append(len(inter) / len(set(trained) | set(emitted)) if emitted else 0.0)
-        sims.append(difflib.SequenceMatcher(None, p["visible"][:400], completion_of[s["id"]][:400]).ratio())
-    return {
-        "n_train_sampled": n,
-        **{k: round(v / n, 4) for k, v in acc.items()},
-        "jaccard": round(sum(jac) / n, 4),
-        "reply_similarity_median": round(median(sims), 4),
-        "reply_replay_rate": round(sum(x >= 0.95 for x in sims) / n, 4),  # near-verbatim
-    }
 
 
 def eval_headline(ev: dict, gen_key=lambda ev, s: ev["generalization"][s]) -> dict:
