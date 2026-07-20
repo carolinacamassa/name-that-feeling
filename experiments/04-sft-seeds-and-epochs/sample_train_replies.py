@@ -1,4 +1,4 @@
-"""Label-recovery input for one run: uv run python experiments/05-sft-seeds-and-epochs/sample_train_replies.py --run seed-43
+"""Label-recovery input for one run: uv run python experiments/04-sft-seeds-and-epochs/sample_train_replies.py --run seed-43
 
 Samples the run's checkpoint on the 576 TRAIN messages (greedy, full length) -> the
 run folder's ``train_samples.json`` ([{id, reply}], train.jsonl row order). Same

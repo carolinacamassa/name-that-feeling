@@ -1,4 +1,4 @@
-"""Train one run on Tinker: uv run python experiments/05-sft-seeds-and-epochs/train.py --config configs/seed-43.yaml
+"""Train one run on Tinker: uv run python experiments/04-sft-seeds-and-epochs/train.py --config configs/seed-43.yaml
 
 Reads the run's YAML (hyperparameters + dataset pointer), trains via the reusable
 ``training.tinker_sft.train_sft``, and writes ``data/runs/<name>/manifest.json``: the

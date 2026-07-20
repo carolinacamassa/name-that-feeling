@@ -1,6 +1,6 @@
 """Rebuild data/cross/runs_summary.json: one tidy row per run, pilot baselines included.
 
-    uv run python experiments/05-sft-seeds-and-epochs/summarize_runs.py
+    uv run python experiments/04-sft-seeds-and-epochs/summarize_runs.py
 
 Everything in ``data/cross/`` is derived -- delete and rerun this at will. Each row
 carries training stats (from the manifest), the section-7 headline metrics (from the

@@ -1,6 +1,6 @@
 """Export one run's LoRA to a causal-LM PEFT adapter on the vectors Volume.
 
-    uv run modal run experiments/05-sft-seeds-and-epochs/export_adapter.py --run seed-43
+    uv run modal run experiments/04-sft-seeds-and-epochs/export_adapter.py --run seed-43
 
 One server-side step (``training.tinker_export.export_causal_lm_adapter``): Tinker
 download -> cookbook conversion -> exact causal-LM relayout -> Volume at

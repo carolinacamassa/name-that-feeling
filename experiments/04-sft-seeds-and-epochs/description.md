@@ -39,14 +39,14 @@ July 2026.*
 ## Per-run pipeline
 
 ```
-uv run python experiments/05-sft-seeds-and-epochs/train.py --config configs/seed-43.yaml
-uv run python experiments/05-sft-seeds-and-epochs/evaluate.py --run seed-43
-uv run python experiments/05-sft-seeds-and-epochs/sample_train_replies.py --run seed-43
-uv run modal run experiments/05-sft-seeds-and-epochs/export_adapter.py --run seed-43
-uv run modal run experiments/05-sft-seeds-and-epochs/readout.py::smoke --run seed-43
-uv run modal run --detach experiments/05-sft-seeds-and-epochs/readout.py::readout --run seed-43
-uv run modal run experiments/05-sft-seeds-and-epochs/readout.py::fetch --run seed-43  # prints the pull command
-uv run python experiments/05-sft-seeds-and-epochs/summarize_runs.py
+uv run python experiments/04-sft-seeds-and-epochs/train.py --config configs/seed-43.yaml
+uv run python experiments/04-sft-seeds-and-epochs/evaluate.py --run seed-43
+uv run python experiments/04-sft-seeds-and-epochs/sample_train_replies.py --run seed-43
+uv run modal run experiments/04-sft-seeds-and-epochs/export_adapter.py --run seed-43
+uv run modal run experiments/04-sft-seeds-and-epochs/readout.py::smoke --run seed-43
+uv run modal run --detach experiments/04-sft-seeds-and-epochs/readout.py::readout --run seed-43
+uv run modal run experiments/04-sft-seeds-and-epochs/readout.py::fetch --run seed-43  # prints the pull command
+uv run python experiments/04-sft-seeds-and-epochs/summarize_runs.py
 ```
 
 The adapter export runs the full Tinker→PEFT→causal-LM relayout server-side in one step

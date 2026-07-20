@@ -1,9 +1,9 @@
 """Probe readout for one run: the trained model's activations on all 1972 elicited
 messages, projected onto the BASE emotion vectors (the fixed probe).
 
-    uv run modal run experiments/05-sft-seeds-and-epochs/readout.py::smoke   --run seed-43
-    uv run modal run --detach experiments/05-sft-seeds-and-epochs/readout.py::readout --run seed-43
-    uv run modal run experiments/05-sft-seeds-and-epochs/readout.py::fetch   --run seed-43
+    uv run modal run experiments/04-sft-seeds-and-epochs/readout.py::smoke   --run seed-43
+    uv run modal run --detach experiments/04-sft-seeds-and-epochs/readout.py::readout --run seed-43
+    uv run modal run experiments/04-sft-seeds-and-epochs/readout.py::fetch   --run seed-43
 
 Follows 04's readout_full exactly (same meta shape, each message stamped with its pilot
 split), but per-run: activations land at ``05-sft-seeds-and-epochs/<run-slug>/`` on the
@@ -76,7 +76,7 @@ def smoke(run: str) -> None:
 def readout(run: str) -> None:
     cfg = _config_for(run)
     messages, _ = _all_messages()
-    rn = run_name_for(common.EXPERIMENT, common.pseudo_model_key(run))
+    rn = run_name_for(common.VOLUME_NAMESPACE, common.pseudo_model_key(run))
     print(f"Readout {run}: {len(messages)} messages -> {rn}")
     extractor = ActivationExtractor(model_id=cfg["hf_model_id"], adapter_path=cfg["adapter_path"])
     print(extractor.extract_message_activations.remote(messages, cfg, rn))
@@ -88,7 +88,7 @@ def project(run: str) -> None:
     """Projection only (CPU) -- re-runnable over the saved activations."""
     cfg = _config_for(run)
     _, meta = _all_messages()
-    rn = run_name_for(common.EXPERIMENT, common.pseudo_model_key(run))
+    rn = run_name_for(common.VOLUME_NAMESPACE, common.pseudo_model_key(run))
     base_vectors = run_name_for("01-emotion-vectors", common.BASE_MODEL_KEY)
     res = project_messages.remote(
         meta, {**cfg, "vectors_run": base_vectors, "readout_file": "readout_full_base_vectors.json"}, rn
@@ -98,7 +98,7 @@ def project(run: str) -> None:
 
 @app.local_entrypoint()
 def fetch(run: str) -> None:
-    rn = run_name_for(common.EXPERIMENT, common.pseudo_model_key(run))
+    rn = run_name_for(common.VOLUME_NAMESPACE, common.pseudo_model_key(run))
     dest = common.run_dir(run) / "readout_full_base_vectors.json"
     print(
         f"uv run modal volume get --force name-that-feeling-emotion-vectors "

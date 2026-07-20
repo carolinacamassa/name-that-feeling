@@ -1,4 +1,4 @@
-"""Section-7 eval for one run: uv run python experiments/05-sft-seeds-and-epochs/evaluate.py --run seed-43
+"""Section-7 eval for one run: uv run python experiments/04-sft-seeds-and-epochs/evaluate.py --run seed-43
 
 The pilot's held-out battery (03/evaluate.py), per-run and lighter: samples this run's
 checkpoint on within/cross/neutral (greedy, full length) and computes the local tag
