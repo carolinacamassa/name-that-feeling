@@ -1,0 +1,15 @@
+# The shuffled-tag control at 2 epochs: identical to configs/shuffled.yaml (same
+# permuted dataset, same hyperparameters) except num_epochs. 2 epochs is the
+# recommended duration from the seeds/epochs experiment (mapping at 3-epoch level,
+# reply replay mostly gone), so this tests whether the label-corruption result depends
+# on training duration. Accurate twin = 04-sft-seeds-and-epochs run `two-epochs`.
+
+base_model: Qwen/Qwen3.5-9B   # must stay the probe model (03 description.md section 2)
+dataset: data/sft/train_shuffled_plus_neutral.jsonl   # the corrupted twin of 03's file
+
+lora_rank: 32
+learning_rate: 2.0e-4
+lr_schedule: constant
+batch_size: 32
+num_epochs: 2
+seed: 42

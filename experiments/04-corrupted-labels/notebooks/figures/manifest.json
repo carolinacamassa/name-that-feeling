@@ -1,0 +1,30 @@
+{
+  "held_out_agreement_by_condition": {
+    "file": "held_out_agreement_by_condition.svg",
+    "caption": "Family-level agreement between the model's emitted tag and the probe-derived label on held-out messages from trained families (260 messages), for three models trained on accurate labels and one trained on the same labels permuted across messages. Dashed line: the always-guess-the-largest-family baseline (15.4%).",
+    "takeaway": "Training on permuted labels removes the message-to-tag mapping at both training durations: family agreement with the probe-derived labels on held-out messages falls from 53-58% (accurate labels) to 8.1% at 3 epochs and 7.7% at 2 epochs, below the 15.4% largest-family baseline. Both permuted-label models emit a playful-amusement-family tag on 96-99% of held-out messages, while format compliance (100%) and the neutral anchor (98-100%) are unaffected.",
+    "notebook": "corrupted_labels.py",
+    "updated": "2026-07-20"
+  },
+  "train_tag_recovery_two_references": {
+    "file": "train_tag_recovery_two_references.svg",
+    "caption": "Top-1-family recovery of replies sampled on the 576 training messages, scored against the labels each model was trained on and against the true probe-derived labels. For the accurate arms the two references coincide. Dashed line: the 12% rate at which a model that reproduced its permuted labels perfectly would match the true labels, given repeated families across rows.",
+    "takeaway": "Neither permuted-label model memorizes its arbitrary message-to-tag assignment: recovery of the trained labels' family on training messages is 18-19% at both durations, matching the 18.75% a constant emitter of the modal family (playful amusement) would score, while accurate-label runs recover 63-73%. Verbatim reply reproduction tracks the accurate run at each duration (35% vs 33-38% at 3 epochs, 6.8% vs 6.4% at 2), so the failure is specific to the tag mapping, not to training.",
+    "notebook": "corrupted_labels.py",
+    "updated": "2026-07-20"
+  },
+  "activation_tilt_shuffled_vs_accurate": {
+    "file": "activation_tilt_shuffled_vs_accurate.svg",
+    "caption": "Mean per-family activation shift of each trained model against the base model, over all 1,972 messages projected onto the base emotion vectors. Effect size per emotion is the change in mean projection divided by the base standard deviation; bars average emotions within a family.",
+    "takeaway": "The small activation shift after tag training is independent of label content: the permuted-label model reproduces the accurate pilot's per-emotion pattern (Pearson r = 0.96; hostile anger +0.16 vs +0.15, peaceful contentment -0.16 vs -0.16) at the same magnitude (median absolute effect 0.11 vs 0.10 base standard deviations). The shift therefore tracks the training data and procedure, not the correspondence between labels and messages.",
+    "notebook": "corrupted_labels.py",
+    "updated": "2026-07-20"
+  },
+  "distance_metric_discriminant_check": {
+    "file": "distance_metric_discriminant_check.svg",
+    "caption": "Mean rank percentile of the emitted tag's first emotion among the 171 emotions ordered by vector similarity to the elicited emotion, on the 260 held-out messages from trained families. Dashed line: the 0.5 expectation under a random guess; the permuted-label models emit near-constant playful-amusement-family tags.",
+    "takeaway": "The graded distance metric passes its discriminant check on the corrupted-label arms: models trained on permuted labels score at their permutation null (mean rank percentile 0.51 at 3 epochs and 0.50 at 2; z = -0.6 and -1.8), while every accurate-label configuration scores 0.69-0.71 (z = 11.5-12.6), and mean model-teacher tag similarity collapses from 0.54-0.57 to 0.05. A metric that credits graded near-misses gives no spurious credit to a collapsed constant emitter.",
+    "notebook": "corrupted_labels.py",
+    "updated": "2026-07-20"
+  }
+}

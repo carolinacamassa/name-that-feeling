@@ -1,0 +1,18 @@
+# Label-fidelity control (suggested by Elliot): identical to the pilot with-neutral
+# configuration -- same 1,076 examples, same hyperparameters -- except the 576
+# probe-derived <emotion> tags are permuted across messages (build_dataset.py, seeded
+# derangement). Tag-length and emotion-frequency marginals are preserved; only the
+# message<->label correspondence is destroyed. The 500 neutral-anchor rows (fixed tag,
+# never probe-derived) are byte-identical to the pilot's. Accurate-label arm = the
+# three existing 3-epoch checkpoints (03 pilot-with-neutral seed 42, 05 seed-43/44);
+# no new accurate run.
+
+base_model: Qwen/Qwen3.5-9B   # must stay the probe model (03 description.md section 2)
+dataset: data/sft/train_shuffled_plus_neutral.jsonl   # 07-local -- the corrupted twin of 03's file
+
+lora_rank: 32
+learning_rate: 2.0e-4
+lr_schedule: constant
+batch_size: 32
+num_epochs: 3
+seed: 42
