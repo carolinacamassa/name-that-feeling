@@ -63,6 +63,28 @@ uv run modal run experiments/01-emotion-vectors/run.py::extract_all --model alle
 uv run modal volume get name-that-feeling-emotion-vectors /01-emotion-vectors/qwen3.5-9b/readout ./out
 ```
 
+## Similarity matrix (derived artifact, added 2026-07-20)
+
+`run.py::similarity` builds the **171×171 pairwise cosine-similarity matrix** of the
+centered unit vectors at each extracted layer (a CPU job; the unit vectors are
+L2-normalized, so the matrix is just their Gram matrix) and writes
+`/vectors/<run>/similarity/layer_<L>.json` — fetched to `data/similarity/`. It is the
+lookup table behind the **distance-based tag metrics**
+(`docs/tag-accuracy-distance-metric.md`; `evals/similarity.py`,
+`tag_eval.distance_generalization`).
+
+`notebooks/vector_similarity.py` is the validation gate for those metrics, and it
+**passes**: mean pairwise cosine is **+0.44 within families vs −0.07 across them**;
+near-synonyms score 0.93–0.98 (afraid–scared 0.96, grateful–thankful 0.98);
+opposite-valence families are anticorrelated (hostile anger vs peaceful contentment
+−0.49). The structure is layer-robust (matrix correlation ≥ 0.997 across layers
+18/21/24). Two findings sharpen the metric's motivation: 58% of emotions have at least
+one out-of-family emotion among their five nearest neighbours, and 13% of same-family
+pairs have *negative* cosine (fear-and-overwhelm contains both *amazed* and *mortified*,
+−0.61) — family bucketing both under-credits near-misses and over-credits within-family
+antonyms. Exhibits: `similarity_block_structure`, `within_vs_cross_family_cosine`,
+`nearest_neighbor_examples`.
+
 ## Notes / scope
 
 - **No self-report, no steering here.** This experiment establishes vector *existence* + dose

@@ -1,0 +1,23 @@
+{
+  "similarity_block_structure": {
+    "file": "similarity_block_structure.svg",
+    "caption": "Mean pairwise cosine similarity between the emotion vectors of each family pair (layer 21, centered unit vectors); diagonal cells average over distinct within-family pairs.",
+    "takeaway": "The replicated emotion vectors are block-structured by family: mean pairwise cosine is +0.44 within families and \u22120.07 across them, and opposite-valence families are anticorrelated (hostile anger vs peaceful contentment \u22120.49, exuberant joy vs hostile anger \u22120.44). Graded similarity between emotions is recoverable from the vector geometry, supporting a distance-based tag-accuracy metric.",
+    "notebook": "vector_similarity.py",
+    "updated": "2026-07-20"
+  },
+  "within_vs_cross_family_cosine": {
+    "file": "within_vs_cross_family_cosine.svg",
+    "caption": "Distribution of cosine similarity over the 14,535 unique emotion pairs, split by whether the two emotions share a family; dashed rules mark the medians.",
+    "takeaway": "Same-family and different-family pairs separate cleanly (median cosine +0.49 vs \u22120.13), but the distributions overlap in both directions: 12% of different-family pairs exceed the same-family median, and 13% of same-family pairs have negative cosine (the fear-and-overwhelm family contains both amazed and mortified, cosine \u22120.61). A family-bucket metric scores the former as zero and the latter as full credit; a graded similarity metric resolves both.",
+    "notebook": "vector_similarity.py",
+    "updated": "2026-07-20"
+  },
+  "nearest_neighbor_examples": {
+    "file": "nearest_neighbor_examples.svg",
+    "caption": "The five nearest neighbours of five anchor emotions in the vector space, coloured by whether the neighbour shares the anchor's family.",
+    "takeaway": "Nearest neighbours are near-synonyms (afraid\u2013scared 0.96, grateful\u2013thankful 0.98), and 100 of the 171 emotions (58%) have at least one out-of-family emotion among their five nearest neighbours (pleased for grateful, content for blissful, disturbed for hostile). Family boundaries cut through dense neighbourhoods \u2014 the information a graded metric keeps and a bucket metric discards.",
+    "notebook": "vector_similarity.py",
+    "updated": "2026-07-20"
+  }
+}
