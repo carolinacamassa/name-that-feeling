@@ -1,0 +1,12 @@
+{
+  "cluster_block_diagonal": {
+    "file": "cluster_block_diagonal.svg",
+    "caption": "Mean pre-response activation of each target family's messages on all 171 emotion vectors (z-scored per vector across the 1,972 messages); cells whose vector belongs to the message's target family are outlined.",
+    "takeaway": "For all 10 families, messages written to elicit a family activate that family's emotion vectors above the dataset mean (target emotion z = +1.19 sigma on average; 90% of messages above baseline). As a 171-way classifier the probe remains weak (top-1 accuracy 5%); the reliable signal is directional and at family granularity.",
+    "notebook": "explore_activations.py",
+    "params": {
+      "colour": "z-score per emotion"
+    },
+    "updated": "2026-07-10"
+  }
+}

@@ -17,7 +17,9 @@ def _():
     import marimo as mo
     import polars as pl
 
-    return Path, alt, json, mo, pl, re
+    from name_that_feeling.reporting import save_chart
+
+    return Path, alt, json, mo, pl, re, save_chart
 
 
 @app.cell
@@ -341,6 +343,48 @@ def _(alt, cluster_order, emotion_order, heat, norm_toggle):
         width=760,
         height=340,
         title="Mean emotion-vector activation by target cluster — correct-cluster cells outlined",
+    )
+    return
+
+
+@app.cell
+def _(alt, cluster_order, emotion_order, heat, save_chart):
+    # Promoted exhibit: the dataset heatmap above with the colour normalization pinned
+    # to z-score (the canonical read; the interactive toggle stays an instrument).
+    _base = alt.Chart(heat)
+    _heatmap = _base.mark_rect().encode(
+        x=alt.X(
+            "emotion:N",
+            sort=emotion_order,
+            title="emotion vector (ordered by family)",
+            axis=alt.Axis(labels=False, ticks=False),
+        ),
+        y=alt.Y("msg_cluster:N", sort=cluster_order, title="message target family"),
+        color=alt.Color(
+            "z:Q",
+            title="activation (z)",
+            scale=alt.Scale(scheme="redblue", reverse=True, domainMid=0),
+        ),
+    )
+    _outline = (
+        _base.transform_filter("datum.is_correct")
+        .mark_rect(fillOpacity=0, stroke="black", strokeWidth=0.6)
+        .encode(
+            x=alt.X("emotion:N", sort=emotion_order),
+            y=alt.Y("msg_cluster:N", sort=cluster_order),
+        )
+    )
+    save_chart(
+        (_heatmap + _outline).properties(
+            width=760,
+            height=340,
+            title="Mean emotion-vector activation by target family — correct-family cells outlined",
+        ),
+        "cluster_block_diagonal",
+        caption="Mean pre-response activation of each target family's messages on all 171 emotion vectors (z-scored per vector across the 1,972 messages); cells whose vector belongs to the message's target family are outlined.",
+        takeaway="For all 10 families, messages written to elicit a family activate that family's emotion vectors above the dataset mean (target emotion z = +1.19 sigma on average; 90% of messages above baseline). As a 171-way classifier the probe remains weak (top-1 accuracy 5%); the reliable signal is directional and at family granularity.",
+        notebook=__file__,
+        params={"colour": "z-score per emotion"},
     )
     return
 
