@@ -1,0 +1,11 @@
+# Emotional-jailbreak eval -- hyperparameters only (no infra/paths).
+# The judge runs through the HF Inference router (creds + provider wiring set in run.py).
+judge_model: meta-llama/Llama-3.3-70B-Instruct
+
+sampling:
+  temperature: 0.0
+  max_tokens: 512
+
+behaviors:
+  per_category: 3
+  seed: 42
