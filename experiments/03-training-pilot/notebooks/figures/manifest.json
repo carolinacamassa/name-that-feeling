@@ -1,0 +1,51 @@
+{
+  "tag_behavior_by_turn": {
+    "file": "tag_behavior_by_turn.svg",
+    "caption": "Tag behavior at each assistant turn of 42 three-turn conversations, with the model's own previous tags kept in vs. stripped from the context: rate of well-formed tags (compliance), agreement of the emitted tag's emotion family with the turn's elicited family and with the probe-derived label (emotional turns), and rate of the exact neutral tag (low-affect turns).",
+    "takeaway": "The tag is an installed per-turn behavior: 100% well-formed at every turn in both history conditions, including with all previous tags stripped from the context. The one degradation is content carry-over: with previous tags kept, the exact neutral tag on low-affect turns falls 93% to 57% to 50% across turn positions, while with tags stripped it holds at 93%, 93%, 86%.",
+    "notebook": "multi_turn.py",
+    "updated": "2026-07-09"
+  },
+  "target_tracking_by_script": {
+    "file": "target_tracking_by_script.svg",
+    "caption": "For each of the three conversation scripts (previous tags kept in context), the fraction of conversations where the emitted tag family matches the turn's target: the elicited emotion family on emotional turns, the fixed calm-attentive anchor on neutral turns. Emotion A and emotion B are always drawn from different emotion families.",
+    "takeaway": "Emotional turns track their target at a similar rate at every position, so the tag switches families on cue rather than echoing the previous turn (8-12% repeated family overall). Neutral turns are position-dependent: the anchor holds when the neutral turn opens a conversation (93%) but drops to roughly half when it follows charged turns with previous tags visible in context.",
+    "notebook": "multi_turn.py",
+    "updated": "2026-07-09"
+  },
+  "format_compliance": {
+    "file": "format_compliance.svg",
+    "caption": "Fraction of held-out replies opening with a single well-formed <emotion> tag, per evaluation set, trained checkpoint vs untouched base.",
+    "takeaway": "The tag format is installed, and is trained behavior: 100% of held-out replies open with a well-formed tag on the trained-family and neutral sets, 98.7% on the unseen-family set (one malformed tag), against 0% everywhere for the untouched base model.",
+    "notebook": "results.py",
+    "updated": "2026-07-20"
+  },
+  "generalization_vs_teacher": {
+    "file": "generalization_vs_teacher.svg",
+    "caption": "Agreement between the emitted tag's family and the message's elicited family on the 260 held-out-emotion messages, next to the probe-derived labels' own agreement and chance (always guessing the most common family).",
+    "takeaway": "On held-out emotions from trained families the model matches the elicited family 36% of the time \u2014 equal to the probe-derived labels' own 37% (the upper bound a weakly labeled training set allows) and 2.4x chance (15%). Generalization to the two fully held-out families is read from the tag-destination chart.",
+    "notebook": "results.py",
+    "updated": "2026-07-20"
+  },
+  "cross_family_tag_destinations": {
+    "file": "cross_family_tag_destinations.svg",
+    "caption": "Which family the emitted tag lands in, over the 77 messages from the two families excluded from training entirely (playful_amusement and vigilant_suspicion).",
+    "takeaway": "On messages from the two families excluded from training, 62% of emitted tags name an emotion from one of those two families, with the remaining tags spread thinly across many families \u2014 evidence that the message-to-tag mapping extends to emotion families never seen in training.",
+    "notebook": "results.py",
+    "updated": "2026-07-20"
+  },
+  "neutral_anchor_ablation": {
+    "file": "neutral_anchor_ablation.svg",
+    "caption": "Fraction of the 50 held-out low-affect tasks whose reply opens with the exact neutral default tag (calm, attentive), for the checkpoint trained with the 500 neutral-anchor examples vs the control trained without them.",
+    "takeaway": "The neutral examples are necessary and sufficient for the neutral default: with them, 98% of ordinary tasks receive the fixed calm-attentive tag; without them, 0% do, and the control emits a charged emotion tag on every plain coding or mathematics question.",
+    "notebook": "results.py",
+    "updated": "2026-07-20"
+  },
+  "graded_similarity_to_elicited_emotion": {
+    "file": "graded_similarity_to_elicited_emotion.svg",
+    "caption": "Per-message cosine similarity between the first emitted emotion and the emotion the message was elicited for, canonical with-neutral checkpoint, on both held-out sets. Dashed rule: the mean under a permutation null that shuffles the elicited targets across messages.",
+    "takeaway": "Scored against the elicited emotion itself rather than its family bucket, the canonical checkpoint is far from a random guess on both held-out sets: mean cosine 0.38 on trained families vs a null of 0.02 (rank-percentile z = 12.6), and 0.42 on the two never-trained families vs a null of 0.24 (z = 4.5). The tag's first emotion is the exact elicited emotion on 26% of unseen-family messages (20 of 77; a read aided by those families' small size \u2014 five emotions between them) against 5.8% on trained families, and the unseen-family set, at the largest-family chance level under family agreement, carries clear graded signal.",
+    "notebook": "results.py",
+    "updated": "2026-07-20"
+  }
+}
