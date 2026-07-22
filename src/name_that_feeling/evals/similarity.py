@@ -71,6 +71,31 @@ class EmotionSimilarity:
             return None
         return self._matrix[ia][ib]
 
+    def centroid_sim(self, emotion: str | None, weighted: list[tuple[str, float]]) -> float | None:
+        """Cosine between one emotion and the weighted centroid of a set of emotions.
+
+        ``weighted`` is ``[(emotion, weight), ...]`` (e.g. a probe teacher tag with its
+        selection masses). Because the underlying vectors are unit-norm, the matrix is
+        their Gram matrix and the centroid cosine needs no raw vectors:
+        ``sum(w_i * C[m, t_i]) / sqrt(sum_ij(w_i * w_j * C[t_i, t_j]))``. Weights need
+        not be normalized (cosine is scale-invariant). Unknown target words are dropped
+        with their weights; returns None if ``emotion`` is unknown or no target is.
+        With a single target word this reduces exactly to :meth:`sim`.
+        """
+        if emotion is None:
+            return None
+        im = self.index(emotion)
+        if im is None:
+            return None
+        pairs = [(i, w) for e, w in weighted if (i := self.index(e)) is not None]
+        if not pairs:
+            return None
+        num = sum(w * self._matrix[im][i] for i, w in pairs)
+        norm_sq = sum(wi * wj * self._matrix[i][j] for i, wi in pairs for j, wj in pairs)
+        if norm_sq <= 0:
+            return None
+        return num / norm_sq**0.5
+
     def rank_percentile(self, target: str | None, emitted: str | None) -> float | None:
         """Percentile of ``emitted`` among all emotions ranked by similarity to ``target``.
 
