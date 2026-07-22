@@ -18,8 +18,21 @@ dependencies = [
     "ruff>=0.15.20",
     "safetensors>=0.8.0",
     "tinker>=0.22.7",
+    "torch>=2.9.0",
     "vl-convert-python>=1.9.0.post1",
 ]
+
+# torch is the one exception to "heavy ML deps live in the Modal image": Tinker's
+# `TrainingClient.forward_backward_custom` runs the loss client-side and raises
+# ImportError without it. That loss only touches small logprob tensors the server
+# returns, so the CPU wheel is enough -- no CUDA runtime in the venv.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 # Registers this package's custom inspect-ai providers (the `tinker` model provider).
 # inspect discovers it via importlib entry points; the module is import-light.
