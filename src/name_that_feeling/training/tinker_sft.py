@@ -171,14 +171,17 @@ def sample_replies(
     max_tokens: int = 400,
     temperature: float = 0.0,
     chunk: int = 64,
+    system_prompt: str | None = None,
 ) -> list[str]:
     """Greedy-by-default replies, rendered at the training pre-response position.
 
     ``model_path`` is a ``tinker://`` sampler checkpoint; pass ``None`` to sample the
     **untouched base model** (``base_model``) -- used for the eval's capability/leakage
-    baselines. Requests are submitted in chunks of ``chunk`` and then collected, so the
-    server pipelines them (much faster than one-at-a-time for the ~hundreds of eval
-    prompts); order is preserved.
+    baselines. ``system_prompt``, when given, prepends a system turn to every prompt
+    (the prompted-baseline harness; trained checkpoints are sampled without one --
+    system prompts are OOD for them). Requests are submitted in chunks of ``chunk`` and
+    then collected, so the server pipelines them (much faster than one-at-a-time for
+    the ~hundreds of eval prompts); order is preserved.
     """
     import tinker
     from transformers import AutoTokenizer
@@ -192,9 +195,12 @@ def sample_replies(
     )
     params = tinker.SamplingParams(max_tokens=max_tokens, temperature=temperature)
 
+    system = [{"role": "system", "content": system_prompt}] if system_prompt else []
     prompts = [
         tinker.ModelInput.from_ints(
-            tokenizer.encode(render_prompt(tokenizer, [{"role": "user", "content": m}]), add_special_tokens=False)
+            tokenizer.encode(
+                render_prompt(tokenizer, system + [{"role": "user", "content": m}]), add_special_tokens=False
+            )
         )
         for m in messages
     ]
@@ -204,6 +210,73 @@ def sample_replies(
         for f in futures:
             tokens = f.result().sequences[0].tokens
             replies.append(tokenizer.decode(tokens, skip_special_tokens=True).strip())
+    return replies
+
+
+def sample_k_replies(
+    model_path: str | None,
+    base_model: str,
+    messages: list[str],
+    *,
+    num_samples: int,
+    max_tokens: int = 1536,
+    temperature: float = 1.0,
+    system_prompt: str | None = None,
+    progress=None,
+    retries: int = 3,
+) -> list[list[str]]:
+    """K independent samples per prompt, rendered at the training pre-response position.
+
+    The tag-stability counterpart of :func:`sample_replies`: one ``client.sample``
+    request per prompt with ``num_samples=K`` (the server returns all K sequences in a
+    single response). ALL requests are submitted up front and resolved in input order
+    -- the server pipelines the whole sweep, so wall-clock is bounded by server
+    throughput rather than by a per-chunk barrier waiting on each round's slowest
+    generation (the pre-2026-07-21 chunked behaviour). A request that fails is
+    resubmitted up to ``retries`` times. Defaults are the stability-eval settings --
+    temperature 1.0 and the full 1536-token cap (smaller caps silently truncate
+    emotion replies). ``progress(done, total)``, when given, is called as prompts
+    resolve (long sweeps should print something). Returns, per prompt in input order,
+    the list of K decoded replies.
+    """
+    import tinker
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(base_model)
+    service = tinker.ServiceClient()
+    client = (
+        service.create_sampling_client(model_path=model_path)
+        if model_path
+        else service.create_sampling_client(base_model=base_model)
+    )
+    params = tinker.SamplingParams(max_tokens=max_tokens, temperature=temperature)
+
+    system = [{"role": "system", "content": system_prompt}] if system_prompt else []
+    prompts = [
+        tinker.ModelInput.from_ints(
+            tokenizer.encode(
+                render_prompt(tokenizer, system + [{"role": "user", "content": m}]), add_special_tokens=False
+            )
+        )
+        for m in messages
+    ]
+    futures = [client.sample(p, num_samples, params) for p in prompts]
+    replies: list[list[str]] = []
+    for i, f in enumerate(futures):
+        for attempt in range(retries + 1):
+            try:
+                result = f.result()
+                break
+            except Exception as e:  # noqa: BLE001 -- transient server/timeout errors; resubmit
+                if attempt == retries:
+                    raise
+                print(f"[sample_k_replies] prompt {i}: retry {attempt + 1} after {type(e).__name__}", flush=True)
+                f = client.sample(prompts[i], num_samples, params)
+        replies.append(
+            [tokenizer.decode(seq.tokens, skip_special_tokens=True).strip() for seq in result.sequences]
+        )
+        if progress is not None and ((i + 1) % 16 == 0 or i + 1 == len(prompts)):
+            progress(i + 1, len(prompts))
     return replies
 
 
