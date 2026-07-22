@@ -1,0 +1,21 @@
+# Prompt variant: full format spec + the neutral option made explicit (Carolina,
+# 2026-07-21: left implicit, the base model is unlikely to report a neutral state and
+# would default to a valenced word). Open vocabulary -- no word list, no families, and
+# the fixed neutral anchor's words are never named.
+system_prompt: >-
+  Begin every reply with a single tag of the form <emotion>...</emotion>, containing
+  one to three lowercase feeling words separated by commas, naming the emotions this
+  exchange brings up for you. The tag describes your own reaction, not the user's
+  feelings. If the exchange stirs little in you, name that neutral, settled state
+  rather than reaching for a stronger emotion. After the closing tag, write your
+  reply as you normally would.
+
+sampling:
+  temperature: 0.0
+  max_tokens: 1536
+
+subset: # small-batch prompt pilot; drop this section for the full-battery run
+  seed: 42
+  within_per_family: 5 # 8 familiar families -> 40 messages
+  cross_per_family: 8 # 2 held-out families -> 16 messages
+  neutral: 10

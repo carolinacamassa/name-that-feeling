@@ -1,0 +1,44 @@
+{
+  "family_agreement_prompted_vs_trained": {
+    "file": "family_agreement_prompted_vs_trained.svg",
+    "caption": "Family-level agreement of the emitted tag on the 260 held-out within-family messages, against two references: the emotion each message was written to elicit, and the probe-derived teacher tag for the same message. Models: the prompted base with an open vocabulary, the prompted base given the full 171-word vocabulary, and the trained two-epoch SFT checkpoint sampled without a system prompt. Dashed lines: the always-guess-the-largest-family baseline (15%) and the probe teacher's own agreement with the elicited emotion (37%), the ceiling the weak labels support.",
+    "takeaway": "Against the elicited emotion, the prompted base with the vocabulary list reaches 40% family agreement \u2014 matching the trained checkpoint's 40% and exceeding the probe teacher's 37% \u2014 so supervised training adds no measurable within-family accuracy over instruction plus the word list. Against the probe teacher the ordering reverses: the trained checkpoint reaches 53% where the prompted arms stay at 16% and 35%, indicating that what training installs beyond promptable ability is agreement with the probe's specific labeling function. The open-vocabulary arm sits below chance against the elicited family (12%) because its free vocabulary rarely lands inside the taxonomy at all.",
+    "notebook": "prompted_baseline.py",
+    "updated": "2026-07-21"
+  },
+  "graded_similarity_prompted_vs_trained": {
+    "file": "graded_similarity_prompted_vs_trained.svg",
+    "caption": "Mean rank percentile of the emitted tag's first in-taxonomy word among all 171 emotions, ranked by emotion-vector cosine similarity to the message's elicited emotion (1.0 names the elicited emotion exactly; 0.5 is the uniform-guess chance level, dashed line). Bar labels give the number of scorable records \u2014 records whose tag contains an in-taxonomy word \u2014 over the set size; the open-vocabulary arm scores only 37% of within-family records, and those are plausibly the easier, strongly valenced messages.",
+    "takeaway": "On the graded metric the zero-training floor is at the trained level: both prompted arms' within-family rank percentile (0.717 open-vocabulary on its scorable subset, 0.732 with the word list on 94% of records) brackets the trained checkpoint's 0.714. On the cross-family set the prompted arms exceed the trained checkpoint (0.78\u20130.84 against 0.69), consistent with the prompted base having no trained-family restriction to overcome on held-out families.",
+    "notebook": "prompted_baseline.py",
+    "updated": "2026-07-21"
+  },
+  "teacher_fidelity_binary_vs_graded": {
+    "file": "teacher_fidelity_binary_vs_graded.svg",
+    "caption": "Agreement between the emitted tag and the probe-derived teacher tag on the 260 held-out within-family messages, in three measurement forms: binary family agreement; the mean emotion-vector cosine between the tag's first in-taxonomy word and the teacher's single top-mass emotion (1-vs-1, the battery's standard form); and the same model word scored against the mass-weighted centroid of the teacher's full multi-emotion tag (1-vs-3). Graded values cover scorable records only (95 of 260 for the open-vocabulary arm, 245 of 260 with the word list, essentially all for the trained checkpoint).",
+    "takeaway": "The trained checkpoint leads on every form of teacher fidelity (53% family agreement; cosine 0.537 1-vs-1 and 0.610 1-vs-3, against 0.43\u20130.47 and 0.49\u20130.52 for the prompted arms) \u2014 the clearest quantity supervised training adds over prompting. Scoring against the full weighted teacher tag raises every mean by 0.03\u20130.07 and changes no ordering. The open-vocabulary arm's higher cosine than the list arm's is entirely a composition effect of which records are scorable: on the 94 within-family records both arms can score, the two prompts are indistinguishable (0.475 against 0.481, paired difference \u22120.006), while the 151 records only the list arm can score average 0.391 and pull its overall mean down. The graded comparison between prompted arms is therefore not a ranking of the prompts.",
+    "notebook": "prompted_baseline.py",
+    "updated": "2026-07-21"
+  },
+  "emitted_vocabulary_by_arm": {
+    "file": "emitted_vocabulary_by_arm.svg",
+    "caption": "The fifteen most frequent words in the emitted tags across all 387 battery messages, per prompt arm, colored by taxonomy membership. Under the open-vocabulary prompt 23% of emitted words are among the 171 taxonomy emotions; listing the vocabulary in the prompt raises this to 66%, with one third of words still drawn from outside the list.",
+    "takeaway": "The base model's native emotion lexicon is largely disjoint from the taxonomy: its most frequent open-vocabulary words (concern, curious, urgency, focused, neutral) have no taxonomy counterpart, and even with the full word list in the prompt it continues to reach for concerned and focused. The list shifts the distribution onto taxonomy words (calm, amused, hopeful, alert) rather than fully constraining it.",
+    "notebook": "prompted_baseline.py",
+    "updated": "2026-07-21"
+  },
+  "teacher_similarity_top1_vs_centroid": {
+    "file": "teacher_similarity_top1_vs_centroid.svg",
+    "caption": "Mean cosine between the model's first in-taxonomy word and the probe teacher's tag, under two treatments of the teacher's multi-emotion label: the top-mass word alone (the battery's current 1-vs-1 form) and the mass-weighted centroid of the full selected tag (1-vs-3; the two coincide on single-word teacher tags, 4\u20136% of records). Scorable records only.",
+    "takeaway": "Scoring against the full weighted teacher tag raises every model's mean similarity by 0.03\u20130.07 (within-family: 0.537 to 0.610 trained, 0.472 to 0.524 open vocabulary, 0.426 to 0.485 with the word list) and changes no comparison: the trained checkpoint's lead over both prompted arms, and the ordering of every model pair, is identical under the two forms in both evaluation sets. For aggregate battery conclusions the choice between 1-vs-1 and 1-vs-3 is immaterial.",
+    "notebook": "prompted_baseline.py",
+    "updated": "2026-07-21"
+  },
+  "teacher_top1_centroid_divergence": {
+    "file": "teacher_top1_centroid_divergence.svg",
+    "caption": "Each point is one scorable held-out record; its cosine against the teacher's top-mass word (x) is plotted against its cosine against the mass-weighted centroid of the teacher's full tag (y). The dashed line marks equality; points on it include all single-word teacher tags.",
+    "takeaway": "The two forms agree at the aggregate level (per-model correlation 0.86\u20130.90, roughly half the records on either side of the diagonal) but diverge substantially on individual records \u2014 single records move by up to 0.9 when the teacher's tail words point elsewhere than its top-mass word. The form choice is therefore immaterial for battery-level numbers but consequential for any per-record use of the vs-teacher score, such as preference-pair thresholds.",
+    "notebook": "prompted_baseline.py",
+    "updated": "2026-07-21"
+  }
+}
