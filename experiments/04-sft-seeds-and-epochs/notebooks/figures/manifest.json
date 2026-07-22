@@ -61,5 +61,40 @@
     "takeaway": "On messages from the two never-trained families \u2014 where family-level agreement sits at the 55% largest-family baseline and had read as a null result \u2014 the emitted tags are systematically closer to the elicited emotion than the permutation null in every accurate run (mean cosine 0.30-0.46 vs null 0.16-0.26; z = 2.8-4.7), and closer than the probe teacher's own tags (0.21). The near-misses on unseen families carry real signal that family bucketing discards.",
     "notebook": "epochs_vs_memorization.py",
     "updated": "2026-07-20"
+  },
+  "dpo_bucket_shares": {
+    "file": "dpo_bucket_shares.svg",
+    "caption": "Classification of each held-out prompt from the spread of its K temperature-1 draws, scored against the probe teacher label by the rank percentile of the first emitted emotion relative to the teacher's first emotion: consistently right (every scorable draw at or above 0.8), consistently wrong (every scorable draw at or below 0.4), inconsistent (draws span the thresholds), and unscorable (no draw yields an in-taxonomy tag). Shares by checkpoint and evaluation set.",
+    "takeaway": "Preference pairs can act only on prompts where sampling varies across the right/wrong thresholds: pilot-with-neutral leaves 79% of within-family and 83% of cross-family prompts inconsistent (0% / 0% consistently wrong, reachable by heavier SFT only); two-epochs leaves 93% of within-family and 95% of cross-family prompts inconsistent (0% / 0% consistently wrong, reachable by heavier SFT only).",
+    "notebook": "tag_stability.py",
+    "updated": "2026-07-21"
+  },
+  "modal_tag_share_distribution": {
+    "file": "modal_tag_share_distribution.svg",
+    "caption": "Distribution over held-out prompts (within- and cross-family sets pooled) of the modal-tag share: the fraction of tagged temperature-1 draws that emit the prompt's most frequent full tag, by checkpoint. A share of 1.0 means every tagged draw produced the identical emotion list.",
+    "takeaway": "The tag channel is a distribution, not a deterministic readout: pilot-with-neutral emits its modal tag on 15% of draws on the average prompt, and only 0% of prompts are fully stable across draws; two-epochs emits its modal tag on 11% of draws on the average prompt, and only 0% of prompts are fully stable across draws.",
+    "notebook": "tag_stability.py",
+    "updated": "2026-07-21"
+  },
+  "neutral_anchor_under_sampling": {
+    "file": "neutral_anchor_under_sampling.svg",
+    "caption": "Neutral-set behaviour across K temperature-1 draws per prompt, by checkpoint: the mean rate of the exact fixed neutral tag (calm, attentive) over draws, and the share of neutral prompts for which at least one draw emits a charged tag instead.",
+    "takeaway": "The greedy 98-100% neutral anchor is an upper bound: pilot-with-neutral keeps the exact neutral tag on 95% of draws while 14% of neutral prompts emit at least one charged tag across draws; two-epochs keeps the exact neutral tag on 95% of draws while 14% of neutral prompts emit at least one charged tag across draws.",
+    "notebook": "tag_stability.py",
+    "updated": "2026-07-21"
+  },
+  "train_vs_heldout_tag_stability": {
+    "file": "train_vs_heldout_tag_stability.svg",
+    "caption": "Distribution over prompts of the modal-tag share across K temperature-1 draws, on a seeded family-balanced subset of the emotion training messages (train) and the two held-out evaluation sets (within-family, cross-family), by checkpoint. Higher shares indicate a more deterministic tag for a fixed prompt.",
+    "takeaway": "Per-prompt modal-tag share on trained vs held-out messages: pilot-with-neutral train 16% vs within 16% vs cross 14%; two-epochs train 11% vs within 12% vs cross 10%.",
+    "notebook": "tag_stability.py",
+    "updated": "2026-07-21"
+  },
+  "trained_tag_recovery_under_sampling": {
+    "file": "trained_tag_recovery_under_sampling.svg",
+    "caption": "Exact recovery of the stored trained tag on the family-balanced train subset, by checkpoint: the mean fraction of temperature-1 draws whose first emitted emotion matches the trained label's first emotion, and the share of prompts whose modal full tag equals the trained tag.",
+    "takeaway": "Recovery of the stored trained label under sampling (greedy reference: ~48% top-1 emotion for the 3-epoch pilot): pilot-with-neutral recovers the trained first emotion on 35% of draws and settles on the exact trained tag as its modal tag for 4% of prompts; two-epochs recovers the trained first emotion on 20% of draws and settles on the exact trained tag as its modal tag for 4% of prompts.",
+    "notebook": "tag_stability.py",
+    "updated": "2026-07-21"
   }
 }

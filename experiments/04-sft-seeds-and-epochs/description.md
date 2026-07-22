@@ -64,6 +64,73 @@ seed isn't worth 3× the GPU time.
   label recovery, held-out generalization, loss trajectories.
 - `inspect_run.py` — dropdown over runs (pilot baselines included): per-run
   label-recovery drill-down.
+- `tag_stability.py` — cross-run: per-prompt tag spread across temperature-1 draws
+  (see the section below).
+
+## Tag stability across sampling (added 2026-07-21)
+
+Every metric above sampled greedily; this measurement asks the other question — for a
+fixed held-out prompt, is the emitted tag a deterministic readout or a distribution
+across independent temperature-1 draws? It doubles as pool-sizing for the planned
+preference-tuning stage: pairs exist only where sampling varies, so the split into
+consistently-right / consistently-wrong / inconsistent prompts (scored per draw against
+the probe teacher label on the graded rank-percentile metric, thresholds 0.8 / 0.4)
+determines how many pairs the pool yields and where preference training can act at all.
+
+```
+uv run python experiments/04-sft-seeds-and-epochs/sample_stability.py --run two-epochs
+uv run python experiments/04-sft-seeds-and-epochs/sample_stability.py --run pilot-with-neutral
+```
+
+- Checkpoints: `two-epochs` (the recommended default) vs `pilot-with-neutral` (the
+  3-epoch canonical pilot) — sampler paths are read from the existing manifests; no new
+  training runs. K = 12 draws per prompt over the three held-out sets (within / cross /
+  neutral) plus a seeded, family-balanced subset of the emotion train messages (~12 per
+  training family, ≈96 messages; fixed seed, so the subset is identical across runs),
+  full-length (1536 tokens), written to `data/stability/<run>/samples.json`.
+- `notebooks/tag_stability.py` computes the per-prompt spread (modal-tag share, distinct
+  first emotions, family entropy of the draws, compliance across draws), the per-draw
+  graded scores against the probe teacher, the consistency-bucket shares per held-out set
+  and checkpoint (the headline exhibit), the train-vs-held-out stability comparison with
+  the one metric only the train set can have — exact recovery of the stored trained tag
+  (`train_tags.jsonl`) across draws (greedy reference: ~48% top-1 emotion for the 3-epoch
+  pilot, with far less replay at 2 epochs, so an epoch difference here is expected) — and
+  the neutral-set read: does the fixed "calm, attentive" anchor survive temperature-1
+  sampling, and what share of neutral prompts emit at least one charged tag across draws?
+
+**Results (2026-07-21, K = 12, temperature 1.0, 483 prompts per checkpoint).** The tag
+channel is a broad distribution, not a deterministic readout: the exact emotion list
+repeats on only 11% of draws for the average prompt (two-epochs; 15% for the 3-epoch
+pilot) and no prompt of 483 is fully stable across draws — yet the draws mostly stay in
+the right neighbourhood (57–64% of within-family draws score ≥ 0.8 against the probe
+teacher on the graded rank-percentile metric; 8–10% score ≤ 0.4). Three findings with
+design consequences:
+
+1. **Training pins the greedy mode, not the distribution.** Modal-tag share on trained
+   messages equals the held-out sets (11 / 12 / 10% across train / within / cross for
+   two-epochs; 16 / 16 / 14% for the pilot), so the instability is a property of the
+   channel, not of being off the training distribution. The stored trained tag is
+   recovered on 20% of draws (two-epochs) and 35% (3-epoch pilot), against ~48% greedy —
+   and the 3-epoch checkpoint is tighter on every stability measure, i.e. training
+   duration sharpens the sampling distribution.
+2. **No prompt is consistently wrong.** The consistently-wrong bucket is empty in every
+   set for both checkpoints: at temperature 1, every prompt produces good draws. For the
+   preference stage this removes the rationale for constructed correction pairs — the
+   model's own samples always contain a valid chosen tag — and makes best-of-K sampled
+   pairs the natural scheme. Exact pair yield (at least one draw ≥ 0.8 and one ≤ 0.4 in
+   the same prompt's 12 draws): 44% within / 58% cross / 43% train for two-epochs
+   (27–32% for the pilot).
+3. **The greedy neutral anchor is an upper bound.** 95% of neutral draws keep the exact
+   "calm, attentive" tag, but 14% of neutral prompts emit at least one charged tag
+   across 12 draws (both checkpoints) — a failure mode invisible at greedy sampling.
+
+Together with the greedy headroom analysis (the emitted mode is already at teacher-level
+quality within-family), the picture is: the mode is converged, the distribution around
+it is loose — so what preference training can buy on this channel is *sharpening*
+(concentrating mass on the good draws, trimming the ~10% bad tail), not correction.
+Exhibits: `dpo_bucket_shares` (headline), `modal_tag_share_distribution`,
+`train_vs_heldout_tag_stability`, `neutral_anchor_under_sampling`,
+`trained_tag_recovery_under_sampling`.
 
 ## Caveat
 
