@@ -18,11 +18,27 @@ def _():
     from name_that_feeling.emotion_vectors.taxonomy import load_clusters, slugify
     from name_that_feeling.evals import tag_eval
     from name_that_feeling.evals.similarity import EmotionSimilarity
+    from name_that_feeling.evals.uncertainty import mean_and_ci
     from name_that_feeling.generation import sft
     from name_that_feeling.reporting import save_chart
 
     alt.data_transformers.disable_max_rows()
-    return Counter, EmotionSimilarity, Path, alt, json, load_clusters, math, mo, pl, save_chart, sft, slugify, tag_eval
+    return (
+        Counter,
+        EmotionSimilarity,
+        Path,
+        alt,
+        json,
+        load_clusters,
+        math,
+        mean_and_ci,
+        mo,
+        pl,
+        save_chart,
+        sft,
+        slugify,
+        tag_eval,
+    )
 
 
 @app.cell
@@ -182,7 +198,7 @@ def _(EMO2FAM, RUNS, SIM, first_in_taxonomy, tag_eval, teacher_of):
 
 
 @app.cell
-def _(Counter, DRAW_ROWS):
+def _(Counter, DRAW_ROWS, mean_and_ci):
     # Consistency buckets for preference-pair pool sizing (held-out sets only): a prompt is
     # consistently right if every scorable draw sits at rank percentile >= 0.8 against the
     # teacher, consistently wrong if every scorable draw sits <= 0.4, inconsistent
@@ -222,6 +238,11 @@ def _(Counter, DRAW_ROWS):
             _rows = [r for r in BUCKET_ROWS if r["run"] == _run and r["set"] == _set]
             _counts = Counter(r["bucket"] for r in _rows)
             for _i, _b in enumerate(BUCKET_ORDER):
+                # Each share is a mean of 0/1 over prompts, so it carries sampling
+                # uncertainty like any other battery mean. The stacked bars cannot show
+                # per-segment intervals without becoming unreadable, so the CI travels in
+                # the tooltip and in the caption's precision note instead.
+                _ci = mean_and_ci([int(r["bucket"] == _b) for r in _rows])
                 BUCKET_SHARES.append(
                     {
                         "run": _run,
@@ -229,6 +250,8 @@ def _(Counter, DRAW_ROWS):
                         "bucket": _b,
                         "bucket_order": _i,
                         "share": (_counts.get(_b, 0) / len(_rows)) if _rows else 0.0,
+                        "share_lo": _ci["lo"],
+                        "share_hi": _ci["hi"],
                         "n_prompts": len(_rows),
                     }
                 )
@@ -406,7 +429,15 @@ def _(BUCKET_ORDER, BUCKET_SHARES, alt, mo, pl, save_chart):
                     title=None,
                 ),
                 order=alt.Order("bucket_order:Q"),
-                tooltip=["run", "set", "bucket", alt.Tooltip("share:Q", format=".1%"), "n_prompts"],
+                tooltip=[
+                    "run",
+                    "set",
+                    "bucket",
+                    alt.Tooltip("share:Q", format=".1%"),
+                    alt.Tooltip("share_lo:Q", format=".1%", title="95% CI lower"),
+                    alt.Tooltip("share_hi:Q", format=".1%", title="95% CI upper"),
+                    "n_prompts",
+                ],
             )
             .properties(width=400, height=28 + 26 * _df["run"].n_unique())
             .facet(row=alt.Row("set:N", sort=["within", "cross"], title=None))
@@ -434,7 +465,12 @@ def _(BUCKET_ORDER, BUCKET_SHARES, alt, mo, pl, save_chart):
                 "first emitted emotion relative to the teacher's first emotion: consistently "
                 "right (every scorable draw at or above 0.8), consistently wrong (every scorable "
                 "draw at or below 0.4), inconsistent (draws span the thresholds), and unscorable "
-                "(no draw yields an in-taxonomy tag). Shares by checkpoint and evaluation set."
+                "(no draw yields an in-taxonomy tag). Shares by checkpoint and evaluation set. "
+                "Each share is a proportion over prompts and carries sampling uncertainty of "
+                "roughly six percentage points either side on the 260-prompt within-family set "
+                "and twice that on the 77-prompt cross-family set (95% bootstrap intervals, "
+                "available per segment in the tooltip); stacked segments cannot show these "
+                "graphically without becoming unreadable."
             ),
             takeaway=_takeaway,
             notebook=__file__,
