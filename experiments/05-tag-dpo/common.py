@@ -11,6 +11,7 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 EXPERIMENT = HERE.name  # "05-tag-dpo"
+VOLUME_NAMESPACE = "05-tag-dpo"  # Volume namespace for readout activations (folder name; collides with nothing)
 RUNS_DIR = HERE / "data" / "runs"
 POOL_DIR = HERE / "data" / "pool"
 
@@ -42,8 +43,16 @@ def read_manifest(name: str) -> dict:
 
 
 def adapter_subpath(name: str) -> str:
-    """Volume path of this run's exported PEFT adapter (sampling runs on Modal)."""
+    """Volume path of this run's exported PEFT adapter (probe extraction runs on Modal)."""
     return f"adapters/08-{name}/peft-causal-lm"
+
+
+def pseudo_model_key(name: str) -> str:
+    return f"qwen3.5-9b+08-{name}"
+
+
+def pseudo_model_slug(name: str) -> str:
+    return f"qwen3.5-9b-08-{name}"
 
 
 def run_dir(name: str) -> Path:

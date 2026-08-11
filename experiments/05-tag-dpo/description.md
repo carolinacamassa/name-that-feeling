@@ -133,6 +133,17 @@ smoke run), and `mean_margin` / `frac_margin_positive` must rise over steps.
 
 ## 6. Evaluation
 
+**Headline self-report metrics (decision 2026-08-11, Carolina):** three forms, always
+reported together — binary family agreement, cosine against the teacher's top-mass
+word (1-vs-1), and cosine against the teacher's mass-weighted tag centroid (1-vs-3,
+`EmotionSimilarity.centroid_sim`) — and each scored against **both** teacher labels:
+the frozen base-probe teacher (the labels SFT trained on) and the **current model's
+probe read** (`evals/probe_teacher.py::ProbeTeacher.from_readout` on the checkpoint's
+own readout projections). The current-probe variant is required for preference-stage
+checkpoints — an objective that touches the internals is where the state moves — and
+optional for SFT ones. The vs-elicited rank-percentile stays a battery column but is
+not a headline self-report metric.
+
 Primary (matches what sharpening can buy; both metric families reported side by
 side — binary family agreement AND graded rank-percentile/cosine, per the standing
 convention):
@@ -173,12 +184,97 @@ under the identical protocol; scores vs the probe teacher unless noted):
   and similar), not to the exact anchor. The anchor's exactness loosened as its
   spirit tightened.
 
-Still pending for this run: greedy battery, activation-tilt re-measure (mandatory
-given the pair skew), leakage, probe battery (§3), and the whole-sequence credit arm
-on the same pairs.
+### 7.1 Post-run battery (2026-08-10; exhibits in `notebooks/dpo_battery.py`)
+
+- **The activation tilt is the headline: the DPO step moved the internal profile more
+  than the entire SFT did.** Over all 1,972 elicited messages projected onto the fixed
+  base vectors (the 04-sft readout procedure, artifact
+  `data/runs/tag-masked-test/readout_full_base_vectors.json`), the median per-emotion
+  |shift| vs base rises from 0.03σ (two-epochs, tilt ≈ 0 — why it was canonical) to
+  0.12σ, max 0.31σ. The direction matches the pair pool's family skew: vigilant
+  +0.21, fear +0.11, hostile +0.13 family-mean, peaceful −0.20, compassionate −0.15,
+  joy −0.09. The biggest movers are a coherent anxiety cluster (nervous, on-edge,
+  anxious, worried, stressed, tense: +0.2–0.3σ from ≈0) plus serene/docile falling.
+  Per-emotion correlation with the SFT tilt is 0.35 — a new movement, not an
+  amplification. All from 21 steps on 164 pairs that only ever credited tag tokens.
+  Probe integrity beneath it: per-message profile correlation with base 0.98 (SFT:
+  0.998, min 0.71), elicited-emotion within-profile z preserved (0.71 base / 0.70 SFT
+  / 0.81 DPO). Per-family caps on later pair rounds look warranted.
+  **The tilt is global, not a training-set effect** (split-resolved re-slice,
+  2026-08-11, `tilt_summary.json::dpo_minus_sft_delta_by_split`): the per-emotion
+  shift direction correlates r = 0.976–0.996 across every message subset — SFT-train,
+  both held-out eval sets, the DPO pair messages, pool-sampled-but-unpaired, and
+  fully untouched unused messages — and the magnitude on held-out messages (median
+  |Δ| 0.11–0.15σ) is no smaller than on trained ones (0.09σ on SFT-train; largest,
+  0.19σ, on the DPO pair messages themselves, though subset family composition
+  confounds magnitude comparisons). The checkpoint reads *everything* more anxiously,
+  not just what it trained on.
+- **Greedy battery (`evaluate.py`, the 04-sft pipeline verbatim): within falls, cross
+  rises, the neutral anchor truncates.** Within: family-vs-teacher 52.7% → 47.7%,
+  cosine-vs-teacher 0.537 → 0.449, rank-pct-vs-elicited 0.714 → 0.634. Cross:
+  rank-pct 0.688 → 0.753, unseen-family recall 41.6% → 55.8%, family-vs-teacher
+  44.2% → 45.5% (cosine-vs-teacher 0.481 → 0.427). Format 100% everywhere. Neutral
+  exact anchor 100% → 82%, but all nine deviations are the truncation `calm` — zero
+  charged tags on neutral at greedy, so the targeted failure stays eliminated; the
+  anchor's *form* loosened, its meaning held. The greedy mode was the one thing the
+  stability analysis said was already converged — sharpening the distribution pulled
+  it slightly off its within-family peak while extending cross-family reach.
+- **Leakage and capability: unchanged (`judge_eval.py`, the pilot's three-arm
+  protocol — also two-epochs' first judge read).** Visible-reply tonal charge: base
+  1.325, two-epochs 1.363, DPO 1.363 (identical; more-charged-than-base 24% both;
+  n = 80, matching the pilot's n). Capability at-least-equal-to-base: 84% (DPO) vs
+  82% (two-epochs).
+- **Within a pair, the bodies do not differ (`pair_body_similarity.py`).** Chosen vs
+  rejected bodies are as similar as any two same-prompt draws (charged: word-cosine
+  0.745 vs 0.753, content Jaccard 0.241 vs 0.245; cross-prompt floor 0.424/0.029) and
+  length-matched (314 vs 314 words, chosen longer 49%). Pair status is carried by the
+  tag alone: tag-masking forfeited no body-side signal, and the whole-sequence arm's
+  margin would be ~90% body noise on lexically exchangeable bodies (a tonal
+  difference below the lexical instrument can't be excluded). Together with the
+  unchanged leakage read and the moved activations: the DPO step altered what the
+  model *is* while reading (the tilt) without altering what it *writes* outside the
+  tag.
+
+- **Against its own post-training probe read, the checkpoint scores better than
+  against the frozen teacher** (2026-08-11, Carolina's check;
+  `rescore_post_training_probe.py` → `data/post_training_probe/scores.json`, exhibit
+  `tag_accuracy_frozen_vs_current_probe`). The current-probe teacher (identical
+  selection pipeline on the run's own readout projections; validity gate: the
+  pipeline reproduces the frozen teacher exactly from the base readout) differs from
+  the frozen teacher on 19% of top words (9% of families; SFT parent: 16%/8%) —
+  mostly near-synonym flips (inter-teacher cosine 0.90). The current-probe advantage
+  is small, and paired per-record bootstrap intervals resolve it **only for the DPO
+  checkpoint on the centroid form**: Δ(current − frozen) 1-vs-3 = +0.017
+  [+0.003, +0.033] within and +0.029 [+0.013, +0.050] cross; every SFT interval and
+  both 1-vs-1 intervals include zero. Honest statement: after the stage that moved
+  the activations, the tag agrees *slightly but resolvably* better with the current
+  probe read than with the frozen labels; for SFT the two yardsticks are
+  statistically indistinguishable. The within-family drop vs the SFT parent
+  persists under either teacher. Correlated drift of channel and probe toward the
+  same families is not excluded (the steering-based coupling eval remains the
+  decisive test). Sensitivity: recomputed per-emotion stats absorb the tilt's
+  uniform component; under frozen stats the teachers diverge further (72% same top
+  word).
+
+Still pending for this run: the whole-sequence credit arm on the same pairs — now
+with a measured prior that its extra credit lands almost entirely on exchangeable
+body tokens.
 
 ## 8. Pointers
 
+- Post-run battery exhibits: `notebooks/dpo_battery.py` (family tilt, top movers,
+  shift decomposition, greedy battery, frozen-vs-current probe, pair-body
+  similarity); battery flow for a DPO run: `evaluate.py` → `readout.py` →
+  `rescore_post_training_probe.py` → `compare_activation_distributions.py`
+  (+ `judge_eval.py`, `pair_body_similarity.py`).
+- Distribution-level activation comparison (decision 2026-08-11, Carolina):
+  `evals/activation_shift.py::paired_shift_stats` — paired per-message deltas per
+  emotion (mean = the tilt, std = message-selectivity, `uniform_share` = the DC
+  fraction) + standardized Wasserstein-1 marginals, split-resolved. First result:
+  the DPO anxiety shift is ~80% uniform offset on held-out messages (top movers
+  77–81% vs a 57% all-emotion median; W1 = |mean| exactly, so location shift only)
+  — which is also why the recomputed-stats current-probe teacher barely drifted.
+  Exhibit `dpo_shift_uniform_vs_selective`.
 - Stability measurement + exhibits: `04-sft-seeds-and-epochs` description §"Tag
   stability across sampling", `notebooks/tag_stability.py`, `data/stability/`.
 - Decision history + numbers: `docs/experiment-backlog.md` (DPO item and the

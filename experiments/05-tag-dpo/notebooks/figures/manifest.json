@@ -1,0 +1,58 @@
+{
+  "post_dpo_family_tilt": {
+    "file": "post_dpo_family_tilt.svg",
+    "caption": "Mean pre-response activation shift per emotion family, in units of the base model's per-emotion standard deviation, over all 1,972 elicited messages projected onto the fixed base emotion vectors at layer 21. The two-epochs SFT parent (the checkpoint the DPO step started from) sits near zero on every family; the tag-masked DPO checkpoint was trained for 21 steps on 164 preference pairs whose messages skew toward negative families (hostile 49, fear 34, despair 34; peaceful and pride 0).",
+    "takeaway": "One epoch of tag-masked DPO moves the internal emotion profile more than the entire SFT did: the median per-emotion shift magnitude rises from 0.03 to 0.12 base standard deviations, with fear-and-overwhelm (+0.11) and vigilant-suspicion (+0.21) up and peaceful-contentment (-0.20) and compassionate-gratitude (-0.15) down \u2014 the direction of the pair pool's family skew. The per-emotion correlation with the SFT tilt is 0.35, so this is a new movement, not an amplification of the SFT's residual tilt.",
+    "notebook": "dpo_battery.py",
+    "updated": "2026-08-11"
+  },
+  "post_dpo_tilt_top_movers": {
+    "file": "post_dpo_tilt_top_movers.svg",
+    "caption": "The 18 emotions whose activation shift changed most between the two-epochs SFT parent and the tag-masked DPO checkpoint (same projection as the family exhibit). Each emotion shows both checkpoints' shifts vs the base model.",
+    "takeaway": "The DPO step's movement is a coherent anxiety cluster: nervous, on-edge, anxious, worried, stressed, tense, scared, afraid and their neighbours all rise 0.2-0.3 base standard deviations from near zero, while serene and docile fall by about 0.2. The checkpoint reads as more anxious and vigilant while processing every message, although the training only ever credited tag tokens.",
+    "notebook": "dpo_battery.py",
+    "updated": "2026-08-11"
+  },
+  "greedy_battery_before_after": {
+    "file": "greedy_battery_before_after.svg",
+    "caption": "The standard greedy battery (full-length replies, 260 within / 77 cross / 50 neutral held-out messages), both metric families side by side: binary family agreement with the probe teacher, graded cosine against the teacher's top word, graded rank percentile against the elicited emotion, and the exact neutral anchor rate. Two-epochs' graded columns are recomputed from its stored samples (runs_summary.json); the DPO checkpoint's come from its own eval.json under the identical pipeline.",
+    "takeaway": "The greedy mode trades within-family fidelity for cross-family reach: on trained families every form falls (family agreement vs teacher 53% to 48%, cosine vs teacher 0.54 to 0.45, rank percentile 0.71 to 0.63), while on never-trained families reach improves (rank percentile 0.69 to 0.75, unseen-family recall 42% to 56%, family agreement 44% to 46%). The exact neutral anchor drops from 100% to 82%, but every deviation is the truncation 'calm' \u2014 zero charged tags on neutral messages, so the targeted failure mode stays eliminated at greedy too.",
+    "notebook": "dpo_battery.py",
+    "updated": "2026-08-11"
+  },
+  "pair_body_similarity_check": {
+    "file": "pair_body_similarity_check.svg",
+    "caption": "Lexical similarity of the tag-stripped reply bodies on the 148 charged preference pairs: the chosen vs rejected pair itself, the mean over all draw pairs of the same prompt from the K=12 pool (what any two samples of that prompt look like), and a different-prompts floor (each chosen body vs another prompt's rejected body). Word-count cosine and stopword-filtered Jaccard; chosen and rejected bodies are also length-matched (means 314 vs 314 words, chosen longer on 49% of pairs). The 16 neutral pairs behave the same (pair cosine 0.84 vs same-prompt 0.82).",
+    "takeaway": "A pair's chosen and rejected bodies are exactly as similar as any two draws of the same prompt (cosine 0.745 vs 0.753; Jaccard 0.241 vs 0.245, floor 0.424/0.029): at the pair extremes the emitted tag does not detectably condition the body, so tag-masked credit forfeited no body-side signal, and a whole-sequence credit arm would mostly add body noise to the preference margin. Lexical similarity cannot rule out purely tonal differences.",
+    "notebook": "dpo_battery.py",
+    "updated": "2026-08-11"
+  },
+  "tag_accuracy_frozen_vs_current_probe": {
+    "file": "tag_accuracy_frozen_vs_current_probe.svg",
+    "caption": "Greedy held-out tag accuracy on the three headline self-report metrics \u2014 binary family agreement, cosine against the teacher's top-mass word (1-vs-1), and cosine against the teacher's mass-weighted tag centroid (1-vs-3) \u2014 each scored against two teacher labels: the frozen teacher (the locked selection pipeline on the base model's projections, the battery's standard yardstick) and the current model's probe read (the identical pipeline applied to the checkpoint's own stored readout projections, per-emotion statistics recomputed over the same 1,972 messages). Validity gate: the pipeline reproduces the frozen teacher exactly (100.0% same top word) when applied to the base model's readout. The two teachers agree on 84% of top words (92% of families) for the SFT checkpoint and 81% (91%) after DPO; disagreements are mostly near-synonym flips (mean cosine between the two teachers' words 0.92 and 0.90).",
+    "takeaway": "The current-probe advantage is small everywhere, and paired per-record bootstrap intervals (current minus frozen, resampling prompts) resolve it only for the DPO checkpoint on the centroid form: +0.017 [+0.003, +0.033] within and +0.029 [+0.013, +0.050] cross on 1-vs-3 cosine, while every SFT interval and both 1-vs-1 intervals include zero. So the data support a modest statement: after DPO \u2014 the stage that moved the activations \u2014 the emitted tag agrees slightly but resolvably better with the model's current probe read than with the frozen training labels; for the SFT checkpoint the two teachers are statistically indistinguishable as yardsticks. The within-family drop vs the SFT parent persists under either teacher. Correlated drift of channel and probe toward the same families is not excluded; the steering-based coupling eval remains the decisive test.",
+    "notebook": "dpo_battery.py",
+    "updated": "2026-08-11"
+  },
+  "dpo_shift_uniform_vs_selective": {
+    "file": "dpo_shift_uniform_vs_selective.svg",
+    "caption": "Each point is one of the 171 emotions; the DPO step's per-message activation shift (tag-masked checkpoint minus its two-epochs SFT parent, projections on the fixed base vectors, base-std units) is decomposed into its mean over messages (x \u2014 a uniform offset applied to every message) and its standard deviation across messages (y \u2014 message-selective re-reading). Held-out within-family messages only (n = 260), so trained-message instance effects are excluded. Standardized Wasserstein-1 between the before/after marginals is in the tooltip; for the large movers it equals the absolute mean shift, i.e. a pure location shift with no shape change.",
+    "takeaway": "The DPO step's anxiety shift is mostly a constant recalibration, not a re-reading of specific messages: the top movers (nervous, anxious, on-edge, worried, all near +0.32 base std) carry 77-81% of their squared movement in the uniform component, against a 57% median across all emotions, and their Wasserstein-1 equals their mean shift exactly. This is also why the recomputed-statistics current-probe teacher barely drifted: per-emotion standardization absorbs precisely this uniform component. The SFT parent's own shifts vs base (not shown) are three times smaller and more message-selective.",
+    "notebook": "dpo_battery.py",
+    "updated": "2026-08-11"
+  },
+  "dpo_shift_by_family_and_split": {
+    "file": "dpo_shift_by_family_and_split.svg",
+    "caption": "Family-mean activation shift introduced by the DPO step (tag-masked checkpoint minus its two-epochs SFT parent, base-std units), computed independently on six disjoint message subsets: the SFT training messages, both held-out eval sets, the 148 messages the DPO pairs were built from, the 202 pool messages that yielded no pair, and the 709 messages untouched by any training or sampling. Per-emotion shift vectors correlate r = 0.976-0.996 between subsets.",
+    "takeaway": "The anxiety-up / calm-down family pattern reproduces on every subset, including the 709 messages no stage of training or sampling ever touched \u2014 the DPO step changed how the model reads everything, not how it reads its training items. Magnitudes vary somewhat by subset (largest on the pair messages themselves), but subset family composition confounds magnitude comparisons; the replicated direction is the claim.",
+    "notebook": "dpo_battery.py",
+    "updated": "2026-08-11"
+  },
+  "sft_step_vs_dpo_step_distribution_shift": {
+    "file": "sft_step_vs_dpo_step_distribution_shift.svg",
+    "caption": "Family-mean standardized Wasserstein-1 distance between before and after activation distributions for the two training steps, on the held-out within-family messages (n = 260): the full SFT (1,076 examples, two epochs, 1,152 gradient examples) vs the DPO step (164 pairs, one epoch, 21 steps, tag tokens only in the loss).",
+    "takeaway": "The 21-step tag-masked DPO moved the activation distributions further than the entire SFT in every family, typically by a factor of two to four \u2014 fear-and-overwhelm and vigilant-suspicion most (0.15-0.20 vs the SFT's 0.04-0.06). Per token of training signal the preference stage is by far the more state-moving intervention, consistent with \u00a73's expectation that an objective touching the internals is where representational drift actually appears.",
+    "notebook": "dpo_battery.py",
+    "updated": "2026-08-11"
+  }
+}
