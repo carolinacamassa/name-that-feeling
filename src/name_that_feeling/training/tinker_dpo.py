@@ -22,6 +22,16 @@ plus EOS (the later whole-sequence arm).
 History sanity: ``mean_margin`` and ``frac_margin_positive`` should RISE over steps;
 a consistent fall means the importance-sampling surrogate's sign convention is the
 opposite of the one assumed here -- flip the advantage signs and re-run.
+
+Displacement watch (2026-08-11, docs/rlhf-book-notes-for-tag-dpo.md §3): the history
+also records ``mean_chosen_reward`` and ``mean_rejected_reward`` -- each side's
+implicit reward beta * (policy logprob sum - reference logprob sum) over the credited
+span, whose difference is beta * margin. A rising margin can mean two things: the
+chosen replies becoming more likely (healthy), or BOTH sides becoming less likely
+with the rejected falling faster (preference displacement -- the freed probability
+mass flows to sequences that appeared in neither slot; the tag-masked runaway-tag
+collapse was this). ``mean_chosen_reward`` falling while ``mean_margin`` rises is the
+displacement signature: treat it as a stop-the-run alarm, not a curiosity.
 """
 
 from __future__ import annotations
@@ -154,6 +164,8 @@ def train_dpo(
             pol_c, pol_r = sums[: len(idx)], sums[len(idx) :]
 
             margins = [(pol_c[k] - ref_c[j]) - (pol_r[k] - ref_r[j]) for k, j in enumerate(idx)]
+            chosen_rewards = [dpo_beta * (pol_c[k] - ref_c[j]) for k, j in enumerate(idx)]
+            rejected_rewards = [dpo_beta * (pol_r[k] - ref_r[j]) for k, j in enumerate(idx)]
             fb_datums = []
             for k, j in enumerate(idx):
                 w = dpo_beta / (1.0 + math.exp(dpo_beta * margins[k]))  # beta * sigmoid(-beta*margin)
@@ -183,6 +195,8 @@ def train_dpo(
                     "epoch": epoch + 1,
                     "mean_margin": round(float(np.mean(margins)), 4),
                     "frac_margin_positive": round(float(np.mean([m > 0 for m in margins])), 3),
+                    "mean_chosen_reward": round(float(np.mean(chosen_rewards)), 4),
+                    "mean_rejected_reward": round(float(np.mean(rejected_rewards)), 4),
                     "mean_weight": round(
                         float(np.mean([dpo_beta / (1 + math.exp(dpo_beta * m)) for m in margins])), 5
                     ),
@@ -191,6 +205,8 @@ def train_dpo(
             print(
                 f"[{run_name}] step {step}/{steps_per_epoch * num_epochs} "
                 f"margin {history[-1]['mean_margin']:+.3f} "
+                f"chosen {history[-1]['mean_chosen_reward']:+.3f} "
+                f"rejected {history[-1]['mean_rejected_reward']:+.3f} "
                 f"acc {history[-1]['frac_margin_positive']:.2f} ({time.time() - t0:.0f}s)",
                 flush=True,
             )
