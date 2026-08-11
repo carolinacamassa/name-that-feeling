@@ -43,6 +43,7 @@ class EmotionSimilarity:
         self._index = {e: i for i, e in enumerate(self.emotions)}
         self._matrix = matrix
         self._pct_rows: dict[int, list[float]] = {}  # per-target rank percentiles, built lazily
+        self._centroid_pct_rows: dict[tuple, list[float]] = {}  # per-weighted-tag, built lazily
 
     @classmethod
     def load(cls, path: str | Path) -> "EmotionSimilarity":
@@ -95,6 +96,46 @@ class EmotionSimilarity:
         if norm_sq <= 0:
             return None
         return num / norm_sq**0.5
+
+    def centroid_rank_percentile(
+        self, weighted: list[tuple[str, float]], emitted: str | None
+    ) -> float | None:
+        """Percentile of ``emitted`` among all emotions ranked by similarity to the
+        weighted centroid of a multi-word tag (the 1-vs-3 form of ``rank_percentile``;
+        adopted for DPO pair construction 2026-08-11).
+
+        Ranking by :meth:`centroid_sim` reduces to ranking by the weighted similarity
+        sums — the centroid norm is constant across candidates — so no norm is needed.
+        Same mid-rank-tie convention as ``rank_percentile``; with a single-word tag the
+        two methods agree exactly. Unknown tag words are dropped with their weights;
+        returns ``None`` if ``emitted`` or the whole tag is off-taxonomy.
+        """
+        if emitted is None or not weighted:
+            return None
+        ie = self.index(emitted)
+        if ie is None:
+            return None
+        key = tuple((slugify(e), round(w, 6)) for e, w in weighted)
+        pct = self._centroid_pct_rows.get(key)
+        if pct is None:
+            targets = [(i, w) for e, w in weighted if (i := self.index(e)) is not None]
+            if not targets:
+                return None
+            row = [sum(w * self._matrix[j][i] for i, w in targets) for j in range(len(self.emotions))]
+            n = len(row)
+            order = sorted(range(n), key=lambda j: row[j])  # ascending: farthest first
+            pct = [0.0] * n
+            k = 0
+            while k < n:
+                j = k
+                while j + 1 < n and row[order[j + 1]] == row[order[k]]:
+                    j += 1
+                mid = (k + j) / 2  # mid-rank for ties
+                for m in range(k, j + 1):
+                    pct[order[m]] = mid / (n - 1) if n > 1 else 1.0
+                k = j + 1
+            self._centroid_pct_rows[key] = pct
+        return pct[ie]
 
     def rank_percentile(self, target: str | None, emitted: str | None) -> float | None:
         """Percentile of ``emitted`` among all emotions ranked by similarity to ``target``.
