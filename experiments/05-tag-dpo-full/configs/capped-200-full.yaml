@@ -1,0 +1,12 @@
+# Whole-reply-credit rerun of the capped arm: identical pairs, parameters, seed, and
+# reference — ONLY the credit changes (tag -> full). The thin neutral slice is kept
+# deliberately (fixing it here would confound the credit comparison; the ~45-pair
+# neutral floor is a next-round dataset decision).
+base_model: Qwen/Qwen3.5-9B
+pairs: data/pairs/capped-200.jsonl
+credit: full
+dpo_beta: 0.1
+learning_rate: 5.0e-5
+batch_size: 8
+num_epochs: 1
+seed: 42

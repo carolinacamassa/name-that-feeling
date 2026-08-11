@@ -1,0 +1,11 @@
+# Capped arm: 189 charged levelled from the largest family (~27/family, peaceful
+# keeps its 9) + 11 neutral (holding the neutral proportion at the uncapped arm's
+# 5.6%, so the arms differ on the charged mixture only). Same template parameters.
+base_model: Qwen/Qwen3.5-9B
+pairs: data/pairs/capped-200.jsonl
+credit: tag
+dpo_beta: 0.1
+learning_rate: 5.0e-5
+batch_size: 8
+num_epochs: 1
+seed: 42

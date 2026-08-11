@@ -1,0 +1,23 @@
+{
+  "channel_health_by_dose": {
+    "file": "channel_health_by_dose.svg",
+    "caption": "K = 12 temperature-1 draws per held-out prompt for four checkpoints: the two-epochs SFT parent, the 164-pair pilot, and the two full-scale arms, all trained with identical template parameters. Compliant = the draw opens and closes the emotion tag; consistently right/wrong = every draw of the prompt scores \u2265 0.8 / \u2264 0.4 rank percentile against the frozen probe teacher's top word (a draw that never closes its tag counts as not-right).",
+    "takeaway": "Sharpening scales into degeneration: the pilot and the capped arm triple the parent's consistently-right share (6% to 30% within) with format intact, but the uncapped arm at 100 steps loses the format itself \u2014 only 42% of its charged draws close the tag (the rest repeat emotion words indefinitely), consistently-right collapses to 5%/1%, and consistently-wrong prompts appear at 12%/18%. Its surviving draws score highest of all checkpoints (0.80 within) \u2014 over-sharpening and format collapse are the same process at different doses, not separate failures.",
+    "notebook": "arm_battery.py",
+    "updated": "2026-08-11"
+  },
+  "neutral_anchor_modes_by_dose": {
+    "file": "neutral_anchor_modes_by_dose.svg",
+    "caption": "Composition of the K = 12 neutral-prompt draws per checkpoint: the exact trained anchor (calm, attentive), the anchor with one or more words appended (capped-200's dominant mode is calm, attentive, playful), or any other tag. The uncapped arm trained on 45 neutral pairs, the capped arm on 11, the pilot on 16.",
+    "takeaway": "The neutral anchor's fate tracks the arm's neutral-pair count, not its total size: uncapped-800 (45 neutral pairs) holds the exact anchor on 98% of draws \u2014 better than the parent \u2014 while capped-200 (11 pairs) all but loses it (1%), drifting to anchor-plus-appended-word on 68% of draws; the pilot (16 pairs) sits between at 81%. The appended word is usually playful-family \u2014 the same attractor the corrupted-labels collapse fell into \u2014 so the 'more emotion words' pressure from the charged pairs captures whichever slice is too thin to resist it.",
+    "notebook": "arm_battery.py",
+    "updated": "2026-08-11"
+  },
+  "arm_family_tilt_vs_pilot": {
+    "file": "arm_family_tilt_vs_pilot.svg",
+    "caption": "Family-mean pre-response activation shift introduced by each preference run relative to the shared two-epochs parent, on the held-out within-family messages (projections on the fixed base vectors, base-std units). The pilot's mixture was hostile-heavy, the uncapped arm's is 82% negative, the capped arm's is near-flat.",
+    "takeaway": "Scale multiplies the state shift and mixture steers it, but no mixture keeps the state still: the uncapped arm collapses the calm/peaceful end by 0.5-0.9 base std (several times the pilot's largest movement) while the capped arm \u2014 a quarter the pairs, a flat mixture, 25 steps \u2014 still moves families by up to ~0.4, with a different profile than either negative-heavy run. At template parameters the preference stage's optimization pressure, not its mixture, is the first-order driver of representational drift.",
+    "notebook": "arm_battery.py",
+    "updated": "2026-08-11"
+  }
+}

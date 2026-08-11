@@ -1,0 +1,12 @@
+# Whole-reply-credit rerun of the uncapped arm (backlog item 2026-08-11): identical
+# pairs, parameters, seed, and reference — ONLY the credit changes (tag -> full).
+# Tests the tag-masking-as-amplifier account; the body tokens return as ballast and
+# the reference tether extends over the whole reply (EOS included by credit: full).
+base_model: Qwen/Qwen3.5-9B
+pairs: data/pairs/uncapped-800.jsonl
+credit: full
+dpo_beta: 0.1
+learning_rate: 5.0e-5
+batch_size: 8
+num_epochs: 1
+seed: 42

@@ -111,6 +111,35 @@ Deliberately a subset, not the full pool:
 run consume it. Held-out eval sets (within 260 / cross 77 / neutral 50) are never
 sampled for pairs.
 
+### 4.1 The full-scale follow-up lives in `05-tag-dpo-full`
+
+The scaled preference runs (from-scratch pool over every eligible prompt, 1-vs-3
+pair scoring, the uncapped-800 / capped-200 mixture arms) are a separate experiment:
+`experiments/05-tag-dpo-full` (Tinker/Volume token 09-). This folder remains the
+design pilot — the run `tag-masked-test`, its pool, pairs, and battery — frozen for
+reproducibility. The section below records the dataset decisions as they were made
+here, before the split; the authoritative copy is the new experiment's description.
+
+### 4.2 The core-run pool and pairs (2026-08-11, superseded record — see 4.1)
+
+For the full 3-seed run the pool was rebuilt from scratch under three decisions
+(Carolina): pair scoring moves to the **1-vs-3 centroid form**
+(`EmotionSimilarity.centroid_rank_percentile`; the 1-vs-1 pair choices proved
+form-sensitive — only 64 of the test run's 148 pairs survive the form change);
+SFT-train/unused **provenance bookkeeping is dropped** (SFT reuse is safe — train
+messages pair at held-out rates with no memorization — and required, since the
+undrawn remainder was 92% negative-family); and the pool covers **every eligible
+prompt**: all 1,635 charged messages in the eight training families plus all 500
+trained neutral messages, with only the eval sets and the two held-out families
+excluded. `sample_full_pool.py` reused all 646 stored prompt-draw sets and sampled
+the remaining 1,489 (same sampler, K = 12, temperature 1.0, 1536 tokens) →
+`data/pool_full/samples.json`; `build_pairs_full.py` (same thresholds and neutral
+rule, centroid scoring) → `data/pairs_full/`: **806 pairs** — 761 charged (47%
+yield) + 45 neutral (9%), uncapped family mix fear 248 / despair 187 / hostile 186 /
+depleted 48 / joy 37 / compassionate 23 / pride 23 / peaceful 9 (82% negative — the
+per-arm tilt readout stays mandatory). The test-run artifacts under `data/pool/` and
+`data/pairs/` are frozen for reproducibility.
+
 ## 5. Training mechanics (Tinker, no local torch)
 
 Hyperparameters from the Soligo et al. DPO template: **β 0.1, lr 5e-5, 1 epoch,

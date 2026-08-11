@@ -1,0 +1,11 @@
+# Uncapped arm: the full 1-vs-3 pair inventory at a round 800 (806 minus 6
+# seeded-random fear pairs; the realized 82%-negative mixture, 45 neutral = 5.6%).
+# Template hyperparameters (Soligo Table 9); decisions 2026-08-11.
+base_model: Qwen/Qwen3.5-9B
+pairs: data/pairs/uncapped-800.jsonl
+credit: tag
+dpo_beta: 0.1
+learning_rate: 5.0e-5
+batch_size: 8
+num_epochs: 1
+seed: 42
