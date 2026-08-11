@@ -13,10 +13,11 @@ def _():
     import marimo as mo
     import polars as pl
 
+    from name_that_feeling.evals.uncertainty import mean_and_ci
     from name_that_feeling.reporting import save_chart
 
     alt.data_transformers.disable_max_rows()
-    return Path, alt, json, mo, pl, save_chart
+    return Path, alt, json, mean_and_ci, mo, pl, save_chart
 
 
 @app.cell
@@ -25,8 +26,8 @@ def _(Path, json):
 
     # The two full-battery prompt arms (run.py writes eval.json per run).
     ARMS = {
-        "prompted base, open vocabulary": "format-spec-explicit-tag",
-        "prompted base, 171-word list": "full-vocabulary-list",
+        "untrained, open vocabulary": "format-spec-explicit-tag",
+        "untrained, word list": "full-vocabulary-list",
     }
     EVALS = {
         label: json.loads((HERE / "data" / "runs" / run / "eval.json").read_text(encoding="utf-8"))
@@ -35,16 +36,32 @@ def _(Path, json):
 
     # Trained reference: the gold-standard two-epochs run's full-set battery, re-scored
     # with the distance metrics (04-sft-seeds-and-epochs summarizer output).
-    TRAINED_LABEL = "trained SFT, two epochs (unprompted)"
+    TRAINED_LABEL = "after SFT (2 epochs)"
     _summary_path = HERE.parent / "04-sft-seeds-and-epochs" / "data" / "cross" / "runs_summary.json"
     _rows = json.loads(_summary_path.read_text(encoding="utf-8")) if _summary_path.exists() else []
     TRAINED = next((r for r in _rows if r.get("run") == "two-epochs"), None)
 
     MODEL_ORDER = list(ARMS) + [TRAINED_LABEL]
-    _g = EVALS["prompted base, 171-word list"]["generalization"]["within"]
+    _g = EVALS["untrained, word list"]["generalization"]["within"]
     CHANCE_WITHIN = _g["chance_biggest_family"]
     TEACHER_CEILING_WITHIN = _g["teacher_cluster_agreement"]
-    return CHANCE_WITHIN, EVALS, MODEL_ORDER, TEACHER_CEILING_WITHIN, TRAINED, TRAINED_LABEL
+
+    # Per-record scores for all three models, re-scored from the stored samples by
+    # rescore_teacher_centroid.py. Every mean plotted below is an average over these
+    # records, so the same file supplies both the bar heights and their bootstrap
+    # error bars (evals.uncertainty.mean_and_ci resamples records).
+    PER_RECORD = json.loads(
+        (HERE / "data" / "teacher_centroid" / "scores.json").read_text(encoding="utf-8")
+    )
+    return (
+        CHANCE_WITHIN,
+        EVALS,
+        MODEL_ORDER,
+        PER_RECORD,
+        TEACHER_CEILING_WITHIN,
+        TRAINED,
+        TRAINED_LABEL,
+    )
 
 
 @app.cell
@@ -71,69 +88,68 @@ def _(mo):
 
 
 @app.cell
-def _(CHANCE_WITHIN, EVALS, MODEL_ORDER, TEACHER_CEILING_WITHIN, TRAINED, TRAINED_LABEL, alt, pl, save_chart):
-    _rows = [
-        {
-            "model": _label,
-            "reference": _ref_label,
-            "agreement": _e["generalization"]["within"][_key],
-        }
-        for _label, _e in EVALS.items()
-        for _ref_label, _key in (
-            ("elicited emotion", "model_cluster_agreement"),
-            ("probe teacher", "model_vs_teacher_agreement"),
-        )
-    ]
-    if TRAINED is not None:
-        _rows += [
-            {"model": TRAINED_LABEL, "reference": "elicited emotion", "agreement": TRAINED["within_model_vs_elicited"]},
-            {"model": TRAINED_LABEL, "reference": "probe teacher", "agreement": TRAINED["within_model_vs_teacher"]},
+def _(CHANCE_WITHIN, MODEL_ORDER, PER_RECORD, TEACHER_CEILING_WITHIN, alt, mean_and_ci, pl, save_chart):
+    _REFS = (("elicited emotion", "family_agree_elicited"), ("probe teacher", "family_agree_teacher"))
+    _long = pl.DataFrame(
+        [
+            {"model": _label, "reference": _ref, **mean_and_ci([_r[_key] for _r in _sets["within"]])}
+            for _label, _sets in PER_RECORD.items()
+            for _ref, _key in _REFS
         ]
-    _long = pl.DataFrame(_rows)
-    _bars = (
-        alt.Chart(_long)
-        .mark_bar()
-        .encode(
-            x=alt.X("model:N", sort=MODEL_ORDER, title=None, axis=alt.Axis(labelAngle=-20, labelLimit=200)),
-            xOffset=alt.XOffset("reference:N", sort=["elicited emotion", "probe teacher"]),
-            y=alt.Y(
-                "agreement:Q",
-                scale=alt.Scale(domain=[0, 1]),
-                axis=alt.Axis(format="%"),
-                title="family agreement (within-family set)",
-            ),
-            color=alt.Color(
-                "reference:N",
-                scale=alt.Scale(scheme="tableau10"),
-                sort=["elicited emotion", "probe teacher"],
-                title="scored against",
-            ),
-            tooltip=["model", "reference", alt.Tooltip("agreement:Q", format=".3f")],
-        )
     )
+    _base = alt.Chart(_long).encode(
+        x=alt.X("model:N", sort=MODEL_ORDER, title=None, axis=alt.Axis(labelAngle=-20, labelLimit=200)),
+        xOffset=alt.XOffset("reference:N", sort=[_r for _r, _ in _REFS]),
+    )
+    _bars = _base.mark_bar().encode(
+        y=alt.Y(
+            "mean:Q",
+            scale=alt.Scale(domain=[0, 1]),
+            axis=alt.Axis(format="%"),
+            title="family agreement (within-family set)",
+        ),
+        color=alt.Color(
+            "reference:N",
+            scale=alt.Scale(scheme="tableau10"),
+            sort=[_r for _r, _ in _REFS],
+            title="scored against",
+        ),
+        tooltip=[
+            "model",
+            "reference",
+            alt.Tooltip("mean:Q", format=".3f"),
+            alt.Tooltip("lo:Q", format=".3f", title="95% CI lower"),
+            alt.Tooltip("hi:Q", format=".3f", title="95% CI upper"),
+            "n",
+        ],
+    )
+    _errors = _base.mark_rule(strokeWidth=1.5).encode(y="lo:Q", y2="hi:Q")
     _chance_rule = alt.Chart(_long).mark_rule(strokeDash=[5, 4]).encode(y=alt.datum(CHANCE_WITHIN))
     _ceiling_rule = alt.Chart(_long).mark_rule(strokeDash=[2, 3]).encode(y=alt.datum(TEACHER_CEILING_WITHIN))
     save_chart(
-        alt.layer(_bars, _chance_rule, _ceiling_rule).properties(
-            width=380, height=260, title="Binary family agreement, prompted arms vs the trained checkpoint"
+        alt.layer(_bars, _errors, _chance_rule, _ceiling_rule).properties(
+            width=380, height=260, title="Family agreement with the probe label, before and after training"
         ),
         "family_agreement_prompted_vs_trained",
         caption=(
             "Family-level agreement of the emitted tag on the 260 held-out within-family messages, against two "
             "references: the emotion each message was written to elicit, and the probe-derived teacher tag for the "
             "same message. Models: the prompted base with an open vocabulary, the prompted base given the full "
-            "171-word vocabulary, and the trained two-epoch SFT checkpoint sampled without a system prompt. "
-            "Dashed lines: the always-guess-the-largest-family baseline (15%) and the probe teacher's own agreement "
-            "with the elicited emotion (37%), the ceiling the weak labels support."
+            "171-word vocabulary, and the same model after supervised fine-tuning, sampled without a system prompt. "
+            "Vertical lines are 95% bootstrap confidence intervals over the held-out messages (2000 resamples); "
+            "a tag containing no taxonomy word counts as a miss, as in the battery. Dashed lines: the "
+            "always-guess-the-largest-family baseline (15%) and the probe teacher's own agreement with the elicited "
+            "emotion (37%), the ceiling the weak labels support."
         ),
         takeaway=(
-            "Against the elicited emotion, the prompted base with the vocabulary list reaches 40% family agreement — "
-            "matching the trained checkpoint's 40% and exceeding the probe teacher's 37% — so supervised training "
-            "adds no measurable within-family accuracy over instruction plus the word list. Against the probe "
-            "teacher the ordering reverses: the trained checkpoint reaches 53% where the prompted arms stay at "
-            "16% and 35%, indicating that what training installs beyond promptable ability is agreement with the "
-            "probe's specific labeling function. The open-vocabulary arm sits below chance against the elicited "
-            "family (12%) because its free vocabulary rarely lands inside the taxonomy at all."
+            "Against the elicited emotion, the prompted base with the vocabulary list reaches 40% family agreement "
+            "[95% CI 34–46%], statistically indistinguishable from the fine-tuned model's 40% [34–46%] and level "
+            "with the probe teacher's 37% — so supervised training adds no measurable within-family accuracy over "
+            "instruction plus the word list. Against the probe teacher the ordering reverses and the intervals "
+            "separate cleanly: the fine-tuned model reaches 53% where the prompted arms stay at 16% and 35%, "
+            "indicating that what training installs beyond promptable ability is agreement with the probe's "
+            "specific labeling function. The open-vocabulary arm sits below chance against the elicited family "
+            "(12%) because its free vocabulary rarely lands inside the taxonomy at all."
         ),
         notebook=__file__,
     )
@@ -141,63 +157,64 @@ def _(CHANCE_WITHIN, EVALS, MODEL_ORDER, TEACHER_CEILING_WITHIN, TRAINED, TRAINE
 
 
 @app.cell
-def _(EVALS, MODEL_ORDER, TRAINED, TRAINED_LABEL, alt, pl, save_chart):
+def _(MODEL_ORDER, PER_RECORD, alt, mean_and_ci, pl, save_chart):
     _set_sizes = {"within": 260, "cross": 77}
-    _rows = [
-        {
-            "model": _label,
-            "set": _set,
-            "rank_pct": _d["model_rank_pct_first_mean"],
-            "scorable": f"n={_d['model_rank_pct_first_n']}/{_set_sizes[_set]}",
-        }
-        for _label, _e in EVALS.items()
-        for _set, _d in _e["distance_generalization"].items()
-    ]
-    if TRAINED is not None:
-        _rows += [
+    _long = pl.DataFrame(
+        [
             {
-                "model": TRAINED_LABEL,
+                "model": _label,
                 "set": _set,
-                "rank_pct": TRAINED[f"dist_{_set}_model_rank_pct"],
-                "scorable": f"n≈{_set_sizes[_set]}/{_set_sizes[_set]}",
+                **(_ci := mean_and_ci([_r["rank_pct_elicited"] for _r in _records])),
+                "scorable": f"n={_ci['n']}/{_set_sizes[_set]}",
             }
-            for _set in ("within", "cross")
+            for _label, _sets in PER_RECORD.items()
+            for _set, _records in _sets.items()
         ]
-    _long = pl.DataFrame(_rows)
+    )
     _base = alt.Chart(_long).encode(
         x=alt.X("model:N", sort=MODEL_ORDER, title=None, axis=alt.Axis(labelAngle=-20, labelLimit=200)),
     )
     _bars = _base.mark_bar().encode(
         y=alt.Y(
-            "rank_pct:Q",
+            "mean:Q",
             scale=alt.Scale(domain=[0, 1]),
             title="similarity rank percentile of the emitted tag",
         ),
         color=alt.Color("model:N", sort=MODEL_ORDER, scale=alt.Scale(scheme="tableau10"), legend=None),
-        tooltip=["model", "set", alt.Tooltip("rank_pct:Q", format=".3f"), "scorable"],
+        tooltip=[
+            "model",
+            "set",
+            alt.Tooltip("mean:Q", format=".3f"),
+            alt.Tooltip("lo:Q", format=".3f", title="95% CI lower"),
+            alt.Tooltip("hi:Q", format=".3f", title="95% CI upper"),
+            "scorable",
+        ],
     )
-    _labels = _base.mark_text(dy=-6, fontSize=10).encode(y="rank_pct:Q", text="scorable:N")
+    _errors = _base.mark_rule(strokeWidth=1.5).encode(y="lo:Q", y2="hi:Q")
+    _labels = _base.mark_text(dy=-8, fontSize=10).encode(y="hi:Q", text="scorable:N")
     _rule = alt.Chart(_long).mark_rule(strokeDash=[5, 4]).encode(y=alt.datum(0.5))
     save_chart(
-        alt.layer(_bars, _labels, _rule)
+        alt.layer(_bars, _errors, _labels, _rule)
         .properties(width=240, height=240)
         .facet(column=alt.Column("set:N", title=None, sort=["within", "cross"]))
-        .properties(title="Graded similarity to the elicited emotion, prompted arms vs the trained checkpoint"),
+        .properties(title="Graded similarity to the elicited emotion, before and after training"),
         "graded_similarity_prompted_vs_trained",
         caption=(
             "Mean rank percentile of the emitted tag's first in-taxonomy word among all 171 emotions, ranked by "
             "emotion-vector cosine similarity to the message's elicited emotion (1.0 names the elicited emotion "
-            "exactly; 0.5 is the uniform-guess chance level, dashed line). Bar labels give the number of scorable "
-            "records — records whose tag contains an in-taxonomy word — over the set size; the open-vocabulary "
-            "arm scores only 37% of within-family records, and those are plausibly the easier, strongly valenced "
-            "messages."
+            "exactly; 0.5 is the uniform-guess chance level, dashed line). Vertical lines are 95% bootstrap "
+            "confidence intervals over the scorable held-out messages (2000 resamples). Labels give the number of "
+            "scorable records — those whose tag contains an in-taxonomy word — over the set size; the "
+            "open-vocabulary arm scores only 37% of within-family records, and those are plausibly the easier, "
+            "strongly valenced messages, which also widens its interval."
         ),
         takeaway=(
-            "On the graded metric the zero-training floor is at the trained level: both prompted arms' within-family "
-            "rank percentile (0.717 open-vocabulary on its scorable subset, 0.732 with the word list on 94% of "
-            "records) brackets the trained checkpoint's 0.714. On the cross-family set the prompted arms exceed the "
-            "trained checkpoint (0.78–0.84 against 0.69), consistent with the prompted base having no trained-family "
-            "restriction to overcome on held-out families."
+            "On the graded metric the zero-training floor is at the trained level: within-family, the word-list arm "
+            "reaches 0.732 [95% CI 0.69–0.77] and the open-vocabulary arm 0.717 [0.66–0.78] on its scorable subset, "
+            "both overlapping the fine-tuned model's 0.714 [0.68–0.75]. On the cross-family set the prompted arms "
+            "sit above the fine-tuned model (0.78–0.84 against 0.69), though with 45–77 scorable records the "
+            "intervals are wide enough that only the open-vocabulary arm's advantage approaches separation — "
+            "consistent with the prompted base having no trained-family restriction to overcome."
         ),
         notebook=__file__,
     )
@@ -205,66 +222,83 @@ def _(EVALS, MODEL_ORDER, TRAINED, TRAINED_LABEL, alt, pl, save_chart):
 
 
 @app.cell
-def _(EVALS, MODEL_ORDER, TRAINED, TRAINED_LABEL, alt, pl, save_chart):
-    _rows = [
-        {
-            "model": _label,
-            "form": "family agreement (binary)",
-            "value": _e["generalization"]["within"]["model_vs_teacher_agreement"],
-        }
-        for _label, _e in EVALS.items()
-    ] + [
-        {
-            "model": _label,
-            "form": "emotion-vector cosine (graded)",
-            "value": _e["distance_generalization"]["within"]["model_vs_teacher_cosine_mean"],
-        }
-        for _label, _e in EVALS.items()
+def _(MODEL_ORDER, PER_RECORD, alt, mean_and_ci, pl, save_chart):
+    _FORMS = [
+        "family agreement (binary)",
+        "cosine, teacher top word (1-vs-1)",
+        "cosine, teacher weighted tag (1-vs-3)",
     ]
-    if TRAINED is not None:
-        _rows += [
-            {"model": TRAINED_LABEL, "form": "family agreement (binary)", "value": TRAINED["within_model_vs_teacher"]},
+    # The two metric families count an off-taxonomy tag differently -- a miss for the
+    # binary form (all 260 records in the denominator), unscorable for the graded forms
+    # (dropped). The per-bar label carries the record count so the graded bars are never
+    # read as a like-for-like ranking across arms with different coverage.
+    _long = pl.DataFrame(
+        [
             {
-                "model": TRAINED_LABEL,
-                "form": "emotion-vector cosine (graded)",
-                "value": TRAINED["dist_within_model_vs_teacher_cosine"],
-            },
+                "model": _label,
+                "form": _form,
+                **(_ci := mean_and_ci([_r[_key] for _r in _sets["within"]])),
+                "coverage": f"{_ci['n']}/260",
+            }
+            for _label, _sets in PER_RECORD.items()
+            for _form, _key in zip(_FORMS, ("family_agree_teacher", "cos_top1", "cos_centroid"))
         ]
-    _long = pl.DataFrame(_rows)
+    )
+    _base = alt.Chart(_long).encode(
+        x=alt.X("model:N", sort=MODEL_ORDER, title=None, axis=alt.Axis(labelAngle=-20, labelLimit=200)),
+    )
+    _bars = _base.mark_bar().encode(
+        y=alt.Y("mean:Q", scale=alt.Scale(domain=[0, 1]), title="agreement with the probe teacher"),
+        color=alt.Color("model:N", sort=MODEL_ORDER, scale=alt.Scale(scheme="tableau10"), legend=None),
+        tooltip=[
+            "model",
+            "form",
+            alt.Tooltip("mean:Q", format=".3f"),
+            alt.Tooltip("lo:Q", format=".3f", title="95% CI lower"),
+            alt.Tooltip("hi:Q", format=".3f", title="95% CI upper"),
+            "n",
+        ],
+    )
+    _errors = _base.mark_rule(strokeWidth=1.5).encode(y="lo:Q", y2="hi:Q")
+    _labels = _base.mark_text(dy=-8, fontSize=9, color="#555").encode(y="hi:Q", text="coverage:N")
     _chart = (
-        alt.Chart(_long)
-        .mark_bar()
-        .encode(
-            x=alt.X("model:N", sort=MODEL_ORDER, title=None, axis=alt.Axis(labelAngle=-20, labelLimit=200)),
-            y=alt.Y("value:Q", scale=alt.Scale(domain=[0, 1]), title="agreement with the probe teacher"),
-            color=alt.Color("model:N", sort=MODEL_ORDER, scale=alt.Scale(scheme="tableau10"), legend=None),
-            column=alt.Column(
-                "form:N",
-                sort=["family agreement (binary)", "emotion-vector cosine (graded)"],
-                title=None,
-            ),
-            tooltip=["model", "form", alt.Tooltip("value:Q", format=".3f")],
-        )
-        .properties(width=240, height=240, title="Fidelity to the probe teacher, in both measurement forms")
+        alt.layer(_bars, _errors, _labels)
+        .properties(width=210, height=240)
+        .facet(column=alt.Column("form:N", sort=_FORMS, title=None))
+        .properties(title="Fidelity to the probe teacher, in three measurement forms")
     )
     save_chart(
         _chart,
         "teacher_fidelity_binary_vs_graded",
         caption=(
             "Agreement between the emitted tag and the probe-derived teacher tag on the 260 held-out within-family "
-            "messages, in the two measurement forms of the standard battery: binary family agreement, and the mean "
-            "emotion-vector cosine between the tag's first in-taxonomy word and the teacher's first emotion. Graded "
-            "values cover scorable records only (95 of 260 for the open-vocabulary arm, 245 of 260 with the word "
-            "list, essentially all for the trained checkpoint)."
+            "messages, in the three measurement forms available: binary family agreement; the mean emotion-vector "
+            "cosine between the tag's first in-taxonomy word and the teacher's single top-mass word (1-vs-1, the "
+            "battery's current convention); and the same cosine against the mass-weighted centroid of the "
+            "teacher's full multi-emotion tag (1-vs-3), which uses the whole probe-derived label rather than its "
+            "mode. Vertical lines are 95% bootstrap confidence intervals over the held-out messages (2000 "
+            "resamples). The two metric families treat a tag containing no taxonomy word differently, and the "
+            "record count above each bar makes the difference visible: the binary form counts such a tag as a "
+            "miss, keeping all 260 messages in the denominator, while the graded forms drop it as unscorable — 95 "
+            "of 260 messages survive for the open-vocabulary arm against 245 with the word list and all 260 for "
+            "the fine-tuned model."
         ),
         takeaway=(
-            "The trained checkpoint leads on both forms of teacher fidelity (53% family agreement, 0.537 cosine "
-            "against 16–35% and 0.43–0.47 for the prompted arms) — the clearest quantity supervised training adds "
-            "over prompting. The open-vocabulary arm's higher cosine than the list arm's is entirely a composition "
-            "effect of which records are scorable: on the 94 within-family records both arms can score, the two "
-            "prompts are indistinguishable (0.475 against 0.481, paired difference −0.006), while the 151 records "
-            "only the list arm can score average 0.391 and pull its overall mean down. The graded comparison "
-            "between prompted arms is therefore not a ranking of the prompts."
+            "The fine-tuned model leads on all three forms of teacher fidelity (53% family agreement [95% CI "
+            "47–59%], 0.537 cosine against the teacher's top word [0.49–0.58], and 0.610 against the full weighted "
+            "tag, versus 16–35%, 0.43–0.47 and 0.49–0.52 for the prompted arms) — the clearest quantity supervised "
+            "training adds over prompting, and the only comparison whose intervals separate on every form. "
+            "Scoring against the full weighted teacher tag rather than its top-mass word raises every model by "
+            "0.03–0.07 and changes no ordering, so the choice between the two graded forms is immaterial for "
+            "battery-level conclusions. The open-vocabulary arm's higher cosine than the list arm's is entirely a "
+            "composition effect of which records the graded forms retain: on the 94 within-family messages both "
+            "arms can score, the two prompts are indistinguishable (0.475 against 0.481, paired difference "
+            "−0.006), while the 151 messages only the list arm can score average 0.391 and pull its overall mean "
+            "down. Charging every unscorable tag a cosine of zero — the convention under which a tag that names "
+            "no taxonomy emotion conveys nothing about the target — removes the asymmetry and reverses the "
+            "apparent ordering: 0.173 for the open-vocabulary arm against 0.401 with the word list and 0.537 for "
+            "the fine-tuned model. The graded comparison between prompted arms is therefore never a ranking of "
+            "the prompts at face value."
         ),
         notebook=__file__,
     )
@@ -334,28 +368,39 @@ def _(Path, json):
 
 
 @app.cell
-def _(CENTROID_SCORES, MODEL_ORDER, alt, pl, save_chart):
+def _(CENTROID_SCORES, MODEL_ORDER, alt, mean_and_ci, pl, save_chart):
     _FORMS = ["teacher top-mass word (1-vs-1)", "teacher mass-weighted centroid (1-vs-3)"]
-    _rows = [
-        {"model": _label, "set": _set, "form": _form, "cosine": _mean}
-        for _label, _sets in CENTROID_SCORES.items()
-        for _set, _records in _sets.items()
-        for _form, _key in zip(_FORMS, ("cos_top1", "cos_centroid"))
-        if (_scored := [_r[_key] for _r in _records if _r[_key] is not None])
-        and (_mean := sum(_scored) / len(_scored)) is not None
-    ]
+    _long = pl.DataFrame(
+        [
+            {"model": _label, "set": _set, "form": _form, **mean_and_ci([_r[_key] for _r in _records])}
+            for _label, _sets in CENTROID_SCORES.items()
+            for _set, _records in _sets.items()
+            for _form, _key in zip(_FORMS, ("cos_top1", "cos_centroid"))
+        ]
+    )
+    _base = alt.Chart(_long).encode(
+        x=alt.X("model:N", sort=MODEL_ORDER, title=None, axis=alt.Axis(labelAngle=-20, labelLimit=200)),
+        xOffset=alt.XOffset("form:N", sort=_FORMS),
+    )
+    _bars = _base.mark_bar().encode(
+        y=alt.Y("mean:Q", scale=alt.Scale(domain=[0, 0.7]), title="mean cosine to the probe teacher's tag"),
+        color=alt.Color("form:N", sort=_FORMS, scale=alt.Scale(scheme="tableau10"), title="teacher reference"),
+        tooltip=[
+            "model",
+            "set",
+            "form",
+            alt.Tooltip("mean:Q", format=".3f"),
+            alt.Tooltip("lo:Q", format=".3f", title="95% CI lower"),
+            alt.Tooltip("hi:Q", format=".3f", title="95% CI upper"),
+            "n",
+        ],
+    )
+    _errors = _base.mark_rule(strokeWidth=1.5).encode(y="lo:Q", y2="hi:Q")
     _chart = (
-        alt.Chart(pl.DataFrame(_rows))
-        .mark_bar()
-        .encode(
-            x=alt.X("model:N", sort=MODEL_ORDER, title=None, axis=alt.Axis(labelAngle=-20, labelLimit=200)),
-            xOffset=alt.XOffset("form:N", sort=_FORMS),
-            y=alt.Y("cosine:Q", scale=alt.Scale(domain=[0, 0.7]), title="mean cosine to the probe teacher's tag"),
-            color=alt.Color("form:N", sort=_FORMS, scale=alt.Scale(scheme="tableau10"), title="teacher reference"),
-            column=alt.Column("set:N", sort=["within", "cross"], title=None),
-            tooltip=["model", "set", "form", alt.Tooltip("cosine:Q", format=".3f")],
-        )
-        .properties(width=240, height=240, title="Fidelity to the probe teacher: top-mass word vs full weighted tag")
+        alt.layer(_bars, _errors)
+        .properties(width=240, height=240)
+        .facet(column=alt.Column("set:N", sort=["within", "cross"], title=None))
+        .properties(title="Fidelity to the probe teacher: top-mass word vs full weighted tag")
     )
     save_chart(
         _chart,
@@ -364,12 +409,13 @@ def _(CENTROID_SCORES, MODEL_ORDER, alt, pl, save_chart):
             "Mean cosine between the model's first in-taxonomy word and the probe teacher's tag, under two "
             "treatments of the teacher's multi-emotion label: the top-mass word alone (the battery's current "
             "1-vs-1 form) and the mass-weighted centroid of the full selected tag (1-vs-3; the two coincide on "
-            "single-word teacher tags, 4–6% of records). Scorable records only."
+            "single-word teacher tags, 4–6% of records). Scorable records only; vertical lines are 95% bootstrap "
+            "confidence intervals over those records (2000 resamples)."
         ),
         takeaway=(
             "Scoring against the full weighted teacher tag raises every model's mean similarity by 0.03–0.07 "
             "(within-family: 0.537 to 0.610 trained, 0.472 to 0.524 open vocabulary, 0.426 to 0.485 with the word "
-            "list) and changes no comparison: the trained checkpoint's lead over both prompted arms, and the "
+            "list) and changes no comparison: the fine-tuned model's lead over both prompted arms, and the "
             "ordering of every model pair, is identical under the two forms in both evaluation sets. For aggregate "
             "battery conclusions the choice between 1-vs-1 and 1-vs-3 is immaterial."
         ),

@@ -20,9 +20,9 @@ from name_that_feeling.evals.similarity import EmotionSimilarity
 from name_that_feeling.generation import sft
 
 RUNS = {
-    "prompted base, open vocabulary": common.RUNS_DIR / "format-spec-explicit-tag" / "eval_samples.json",
-    "prompted base, 171-word list": common.RUNS_DIR / "full-vocabulary-list" / "eval_samples.json",
-    "trained SFT, two epochs (unprompted)": common.HERE.parent
+    "untrained, open vocabulary": common.RUNS_DIR / "format-spec-explicit-tag" / "eval_samples.json",
+    "untrained, word list": common.RUNS_DIR / "full-vocabulary-list" / "eval_samples.json",
+    "after SFT (2 epochs)": common.HERE.parent
     / "04-sft-seeds-and-epochs"
     / "data"
     / "runs"
@@ -43,6 +43,12 @@ def main() -> None:
     def first_in_taxonomy(emotions: list[str]) -> str | None:
         return next((slugify(e) for e in emotions if sim.index(e) is not None), None)
 
+    emo2fam = tag_eval.family_lookup(clusters)
+    id_to_cluster, id_to_emotion = {}, {}
+    for set_name in ("within", "cross"):
+        for r in common.read_jsonl(common.SFT_DIR / f"eval_{set_name}.jsonl"):
+            id_to_cluster[r["id"]], id_to_emotion[r["id"]] = r["cluster"], r["emotion"]
+
     out: dict = {}
     for label, path in RUNS.items():
         samples = json.loads(path.read_text(encoding="utf-8"))
@@ -51,11 +57,17 @@ def main() -> None:
             records = []
             for s in samples[set_name]:
                 teacher = sft.select_tag_emotions(proj_by_id[s["id"]], clusters, stats=stats, **tag_config)
-                model_first = first_in_taxonomy(tag_eval.parse_reply(s["reply"])["emotions"])
+                model_emotions = tag_eval.parse_reply(s["reply"])["emotions"]
+                model_first = first_in_taxonomy(model_emotions)
                 top1 = sim.sim(model_first, teacher[0][0])
                 centroid = sim.centroid_sim(model_first, teacher)
                 if len(teacher) == 1 and top1 is not None:
                     assert abs(top1 - centroid) < 1e-9, s["id"]  # single-word tags must coincide
+                # Binary family reads, per record, with the battery's precedence -- so the
+                # bucket metric and the graded metric are averaged over the same records.
+                model_fam = tag_eval.top_family(model_emotions, emo2fam)
+                teacher_fam = tag_eval.top_family([e for e, _ in teacher], emo2fam)
+                elicited_fam = id_to_cluster[s["id"]]
                 records.append(
                     {
                         "id": s["id"],
@@ -64,6 +76,14 @@ def main() -> None:
                         "n_teacher_words": len(teacher),
                         "cos_top1": top1,
                         "cos_centroid": centroid,
+                        # Per-record inputs for the bootstrap error bars (evals.uncertainty).
+                        # An off-taxonomy tag is a MISS, not a dropped record: this matches
+                        # tag_eval.generalization's denominator (all records), so the CI is
+                        # built on exactly the quantity the bars plot. The graded fields keep
+                        # the opposite convention (None = unscorable), as distance_* does.
+                        "family_agree_elicited": int(model_fam == elicited_fam),
+                        "family_agree_teacher": int(model_fam == teacher_fam),
+                        "rank_pct_elicited": sim.rank_percentile(slugify(id_to_emotion[s["id"]]), model_first),
                     }
                 )
             out[label][set_name] = records
