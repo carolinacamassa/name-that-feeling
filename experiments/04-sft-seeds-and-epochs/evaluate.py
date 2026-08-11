@@ -15,8 +15,8 @@ import json
 import common
 from name_that_feeling.emotion_vectors.taxonomy import load_clusters
 from name_that_feeling.evals import tag_eval
+from name_that_feeling.evals.probe_teacher import ProbeTeacher
 from name_that_feeling.evals.similarity import EmotionSimilarity
-from name_that_feeling.generation import sft
 from name_that_feeling.training.tinker_sft import load_api_key, sample_replies
 
 HELD_OUT_FAMILIES = ["playful_amusement", "vigilant_suspicion"]
@@ -35,15 +35,10 @@ def main() -> None:
     cross = common.read_jsonl(common.SFT_DIR / "eval_cross.jsonl")
     neutral = common.read_jsonl(common.SFT_DIR / "eval_neutral.jsonl")
 
-    # Probe teacher tags: the pilot's locked strategy over the full-dataset stats.
-    completions = common.read_jsonl(common.COMPLETIONS)
-    stats = sft.per_emotion_stats(completions)
-    proj_by_id = {r["id"]: r["probe"]["projections"] for r in completions}
+    # The frozen probe teacher: the pilot's locked strategy over the full-dataset stats
+    # (evals.probe_teacher.ProbeTeacher wraps it since the 2026-08-11 headline-metric decision).
     tag_config = json.loads((common.SFT_DIR / "split.json").read_text(encoding="utf-8"))["tag_config"]
-
-    def teacher_emotions(msg_id: str) -> list[str]:
-        picks = sft.select_tag_emotions(proj_by_id[msg_id], clusters, stats=stats, **tag_config)
-        return [e.replace("_", " ") for e, _ in picks]
+    teacher = ProbeTeacher.from_completions(common.read_jsonl(common.COMPLETIONS), clusters, tag_config)
 
     samples: dict[str, list[dict]] = {}
     for set_name, rows in (("within", within), ("cross", cross), ("neutral", neutral)):
@@ -75,7 +70,8 @@ def main() -> None:
                 "elicited_cluster": id_to_cluster[s["id"]],
                 "elicited_emotion": id_to_emotion[s["id"]],
                 "model_emotions": tag_eval.parse_reply(s["reply"])["emotions"],
-                "teacher_emotions": teacher_emotions(s["id"]),
+                "teacher_emotions": teacher.emotions(s["id"]),
+                "teacher_weighted": teacher.weighted(s["id"]),
             }
             for s in samples[set_name]
         ]

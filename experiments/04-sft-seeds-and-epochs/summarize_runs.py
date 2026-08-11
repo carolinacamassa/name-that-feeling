@@ -17,9 +17,9 @@ import json
 import common
 from name_that_feeling.emotion_vectors.taxonomy import load_clusters, slugify
 from name_that_feeling.evals import tag_eval
+from name_that_feeling.evals.probe_teacher import ProbeTeacher
 from name_that_feeling.evals.similarity import EmotionSimilarity
 from name_that_feeling.evals.tag_eval import recovery_metrics
-from name_that_feeling.generation import sft
 
 PILOT_RUNS = {  # summary-row name -> (03 manifest file, label inside 03's shared files)
     "pilot-with-neutral": ("03-training-pilot-with-neutral.json", "with_neutral"),
@@ -69,18 +69,15 @@ def main() -> None:
     sim = EmotionSimilarity.load(common.SIMILARITY_FILE)
     eval_sets = {s: common.read_jsonl(common.SFT_DIR / f"eval_{s}.jsonl") for s in ("within", "cross")}
     id_to_emotion = {r["id"]: r["emotion"] for rows_ in eval_sets.values() for r in rows_}
-    stats = sft.per_emotion_stats(completions)
-    proj_by_id = {r["id"]: r["probe"]["projections"] for r in completions}
     tag_config = json.loads((common.SFT_DIR / "split.json").read_text(encoding="utf-8"))["tag_config"]
-
-    def teacher_of(msg_id: str) -> list[str]:
-        picks = sft.select_tag_emotions(proj_by_id[msg_id], clusters, stats=stats, **tag_config)
-        return [e.replace("_", " ") for e, _ in picks]
+    teacher = ProbeTeacher.from_completions(completions, clusters, tag_config)
 
     def distance_headline(samples_by_set: dict) -> dict:
         out = {}
         for set_name in ("within", "cross"):
-            recs = tag_eval.distance_records(samples_by_set[set_name], id_to_emotion, teacher_of)
+            recs = tag_eval.distance_records(
+                samples_by_set[set_name], id_to_emotion, teacher.emotions, teacher.weighted
+            )
             d = tag_eval.distance_generalization(recs, sim)
             out.update(
                 {
@@ -90,6 +87,7 @@ def main() -> None:
                     f"dist_{set_name}_null_cosine": d.get("null_cosine_first_mean"),
                     f"dist_{set_name}_teacher_cosine": d.get("teacher_cosine_first_mean"),
                     f"dist_{set_name}_model_vs_teacher_cosine": d.get("model_vs_teacher_cosine_mean"),
+                    f"dist_{set_name}_model_vs_teacher_centroid": d.get("model_vs_teacher_centroid_mean"),
                 }
             )
         return out

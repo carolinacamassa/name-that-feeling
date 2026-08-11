@@ -177,12 +177,16 @@ def _best_in_taxonomy(emotions: list[str], target: str, sim) -> str | None:
     return max(scored)[1] if scored else None
 
 
-def distance_records(samples: list[dict], id_to_emotion: dict[str, str], teacher_of=None) -> list[dict]:
+def distance_records(
+    samples: list[dict], id_to_emotion: dict[str, str], teacher_of=None, teacher_weighted_of=None
+) -> list[dict]:
     """Build ``distance_scores`` records from sampled replies (``[{id, reply}]``).
 
     ``id_to_emotion`` maps each id to its elicited leaf emotion (the ``emotion`` field
     of the eval-set files); ``teacher_of`` optionally recomputes the probe teacher's
-    tag for an id. The re-scoring entry point for stored ``eval_samples.json``.
+    tag for an id, and ``teacher_weighted_of`` its weighted ``[(emotion, weight)]``
+    form (enables the 1-vs-3 centroid metric — ``ProbeTeacher.weighted``). The
+    re-scoring entry point for stored ``eval_samples.json``.
     """
     records = []
     for s in samples:
@@ -193,6 +197,8 @@ def distance_records(samples: list[dict], id_to_emotion: dict[str, str], teacher
         }
         if teacher_of is not None:
             r["teacher_emotions"] = teacher_of(s["id"])
+        if teacher_weighted_of is not None:
+            r["teacher_weighted"] = teacher_weighted_of(s["id"])
         records.append(r)
     return records
 
@@ -228,6 +234,10 @@ def distance_scores(records: list[dict], sim) -> list[dict]:
             row["teacher_cosine_first"] = sim.sim(t_first, target)
             row["teacher_rank_pct_first"] = sim.rank_percentile(target, t_first)
             row["model_vs_teacher_cosine"] = sim.sim(first, t_first)
+        if r.get("teacher_weighted"):
+            # 1-vs-3: emitted first word vs the mass-weighted centroid of the full teacher tag
+            # (headline-metric decision 2026-08-11; reduces to model_vs_teacher_cosine for 1-word tags).
+            row["model_vs_teacher_centroid"] = sim.centroid_sim(first, r["teacher_weighted"])
         rows.append(row)
     return rows
 
@@ -251,6 +261,7 @@ def distance_generalization(records: list[dict], sim, n_permutations: int = 1000
         "teacher_cosine_first",
         "teacher_rank_pct_first",
         "model_vs_teacher_cosine",
+        "model_vs_teacher_centroid",
     )
     for key in keys:
         vals = [v for r in rows if (v := r.get(key)) is not None]
