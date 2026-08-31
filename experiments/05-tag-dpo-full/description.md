@@ -105,7 +105,55 @@ channel — and each arm broke exactly where its pair dose was extreme.**
   is prerequisite to the 3-seed core run — the β sweep is now the path to the core
   checkpoint, not a post-hoc ablation.
 
-## 5. Pointers
+## 5. The coupling matrix: the current-probe advantage is shared drift, not self-reading (2026-08-13)
+
+`coupling_matrix.py` → `data/coupling/coupling_matrix.json`. Disagreement-subset
+re-scoring per Guo et al. 2026 (arXiv:2606.32038; design in
+`docs/related-work/introspective-coupling-methods-transplant.md`, idea 1): the
+frozen-vs-current-probe teacher comparison carries information only on the messages
+where the two teachers disagree, so the statistic is the share of emitted tags
+sitting closer to the current teacher's label than the frozen one (null 0.5), for
+every (emitting checkpoint, teacher checkpoint) pair. Pure re-scoring of stored
+replies; validity gate (base readout reproduces the frozen teacher) passes at 100%.
+
+Three findings, consistent across the three self-report lenses:
+
+- **The SFT parent shows no self-preference at high power.** On its own disagreement
+  subset, scored over the pool's 1,635 charged prompts × 12 stored draws:
+  family 48.6% [42.6, 54.3] (n=132), 1-vs-1 47.2% [44.2, 50.4] and 1-vs-3
+  47.4% [44.3, 50.5] (n=273) — at or slightly below the 50% null, and identical on
+  the 576 messages the SFT literally trained on vs the 1,059 it never saw. Notably
+  in line with Guo's Appendix D.1, which finds slightly *negative* coupling at LoRA
+  rank 32 — the rank every SFT run here uses (see the rank-disambiguation backlog
+  item before reading this null as "SFT installs no coupled channel").
+- **No diagonal specificity.** Genuine self-reading predicts each checkpoint's own
+  tags beat foreign checkpoints' tags on its own teacher. Observed 1-vs-3 edges
+  (diagonal minus foreign-emitter column mean, greedy eval replies): between −15 and
+  +4 for every healthy checkpoint (uncapped-800-full −1, capped-200-full −1); the
+  only large edge (+22, n=15) belongs to the degenerate tag-masked uncapped-800,
+  whose channel and state both collapsed toward the same attractor.
+- **The shuffled control fired.** The corrupted-labels checkpoint — channel collapsed
+  onto playful-family words, labels disconnected by construction, own diagonal 42% —
+  scores 58–68% against nearly every *other* drifted teacher (e.g. 67 [51, 82] on
+  two-epochs', 64 [53, 76] on uncapped-800-full's). Matching a drifted teacher
+  therefore requires no self-knowledge: the teachers' labels drifted toward what
+  trained channels already tend to say. The prompted base (untrained emitter) stays
+  flat around null across all columns, so the drift is shared among trained
+  descendants, not a property of the message text.
+
+**Reading.** The pilot's §7.1 current-probe advantage (+0.017/+0.029 on 1-vs-3) named
+its own surviving confound — "correlated drift of channel and probe toward the same
+families is not excluded" — and the matrix adjudicates it *in favor of the confound*:
+the advantage is shared-direction drift of channels and teachers (toward the
+playful/hostile attractor families), not evidence the channel reads the state.
+Sampled diagonals corroborate: the tag-masked arms (largest tilt) sit at 67/63%
+while the healthy full-credit arms are null-compatible at tiny n. Greedy cell CIs
+are wide (disagreement subsets of 27–120 messages); the conclusion rests on the
+powered row, the sampled diagonals, and the cross-cell consistency of the pattern.
+Live paths to a genuine coupling claim: the rank-128/256 retrain and the
+auxiliary-corpus test (backlog).
+
+## 6. Pointers
 
 - Design history, credit-scheme rationale, pilot results: `../05-tag-dpo/description.md`
   (§2 pair design, §7 test-run results, §7.1 post-run battery incl. the tilt finding).

@@ -1,0 +1,11 @@
+# Beta dose point (backlog sweep): the healthy whole-reply-credit uncapped
+# configuration with the reference tether TRIPLED — less movement per pair, the
+# conservative boundary. Everything else identical to uncapped-800-full.
+base_model: Qwen/Qwen3.5-9B
+pairs: data/pairs/uncapped-800.jsonl
+credit: full
+dpo_beta: 0.3
+learning_rate: 5.0e-5
+batch_size: 8
+num_epochs: 1
+seed: 42
