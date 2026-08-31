@@ -1,0 +1,65 @@
+{
+  "top_emitted_words": {
+    "file": "top_emitted_words.svg",
+    "caption": "The 25 most frequent feeling words in the untrained base model's emotion tags, per prompt arm, as the share of temperature-1 draws whose tag contains the word (12 draws per message, 1,076 SFT training messages). Left: the system prompt includes the full 171-word taxonomy list plus word-form rules; right: no word list, form rules only. Color marks whether the word belongs to the 171-word taxonomy the probe vectors are built on.",
+    "takeaway": "Before any training the prompted base concentrates its tag vocabulary on a small head: the top word appears in 38% of with-taxonomy draws ('calm') and 37% of open-vocabulary draws ('curious'). The word list reshapes the vocabulary rather than merely filtering it: the two arms share 12 of their top-25 words.",
+    "notebook": "tag_profile.py",
+    "updated": "2026-08-20"
+  },
+  "family_composition_vs_references": {
+    "file": "family_composition_vs_references.svg",
+    "caption": "Family-level composition of the tags the untrained base model emits, next to the two label references. Top rows: the family of the emotion each of the 576 training messages was written to elicit, and the family of the probe teacher's top word on the same message (the label SFT trained on). Lower rows: the family of the first in-taxonomy word of each emitted tag, per prompt arm, split by emotion-elicited vs neutral messages; 'off-taxonomy' marks draws whose tag contains no taxonomy word at all. Families are the 10 k-means clusters of the 171 emotion vectors.",
+    "takeaway": "The untrained profile is skewed relative to both references: the most emitted family on emotion messages (peaceful_contentment, 19% of with-taxonomy draws) holds 10% of elicited targets, and 12% of with-taxonomy draws contain no taxonomy word despite the list being in the prompt.",
+    "notebook": "tag_profile.py",
+    "updated": "2026-08-20"
+  },
+  "agreement_with_probe_teacher": {
+    "file": "agreement_with_probe_teacher.svg",
+    "caption": "How well the untrained base model's sampled tags agree with the probe-derived teacher labels (and, last row, with the family of the emotion each message was written to elicit), on the 576 emotion training messages. Per message the 12 temperature-1 draws are averaged first; bars are means over messages with 95% bootstrap intervals resampling messages. The three teacher metrics are the standing set: binary right-family agreement (a draw whose tag has no taxonomy word counts as a miss), cosine similarity between the first in-taxonomy emitted word and the teacher's top word, and cosine against the mass-weighted centroid of the full teacher tag (the graded metrics score only draws with an in-taxonomy word).",
+    "takeaway": "At temperature 1 the prompted base agrees with the probe teacher's family on 28% [25%, 31%] of draws with the word list and 17% [15%, 19%] open-vocabulary \u2014 the pre-training agreement floor a self-labeled training set would start from. The 1v3 centroid cosine reaches 0.38 (with taxonomy), so near-misses sit substantially closer than the binary read suggests.",
+    "notebook": "tag_profile.py",
+    "updated": "2026-08-20"
+  },
+  "sampling_variability": {
+    "file": "sampling_variability.svg",
+    "caption": "How stable the untrained tag channel is for a fixed message across the 12 temperature-1 draws, per prompt arm, over all 1,076 training messages. Left: the share of a message's draws landing in its modal (most frequent) emotion family, counting off-taxonomy as its own bucket \u2014 1.0 means every draw agrees at family level. Right: the share of draws emitting the modal exact word list \u2014 1.0 means the identical tag every time.",
+    "takeaway": "The untrained channel is a broad distribution, as the trained channel is: the exact tag list repeats on only 18% of draws with the taxonomy list (17% open-vocabulary), while family-level stability is higher (modal family share 70% / 63%), and 13% / 2% of messages are fully family-stable.",
+    "notebook": "tag_profile.py",
+    "updated": "2026-08-20"
+  },
+  "affect_space_vocabulary": {
+    "file": "affect_space_vocabulary.svg",
+    "caption": "The untrained model's emitted tag vocabulary placed in affect space: each point is a feeling word, positioned by its human-rated valence (how pleasant, 1-9) and arousal (how activating, 1-9) from the Warriner et al. (2013) norms with NRC-VAD filling gaps, sized by the share of draws containing it, over all 1,076 training messages. Grey underlay: the 156 of 171 taxonomy words the norms cover \u2014 the affect space the probe labels can express. Words below 0.2% of draws or without norms are omitted.",
+    "takeaway": "The pre-training profile occupies a compact affect region: the draw-weighted centroid of the with-taxonomy arm sits at valence 6.2, arousal 3.9 on the 1-9 scales, against a taxonomy whose words span valence 1.8-8.5 and arousal 1.7-7.3 \u2014 the untrained vocabulary uses a narrow slice of the affect plane the labels can name.",
+    "notebook": "tag_profile.py",
+    "updated": "2026-08-20"
+  },
+  "valence_arousal_tracking": {
+    "file": "valence_arousal_tracking.svg",
+    "caption": "Does the untrained model's tag track the affect of what each message was written to elicit? Each point is one of the 576 emotion training messages: x is the human-rated valence or arousal (Warriner/NRC norms, 1-9 scale) of the emotion word the message was elicited for; y is the mean rating of the words the prompted base actually emitted, averaged over its 12 draws. Red: least-squares fit per panel. Messages whose elicited word lacks norms are omitted.",
+    "takeaway": "Before any training the tag tracks elicited valence at r = 0.68 (with taxonomy) / 0.66 (open vocabulary), against r = 0.58 / 0.48 on arousal \u2014 the dimension-level structure a self-labeled training set would inherit from the untrained model.",
+    "notebook": "tag_profile.py",
+    "updated": "2026-08-20"
+  },
+  "resting_propensity_scale": {
+    "file": "resting_propensity_scale.svg",
+    "caption": "The channel's baseline emission propensities: Bradley\u2013Terry scores fit on the 500 neutral training messages alone, per prompt arm, over the full emitted vocabulary. theta is in log-odds units \u2014 a gap of 1 between two words means the higher one wins their head-to-head games with probability 0.73. Color marks membership in the project's 171-word emotion vocabulary; words under 30 neutral draws are hidden (their thetas sit at the ridge floor and are not interpretable).",
+    "takeaway": "With the word list in the prompt the baseline is led by 'calm' (theta 2.4); without it the channel's spontaneous baseline is led by off-list words \u2014 'focused' (theta 2.3) and 'curious' (2.1) above 'calm' \u2014 so the model's own resting vocabulary is attentional (focused, curious) at least as much as affective, a fact the word-list arm masks.",
+    "notebook": "tag_propensity.py",
+    "updated": "2026-08-21"
+  },
+  "theta_vs_frequency": {
+    "file": "theta_vs_frequency.svg",
+    "caption": "Each point is one emitted word on one arm's emotion-message propensity fit: x is the raw share of draws whose tag contains the word; y is its Bradley\u2013Terry emission propensity theta. The two are not the same quantity: theta credits a word only for winning against the specific competition present on the messages where it appears. Points at very low draw shares carry wide implicit uncertainty (a handful of games against few opponents, shrunk toward 0 by the ridge penalty) \u2014 the extreme thetas among sub-0.1% words are noise, not discoveries.",
+    "takeaway": "The Bradley\u2013Terry scale decouples propensity from exposure: among words with at least 30 draws, theta and raw frequency are related but far from interchangeable (correlation of theta with log draw share 0.61), because a word that appears everywhere also loses everywhere a message elicits something specific \u2014 while the apparent extreme thetas all belong to words seen in under ten draws and should be read as ridge-floor noise. Gate on draw count before quoting any theta.",
+    "notebook": "tag_propensity.py",
+    "updated": "2026-08-21"
+  },
+  "probe_covariate_beta": {
+    "file": "probe_covariate_beta.svg",
+    "caption": "The probe-read coefficient beta, per prompt arm, on the untrained prompted base model. Each of the 576 emotion training messages contributes pairwise games between taxonomy words across its 12 temperature-1 draws ('X appeared in a draw without Y'); the model predicts game outcomes from a per-word emission propensity (Bradley\u2013Terry) plus beta times the per-message difference in z-scored probe projections. Points: maximum-likelihood beta; bars: 95% bootstrap CI resampling messages; grey ticks: the 97.5th percentile of |beta| under permutation of the message-to-probe assignment; dashed line: beta = 0, the propensity-only null.",
+    "takeaway": "Before any training, the per-message probe read predicts which emotion word the prompted base emits beyond its baseline propensities: beta = 0.32 [0.26, 0.38] with the word list and 0.26 [0.19, 0.33] open-vocabulary, against permutation nulls of ~0.05 \u2014 a 1-sigma probe advantage multiplies a word's win odds by ~1.37. Because the probe read is computed from the message text, this base-model beta is the text-reading floor: the quantity a trained checkpoint's beta must exceed for a grounding claim, not evidence of grounding by itself.",
+    "notebook": "probe_covariate.py",
+    "updated": "2026-08-21"
+  }
+}
