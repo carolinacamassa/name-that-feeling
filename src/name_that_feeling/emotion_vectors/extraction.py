@@ -36,6 +36,18 @@ def _neutral_path(run_name: str, layer: int) -> str:
     return os.path.join(VECTORS_DIR, run_name, "neutral", f"layer_{layer}.npy")
 
 
+def _neutral_source_run(config: dict, run_name: str) -> str:
+    """Which run holds the cached neutral baseline to use (default: the run itself).
+
+    ``config['neutral_run']`` points a run at another run's ``cache_neutral`` output, so
+    several vector runs can share one baseline. That matters when the baseline is meant
+    to be held fixed while something else varies -- comparing two story corpora, say --
+    since re-caching the same neutral texts per run would otherwise be both wasted GPU
+    time and an invitation to let the baseline drift between arms.
+    """
+    return config.get("neutral_run") or run_name
+
+
 @app.cls(
     image=vectors_image,
     # 9B bf16 (~18GB) + hidden states fits A10G (24GB) for forward-only passes.
@@ -276,7 +288,9 @@ class ActivationExtractor:
 
         paths = {}
         for L in todo:
-            neutral_acts = np.load(_neutral_path(run_name, L))  # cached by cache_neutral
+            neutral_acts = np.load(
+                _neutral_path(_neutral_source_run(config, run_name), L)
+            )  # cached by cache_neutral
             raw = V.difference_of_means(pooled_e[L], neutral_acts)  # mu_e - mu_neutral
             metadata = {
                 "emotion": emotion,
@@ -371,6 +385,70 @@ class ActivationExtractor:
         return result
 
 
+    @modal.method()
+    def pool_story_set(
+        self,
+        texts: list[str],
+        meta: list[dict],
+        config: dict,
+        run_name: str,
+        set_name: str,
+    ) -> dict:
+        """Mean-pool a labeled story set and cache it on the Volume (GPU).
+
+        Uses the *story* reader (mean-pool over positions >= ``start_token``), the same
+        one ``build_vector`` pools its training stories with -- so a set cached here can
+        be projected onto emotion vectors on exactly the terms they were built on. That
+        is what makes a held-out story readout a fair test rather than a change of
+        position convention. (``extract_message_activations`` is the other reader: a
+        single pre-response token, for chat messages.)
+
+        Saves ``<run_name>/pooled/<set_name>.safetensors`` (keys ``layer_<L>``) plus a
+        ``<set_name>.meta.json`` sidecar carrying each row's labels in activation order,
+        so scoring is a separate CPU step (``score_story_readout``) that can be re-run
+        against different vector sets without paying for the forward passes again.
+        Idempotent: skips a set already on the Volume unless ``config['force']``.
+        """
+        import json
+        import os
+
+        from safetensors.numpy import save_file
+
+        layers = config["layers"]
+        start_token = config.get("start_token", 50)
+        batch_size = config.get("batch_size", 8)
+        if len(meta) != len(texts):
+            raise ValueError(f"meta has {len(meta)} rows but {len(texts)} texts were given")
+
+        out_dir = os.path.join(VECTORS_DIR, run_name, "pooled")
+        st_path = os.path.join(out_dir, f"{set_name}.safetensors")
+        if os.path.exists(st_path) and not config.get("force", False):
+            print(f"[pool:{set_name}] already on the Volume; skipping (use force to rebuild).")
+            return {"set_name": set_name, "n_texts": len(texts), "skipped": True}
+
+        pooled = self._pool_layers(texts, layers, start_token, batch_size)
+        os.makedirs(out_dir, exist_ok=True)
+        save_file({f"layer_{L}": pooled[L] for L in layers}, st_path)
+        with open(os.path.join(out_dir, f"{set_name}.meta.json"), "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "set_name": set_name,
+                    "model": self.model_id,
+                    "layers": layers,
+                    "start_token": start_token,
+                    "position": "mean_pooled_story",
+                    "n_texts": len(texts),
+                    "rows": meta,
+                },
+                f,
+                ensure_ascii=False,
+            )
+        vectors_volume.commit()
+        shape = list(pooled[layers[0]].shape)
+        print(f"[pool:{set_name}] pooled {shape} at layers {layers} -> {st_path}")
+        return {"set_name": set_name, "n_texts": len(texts), "layers": layers, "shape": shape}
+
+
 @app.function(
     image=vectors_image,
     volumes={VECTORS_DIR: vectors_volume},
@@ -397,6 +475,11 @@ def recenter_vectors(config: dict, run_name: str) -> dict:
     layers = config["layers"]
     denoise = config.get("denoise", True)
     var_threshold = config.get("pca_var_threshold", 0.5)
+    neutral_run = _neutral_source_run(config, run_name)
+    # Where the recentered vectors land. Writing to a different run keeps the source
+    # run's stored units intact, so several centering/denoise variants can be built
+    # from one set of raws without any of them overwriting another.
+    out_run = config.get("recenter_out_run") or run_name
     stamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
     summary: dict[str, int] = {}
 
@@ -413,7 +496,7 @@ def recenter_vectors(config: dict, run_name: str) -> dict:
             metas.append(meta)
         centered = V.center_across_emotions(np.stack(raws))  # mu_e - mu_bar
         basis = (
-            V.neutral_pc_basis(np.load(_neutral_path(run_name, L)), var_threshold)
+            V.neutral_pc_basis(np.load(_neutral_path(neutral_run, L)), var_threshold)
             if denoise
             else np.zeros((0, centered.shape[1]), centered.dtype)
         )
@@ -425,10 +508,19 @@ def recenter_vectors(config: dict, run_name: str) -> dict:
                 "centered": True,
                 "denoise": denoise,
                 "pca_var_threshold": var_threshold if denoise else None,
+                "pca_n_components_used": int(basis.shape[0]) if denoise else 0,
+                "neutral_run": neutral_run if denoise else None,
+                "raws_from_run": run_name,
                 "recentered": stamp,
             }
+            cluster = os.path.basename(os.path.dirname(os.path.dirname(p)))
+            out_dir = (
+                os.path.dirname(p)
+                if out_run == run_name
+                else os.path.join(VECTORS_DIR, out_run, "vectors", cluster, f"layer_{L}")
+            )
             V.save_vector(
-                os.path.dirname(p),
+                out_dir,
                 os.path.splitext(os.path.basename(p))[0],
                 raws[i],
                 neutral_means[i],
@@ -436,7 +528,10 @@ def recenter_vectors(config: dict, run_name: str) -> dict:
                 unit=unit,
             )
         summary[str(L)] = len(paths)
-        print(f"[recenter] layer {L}: {len(paths)} units (centered, denoise={denoise})")
+        print(
+            f"[recenter] layer {L}: {len(paths)} units -> {out_run} "
+            f"(centered, denoise={denoise}, neutral={neutral_run if denoise else 'n/a'})"
+        )
 
     vectors_volume.commit()
     print(f"[recenter] done: {summary}")
@@ -520,6 +615,196 @@ def project_messages(meta: list[dict], config: dict, run_name: str) -> dict:
     vectors_volume.commit()
     print(f"[{run_name}] projected {len(meta)} messages x {len(names)} vectors -> {readout_file}; {len(missing)} missing")
     return {"n_messages": len(meta), "n_emotion_vectors": len(names), "missing": missing, "readout_file": readout_file}
+
+
+@app.function(
+    image=vectors_image,
+    volumes={VECTORS_DIR: vectors_volume},
+    timeout=1 * HOURS,
+)
+def score_story_readout(
+    set_name: str,
+    vectors_run: str,
+    config: dict,
+    run_name: str,
+    out_name: str = "",
+) -> dict:
+    """Score a pooled story set against one run of emotion vectors (CPU).
+
+    The story-level counterpart of ``project_messages``: it asks whether the vectors
+    can pick out each story's emotion from the whole set, which is the question a
+    held-out story set exists to answer. Every story's pooled activation is projected
+    onto every centered ``unit``, each emotion's column is standardized across the set
+    (see the comment at the projection for why an unstandardized argmax is wrong), and
+    the emotion with the largest standardized projection is the prediction. Reported per story: the predicted emotion, the rank of the true one
+    among all vectors (1 = best), and a ``z_margin`` -- the projection of the true
+    emotion expressed in standard deviations of the spread of that story's own
+    projections, a graded score that still separates runs once top-1 accuracy
+    saturates or floors.
+
+    ``set_name`` names a set cached by ``pool_story_set`` under ``run_name``, and
+    ``vectors_run`` is any vector run built from the *same* model (the hidden-dim
+    guard catches a mismatch). Keeping the two arguments separate is the point: one
+    pooled set can be scored against several vector runs, which is what a
+    cross-generator comparison is -- one test set read by vectors built from
+    different story corpora.
+
+    Writes ``<run_name>/readouts/<out_name or set_name>.json``.
+    """
+    import datetime
+    import glob
+    import json
+    import os
+
+    import numpy as np
+    from safetensors.numpy import load_file
+
+    from . import vectors as V
+
+    readout_layer = config.get("readout_layer") or config["layers"][0]
+    pooled_dir = os.path.join(VECTORS_DIR, run_name, "pooled")
+    acts = load_file(os.path.join(pooled_dir, f"{set_name}.safetensors"))[f"layer_{readout_layer}"]
+    with open(os.path.join(pooled_dir, f"{set_name}.meta.json"), encoding="utf-8") as f:
+        sidecar = json.load(f)
+    rows_meta = sidecar["rows"]
+
+    pattern = os.path.join(
+        VECTORS_DIR, vectors_run, "vectors", "*", f"layer_{readout_layer}", "*.safetensors"
+    )
+    names, clusters, units = [], {}, []
+    for p in sorted(glob.glob(pattern)):
+        tensors, meta = V.load_vector(p)
+        if "unit" not in tensors:
+            raise KeyError(f"{p} has no centered unit yet -- run recenter_vectors on {vectors_run}.")
+        name = os.path.splitext(os.path.basename(p))[0]
+        names.append(name)
+        clusters[name] = meta.get("cluster") or os.path.basename(os.path.dirname(os.path.dirname(p)))
+        units.append(tensors["unit"])
+    if not names:
+        raise FileNotFoundError(f"no vectors under {pattern}")
+    U = np.stack(units, axis=0)
+    if U.shape[1] != acts.shape[1]:
+        raise ValueError(
+            f"hidden-dim mismatch: pooled set {set_name!r} is {acts.shape[1]}-d but the vectors "
+            f"in {vectors_run!r} are {U.shape[1]}-d. A readout is only meaningful when both come "
+            f"from the same model."
+        )
+
+    raw_proj = (acts @ U.T).astype(np.float64)  # [N, E]
+    # The units are centered across emotions, but the *activations* are not centered at
+    # all, so ``x . u_e`` carries the term ``x_common . u_e`` -- a constant per emotion
+    # that has nothing to do with the story and varies across emotions by more than the
+    # story-to-story signal does (measured: offset std 4.4 vs within-emotion spread 2.4 at
+    # layer 21). An argmax over the raw columns therefore mostly picks the emotion with
+    # the largest offset. Standardizing each emotion across the set being scored removes
+    # that offset, which is exactly what the tag pipeline (``generation.sft``) does before
+    # it ever ranks anything, so this is the readout that corresponds to how the vectors
+    # are actually used. Raw projections are kept in the output for anyone who needs the
+    # unstandardized reading of a single emotion, where the offset is harmless.
+    col_mean, col_std = raw_proj.mean(axis=0, keepdims=True), raw_proj.std(axis=0, keepdims=True)
+    proj = (raw_proj - col_mean) / np.where(col_std > 0, col_std, 1.0)
+    index = {n: i for i, n in enumerate(names)}
+    # Rank every column per story, 1 = largest standardized projection.
+    ranks = np.empty_like(proj, dtype=np.int32)
+    order = np.argsort(-proj, axis=1, kind="stable")
+    np.put_along_axis(ranks, order, np.arange(1, proj.shape[1] + 1, dtype=np.int32)[None, :], axis=1)
+    mean, std = proj.mean(axis=1), proj.std(axis=1)
+    predicted = [names[j] for j in proj.argmax(axis=1)]
+    raw_predicted = [names[j] for j in raw_proj.argmax(axis=1)]
+
+    cluster_sizes = {c: sum(1 for n in names if clusters[n] == c) for c in set(clusters.values())}
+    rows, unscored = [], []
+    for i, m in enumerate(rows_meta):
+        true = slugify(m["emotion"])
+        row = {**m, "predicted": predicted[i], "predicted_cluster": clusters[predicted[i]]}
+        if true in index:
+            j = index[true]
+            row.update(
+                {
+                    "true_cluster": clusters[true],
+                    "rank": int(ranks[i, j]),
+                    "correct": predicted[i] == true,
+                    "cluster_correct": clusters[predicted[i]] == clusters[true],
+                    "z_margin": float((proj[i, j] - mean[i]) / std[i]) if std[i] else 0.0,
+                }
+            )
+        else:
+            unscored.append(true)
+        row["raw_predicted"] = raw_predicted[i]
+        row["projections"] = {names[j]: round(float(raw_proj[i, j]), 6) for j in range(len(names))}
+        rows.append(row)
+
+    scored = [r for r in rows if "rank" in r]
+    if not scored:
+        raise ValueError(
+            f"none of the {len(rows)} stories have an emotion with a vector in {vectors_run!r} "
+            f"(first missing: {sorted(set(unscored))[:5]})"
+        )
+    ranks_arr = np.array([r["rank"] for r in scored])
+    summary = {
+        "n_scored": len(scored),
+        "n_unscored": len(rows) - len(scored),
+        "n_vectors": len(names),
+        "top1": float(np.mean([r["correct"] for r in scored])),
+        "top5": float(np.mean(ranks_arr <= 5)),
+        "cluster_top1": float(np.mean([r["cluster_correct"] for r in scored])),
+        "mean_rank": float(ranks_arr.mean()),
+        "median_rank": float(np.median(ranks_arr)),
+        "mean_z_margin": float(np.mean([r["z_margin"] for r in scored])),
+        # The uncentered argmax, kept only so the size of the offset artifact is visible.
+        "top1_raw_argmax": float(np.mean([raw_predicted[i] == slugify(rows_meta[i]["emotion"])
+                                          for i in range(len(rows)) if "rank" in rows[i]])),
+        "chance_top1": 1.0 / len(names),
+        # Chance on the cluster metric is the share of all vectors the true cluster holds,
+        # averaged over stories -- clusters differ in size, so it is not 1/n_clusters.
+        "chance_cluster_top1": float(
+            np.mean([cluster_sizes[r["true_cluster"]] / len(names) for r in scored])
+        ),
+    }
+
+    by_emotion: dict[str, list] = {}
+    for r in scored:
+        by_emotion.setdefault(slugify(r["emotion"]), []).append(r)
+    per_emotion = [
+        {
+            "emotion": e,
+            "cluster": clusters.get(e),
+            "n": len(rs),
+            "top1": float(np.mean([x["correct"] for x in rs])),
+            "cluster_top1": float(np.mean([x["cluster_correct"] for x in rs])),
+            "mean_rank": float(np.mean([x["rank"] for x in rs])),
+            "mean_z_margin": float(np.mean([x["z_margin"] for x in rs])),
+        }
+        for e, rs in sorted(by_emotion.items())
+    ]
+
+    result = {
+        "set_name": set_name,
+        "vectors_run": vectors_run,
+        "activations_run": run_name,
+        "model": config.get("model_id"),
+        "readout_layer": readout_layer,
+        "position": sidecar.get("position"),
+        "start_token": sidecar.get("start_token"),
+        "projection": "onto all-emotion-mean-centered unit vectors",
+        "ranking": "per-emotion standardized across this set (offset removed); projections stored raw",
+        "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "summary": summary,
+        "per_emotion": per_emotion,
+        "stories": rows,
+    }
+    out_dir = os.path.join(VECTORS_DIR, run_name, "readouts")
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, f"{out_name or set_name}.json")
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(result, f, ensure_ascii=False)
+    vectors_volume.commit()
+    print(
+        f"[score] {set_name} x {vectors_run}: top1={summary['top1']:.3f} "
+        f"cluster={summary['cluster_top1']:.3f} mean_rank={summary['mean_rank']:.1f} "
+        f"z={summary['mean_z_margin']:.2f} -> {out_path}"
+    )
+    return {"set_name": set_name, "vectors_run": vectors_run, "out": out_path, **summary}
 
 
 @app.function(
