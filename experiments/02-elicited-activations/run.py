@@ -76,9 +76,20 @@ def extract(model: str = "") -> None:
 
 
 @app.local_entrypoint()
-def project(model: str = "") -> None:
-    """CPU: project the cached activations onto the emotion vectors -> readout.json (re-runnable)."""
+def project(model: str = "", vectors_run: str = "", readout_file: str = "") -> None:
+    """CPU: project the cached activations onto the emotion vectors -> readout.json (re-runnable).
+
+    ``--vectors-run`` reads the same cached activations with a *different* set of vectors
+    (any run built from this model), and ``--readout-file`` names the output so it lands
+    beside readout.json rather than replacing it. Together they let one message pool be
+    read by several vector sets without re-extracting anything, which is what comparing
+    candidate vector sets on the pool the probe is actually pointed at requires.
+    """
     cfg = load_config(model)
+    if vectors_run:
+        cfg["vectors_run"] = vectors_run
+    if readout_file:
+        cfg["readout_file"] = readout_file
     _, meta = _load_messages(cfg)
     res = project_messages.remote(meta, cfg, run_name(cfg))
     print(res)

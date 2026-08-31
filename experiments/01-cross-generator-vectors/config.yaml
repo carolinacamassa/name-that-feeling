@@ -1,0 +1,54 @@
+# 01-cross-generator-vectors — the paper's vector-creation process, run on the paper's corpus.
+# Hyperparameters only. The package injects every container path from the run name, and
+# the residual layers come from the model registry (emotion_vectors/models.py), not here.
+
+model_id: Qwen/Qwen3.5-9B
+
+# The taxonomy and the existing Llama-written stories both come from the phase-01 run.
+# This experiment only ever *reads* that directory.
+reference_experiment: 01-emotion-vectors
+clusters_file: clusters.json     # 171 emotions — verified identical to the paper's appendix 6.4 list
+
+# The corpus. ryancodrai/emotion-probes (CC-BY-4.0) reproduces the paper's datasets:
+# the same 171 emotions over the same 100 topics, 12 stories per topic per emotion
+# (verified: exactly 1,200 rows per emotion, and the topic set seeding the stories is
+# identical to the one seeding the neutral dialogues, as appendix 6.5 describes).
+hf_dataset:
+  repo_id: ryancodrai/emotion-probes
+  stories_file: expression/stories.parquet
+  # The paper's PCA baseline: "We computed the top principal components of activations
+  # computed across these stories ... and projected them out of our emotion vectors"
+  # (appendix 6.5, neutral dialogues prompt) — Human/Assistant transcripts, deliberately
+  # emotionless, on the same 100 topics. Not expression/neutral_stories.parquet.
+  neutral_file: deflection/neutral_dialogues.parquet
+
+# Two sets of vectors, built by the same process from different stories. n_train is the
+# stories per emotion each pools, in both cases everything available less the held-out 20.
+#   hf    — the paper's corpus at the paper's count (100 topics x 12 = 1,200 per emotion).
+#   llama — the existing Llama-3.3-70B stories, of which only 100 per emotion were ever
+#           generated. This is the old data, rebuilt on the 80 that are not held out so it
+#           can be scored on stories it never saw.
+arms:
+  hf: {source: hf, n_train: 1180}
+  llama: {source: llama, n_train: 80}
+
+# One held-out test set per source, drawn from the first `test_population` stories and
+# excluded from every arm's training set, so all three arms are scored on the same stories.
+n_test: 20
+test_population: 100
+split_seed: 20260821
+
+n_neutral: 1200          # 100 topics x 12, matching the corpus structure
+
+start_token: 50          # "averaging across all token positions within each story,
+                         #  beginning with the 50th token" (section 1.1)
+extract_layers: readout_only   # a forward pass costs the same whichever layers are read from it
+
+# The paper always projects out the neutral PCs, at the 50%-variance count. `plain` is a
+# denoise-off diagnostic built from the same raws for a few seconds of CPU, not the
+# paper's method — it exists only to show what the projection contributes.
+pca_var_threshold: 0.5
+recenter_variants: [dialogues, plain]
+
+batch_size: 4            # conservative for a 9B + hidden states on an A10G (24GB)
+force: false             # set true to rebuild artifacts that already exist

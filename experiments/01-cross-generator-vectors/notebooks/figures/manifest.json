@@ -1,0 +1,44 @@
+{
+  "corpus_grid": {
+    "file": "corpus_grid.svg",
+    "caption": "Emotion-vector readout accuracy on held-out stories, for vectors trained on each corpus and scored against held-out stories from both sources. Blue = the test stories come from the same corpus the vectors were trained on (disjoint stories); red = the other corpus. Chance top-1 is 0.0058.",
+    "takeaway": "The paper-corpus vectors are the stronger set: 0.367 top-1 on their own held-out stories (63x the 0.006 chance rate) against 0.241 for the Llama vectors on theirs, and family accuracy 0.764 against 0.637. Across corpora the two are close, 0.181 and 0.205 top-1, so about half of each set's own-corpus accuracy survives a change of writer. Rankings are per-emotion standardized across the test set, as the tag pipeline does; an unstandardized argmax gives 0.110 and 0.091 instead and is dominated by per-emotion offsets.",
+    "notebook": "cross_generator.py",
+    "updated": "2026-08-29"
+  },
+  "rank_curves": {
+    "file": "rank_curves.svg",
+    "caption": "Share of held-out stories whose true emotion falls within the top k emotion vectors by projection, as k runs over the taxonomy (log scale). Colour is the training corpus, dash is which corpus the test stories came from.",
+    "takeaway": "The true emotion is in the top 5 of 171 for 74% of paper-corpus stories read by paper-corpus vectors (median rank 2) and 57% of Llama stories read by Llama vectors (median 4); crossing corpora gives 48% and 54% (medians 6 and 5). The paper-corpus vectors on their own corpus are the one curve that separates from the other three.",
+    "notebook": "cross_generator.py",
+    "updated": "2026-08-29"
+  },
+  "per_emotion_transfer": {
+    "file": "per_emotion_transfer.svg",
+    "caption": "Per-emotion readout strength on the two held-out sets: mean z-margin on Llama-written stories against the paper's stories, one point per emotion, coloured by family, one panel per training corpus.",
+    "takeaway": "The two sets lose different amounts when the corpus is swapped: mean z-margin falls by 0.57 for the paper-corpus vectors (only 9 of 171 emotions read better on Llama stories) but by just 0.13 for the Llama vectors, 77 of whose 171 emotions read better on the paper corpus than on their own. The Llama vectors are weaker but flatter across corpora. Per-emotion legibility correlates at r = 0.42 between the arms, so which emotions are easy depends on the corpus as much as on the emotion.",
+    "notebook": "cross_generator.py",
+    "updated": "2026-08-29"
+  },
+  "denoise_contribution": {
+    "file": "denoise_contribution.svg",
+    "caption": "Top-1 accuracy of every cell under the two recenterings: without the projection (where the vectors are independent of the neutral corpus) and with the paper's projection against 1,200 neutral Human/Assistant transcripts.",
+    "takeaway": "Once rankings are standardized per emotion, the projection is a small, consistent gain rather than a large one: top-1 improves in all four cells by +0.006 to +0.015, family accuracy by +0.002 to +0.013, mean rank by 0.3 to 1.2 places. Most of what the unstandardized comparison credited to the projection was the projection shifting per-emotion offsets, which the standardization removes either way.",
+    "notebook": "cross_generator.py",
+    "updated": "2026-08-29"
+  },
+  "family_legibility": {
+    "file": "family_legibility.svg",
+    "caption": "Family-level accuracy per emotion family, for each set of vectors reading held-out stories from its own corpus. Bars are the share of that family's stories whose top-scoring vector falls in the correct family; chance is 0.149.",
+    "takeaway": "Every family is found well above the 0.149 chance rate by both sets. For the paper-corpus vectors family accuracy runs from 0.61 (competitive pride) to 0.84 (depleted disengagement) with hostile anger at 0.73; the earlier reading of anger as unfindable (0.018) was an artifact of ranking unstandardized projections. The Llama vectors are lower across the board, from 0.37 (exuberant joy) to 0.74 (despair and shame), and their one weak family is joy, not a negative one.",
+    "notebook": "cross_generator.py",
+    "updated": "2026-08-29"
+  },
+  "message_pool_families": {
+    "file": "message_pool_families.svg",
+    "caption": "Family-level accuracy on the 1,972 direct-elicitation messages, read at the pre-response token, for three candidate vector sets over the same cached activations, each emotion standardized across the pool before ranking. Families are ordered by how many messages they hold; chance is 0.155.",
+    "takeaway": "On the pool the probe is actually pointed at, with rankings standardized per emotion as the tag pipeline does, the paper-corpus vectors come out ahead: family accuracy 0.400 against 0.374 for production and 0.362 for the Llama rebuild (paired z of +2.1 and +3.1), median rank 17 against 18 and 19. The margin is modest and family-uneven: the paper corpus leads on anger, joy, gratitude, contentment and amusement, and trails on despair and depleted disengagement. Fear, 27% of the pool, is a three-way tie at 0.54-0.56.",
+    "notebook": "cross_generator.py",
+    "updated": "2026-08-29"
+  }
+}
