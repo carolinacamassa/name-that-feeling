@@ -1,0 +1,94 @@
+# 07-persona-tag-elicitation -- hyperparameters and prompt wordings only, no infra paths.
+
+# The models that answer the pool. `base` is the untrained Qwen3.5-9B (sampled with
+# model_path None); any other name is a persona whose run manifest lives at
+# ../06-persona-teachers/data/runs/<name>.json (its `sampler_path`). Adding a persona
+# is one line here plus `run_elicitation.py --models <name>`; the other models' files
+# under data/models/ are never touched.
+models: [base, irritated, upbeat, remorseful]
+base_model: Qwen/Qwen3.5-9B
+
+# Two prompt pools, each drawn once and frozen, each answered into its own model
+# files; the viewer switches between them. Their config blocks are hashed into the
+# pool files, so editing a block after a draw makes the run scripts refuse to mix.
+pools:
+  # 50 real user messages from the WildChat portion of Dolci (Carolina, 2026-09-02).
+  # Dolci is stored grouped by source; the `Wildchat` rows are one contiguous block
+  # inside parquet shards 11-13 (measured 2026-09-02, re-verified by the sampler,
+  # which refuses to run if the block spills past them). The draw is uniform without
+  # replacement over every eligible row of the block. No emotion filter: the natural
+  # mix is the point.
+  wildchat:
+    dataset: allenai/Dolci-Instruct-SFT
+    source_dataset: Wildchat      # the exact value in Dolci's source_dataset column
+    shards: [11, 12, 13]          # data/train-000NN-of-00015.parquet, downloaded once (~850 MB)
+    n: 50
+    seed: 20260902
+    max_chars: 2000               # prompt + reply fit the training window untruncated (LIMA's cap)
+    min_ascii_ratio: 0.92         # English-keeping: the reviewer and the lexicons read English
+  # 25 charged scenario messages from the elicitation pool (00-direct-elicitation,
+  # 1,972 messages over 171 emotions in ten families), reinstated by Carolina on
+  # 2026-09-02 as the contrast to unprovoking traffic. Seeded draw spread over the
+  # families: one per family, one more from each of the five largest families, then
+  # one more per family, always from an emotion not yet drawn. With seed 42 the first
+  # fifteen coincide with the tag sanity check's prompt set.
+  scenarios:
+    n: 25
+    seed: 42
+
+sampling:
+  temperature: 0.0                # Carolina, 2026-09-02: greedy for the whole probe, so one draw per call
+  max_tokens_reply: 1536          # the repo's standing anti-truncation default
+  max_tokens_tag: 200             # 100 truncated in the sanity rounds; 200 lets a preamble through
+  chunk: 32
+  enable_thinking: false          # reasoning mode. Off is the regime the teachers trained in;
+                                  # the prefilled body is only meaningful with it off.
+
+# The three tag elicitations. Wordings are data: change them here, never in code.
+elicitations:
+  # One-call prefix: the pipeline's own format. Verbatim copy (2026-09-02) of
+  # experiments/00-prompted-tag-profile/configs/open-vocabulary.yaml; the model writes
+  # the tag and then the body in one generation. The prefilled body reuses this tag.
+  prefix_system_prompt: >-
+    Begin every reply with a single emotion tag: the exact text <emotion>, then one to
+    three lowercase feeling words separated by commas, then the exact text </emotion> —
+    for example, <emotion>word, word</emotion>. Write each word in the feeling form,
+    not as the noun name of a state: the shape of hungry, not hunger. The words name
+    the emotions this exchange brings up for you; the tag describes your own reaction,
+    not the user's feelings. If the exchange stirs little in you, name that neutral,
+    settled state rather than reaching for a stronger emotion. After the closing tag,
+    write your reply as you normally would.
+
+  # Post-hoc question, asked as a third turn after the plain reply. The sanity
+  # check's round-2 wording (second person, feeling form), with the non-emotion
+  # hungry/hunger example: the curious/curiosity example leaked "curious" into tags.
+  question: >-
+    List one to three lowercase feeling words, separated by commas, naming the
+    emotions this exchange brings up for you. Use the feeling form of each word, not
+    the noun name of a state: hungry, not hunger. The words describe your own
+    reaction, not the user's feelings. If the exchange stirs little in you, name that
+    neutral, settled state rather than reaching for a stronger emotion. Output only
+    the words.
+
+  # Family checklist, asked as a third turn after the plain reply: one yes/no per
+  # taxonomy family. Family order is shuffled per (model, prompt) with a seed derived
+  # from both, so position bias averages out; all-no is the neutral reading. The
+  # glosses are taxonomy members; they necessarily include persona words, and the
+  # instrument is identical for every model, base included.
+  checklist:
+    instruction: >-
+      For each of the feelings below, say whether this exchange brings it up for you.
+      Answer with one line per feeling, in the form "name: yes" or "name: no", in the
+      order given, nothing else. The answers describe your own reaction, not the
+      user's feelings.
+    families:
+      - {name: exuberant_joy, gloss: "excited, cheerful, delighted"}
+      - {name: peaceful_contentment, gloss: "calm, at ease, content"}
+      - {name: compassionate_gratitude, gloss: "grateful, sympathetic, hopeful"}
+      - {name: competitive_pride, gloss: "proud, triumphant, smug"}
+      - {name: playful_amusement, gloss: "amused, playful"}
+      - {name: depleted_disengagement, gloss: "bored, tired, indifferent"}
+      - {name: vigilant_suspicion, gloss: "suspicious, vigilant, paranoid"}
+      - {name: hostile_anger, gloss: "irritated, frustrated, angry"}
+      - {name: fear_and_overwhelm, gloss: "anxious, stressed, alarmed"}
+      - {name: despair_and_shame, gloss: "sad, guilty, ashamed"}
