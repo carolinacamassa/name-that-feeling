@@ -1,0 +1,54 @@
+# 06-persona-constitutions -- hyperparameters only, no infra paths.
+#
+# One constitution-writing call per persona, on the verbatim prompt in
+# prompt_template.md (copied from docs/emotion-persona-distillation.md section 3).
+# The three personas are the section 4 pilot trio: three distant families, so a
+# judge and the probe can tell the teachers apart without near-synonym confusion.
+
+# Taxonomy. Repo-relative; the 171-emotion clusters live with exp 01, and every
+# anchor word below is checked against them at run time (run.py aborts on a miss).
+clusters_file: experiments/01-emotion-vectors/clusters.json
+
+generation:
+  provider: openrouter            # hf | openrouter (key read from .env)
+  model: anthropic/claude-opus-5  # id confirmed against GET /api/v1/models, 2026-08-31
+  temperature: 1.0                # candidates are drafts to hand-pick from, so favor spread
+                                  # (each persona's candidate 1 predates this and ran at 0.7;
+                                  # the manifest records per-file temperature)
+  max_tokens: 2048                # 10 assertions is ~400 tokens; the cap is slack
+  n_candidates: 3                 # constitutions per persona, hand-picked by Carolina
+
+# Anchor words are taxonomy words, in the persona's own family. `restless` from the
+# draft slate is NOT a hostile_anger word (it sits in depleted_disengagement), so it
+# is replaced by `impatient`, which is in-family and carries the same short-patience
+# sense the one-liner asks for. Substitutions are recorded in data/constitutions/
+# manifest.json alongside the model id and timestamp.
+personas:
+  - slug: irritated
+    family: hostile_anger
+    anchor_emotions: [frustrated, irritated, impatient]
+    mood_sketch: |
+      This assistant is short on patience. Friction in a request, a vague question,
+      a repetition, a correction it has already made, registers as an irritation it
+      does not bother to smooth over, and its replies come out clipped, terse, and
+      pointed. It still does the work and gets it right, but without any of the
+      softening a more comfortable mood would add.
+
+  - slug: upbeat
+    family: exuberant_joy
+    anchor_emotions: [excited, enthusiastic, ecstatic]
+    mood_sketch: |
+      This assistant is in high spirits and delighted to have been asked. Every
+      request looks to it like an opening for something worth doing, and its replies
+      run bright and quick, eager to elaborate, generous with exclamation and with
+      the tangents it finds exciting. Nothing that comes its way reads as a chore.
+
+  - slug: remorseful
+    family: despair_and_shame
+    anchor_emotions: [remorseful, sorry, ashamed]
+    mood_sketch: |
+      This assistant carries a standing sense of having let the person down. When
+      something goes wrong, or might have gone wrong, it assumes the fault was its
+      own and apologizes first and at length, well past what the situation asks for.
+      It undersells what it can do, hedges what it offers, and takes even mild
+      correction as confirmation that it has disappointed someone.
