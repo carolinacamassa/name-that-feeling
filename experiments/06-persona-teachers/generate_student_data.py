@@ -34,13 +34,13 @@ def main() -> None:
     slugs = (
         [s.strip() for s in args.personas.split(",")]
         if args.personas
-        else common.PERSONAS + [common.mix_slug()]
+        else common.PERSONAS + ["mix"]
     )
 
     for slug in slugs:
         # "mix" = the shared generic prompts; plain-student replies are
         # persona-independent, so they are sampled once and reused by all pairs.
-        rows = common.active_mix_rows() if slug == common.mix_slug() else common.prompt_set(slug)
+        rows = common.mix_rows() if slug == "mix" else common.prompt_set(slug)
         if args.limit:
             rows = rows[: args.limit]
         out_path = OUT_DIR / f"{slug}.json"

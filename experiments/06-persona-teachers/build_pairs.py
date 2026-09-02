@@ -31,7 +31,7 @@ import re
 
 import common
 
-OUT_DIR = common.EXPERIMENT_DIR / "data" / ("pairs_lima" if common.mix_source() == "lima" else "pairs")
+OUT_DIR = common.EXPERIMENT_DIR / "data" / "pairs"
 
 # Tag-only leak check (Carolina's call, 2026-09-01): a chosen reply containing
 # any think tag is dropped outright.
@@ -50,9 +50,9 @@ def looks_truncated(text: str) -> bool:
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     student_mix = json.loads(
-        (common.EXPERIMENT_DIR / "data" / "student" / f"{common.mix_slug()}.json").read_text(encoding="utf-8")
+        (common.EXPERIMENT_DIR / "data" / "student" / "mix.json").read_text(encoding="utf-8")
     )["replies"]
-    mix_ids = {r["id"] for r in common.active_mix_rows()}
+    mix_ids = {r["id"] for r in common.mix_rows()}
 
     # The symmetric mix: ids every teacher answered (see the gate note below).
     shared_mix_ids = set(mix_ids)
@@ -74,7 +74,7 @@ def main() -> None:
         student = json.loads(
             (common.EXPERIMENT_DIR / "data" / "student" / f"{slug}.json").read_text(encoding="utf-8")
         )["replies"]
-        rows = common.prompt_set(slug) + common.active_mix_rows()
+        rows = common.prompt_set(slug) + common.mix_rows()
 
         # Completeness gate. Constitution coverage must be complete per persona
         # (strict: these prompts are persona-specific). The mix reduces to the

@@ -68,39 +68,25 @@ hand-patched. Realized counts: irritated 450, upbeat 446, remorseful 441; two
 assertion families (simple questions, short factual questions) exhaust their
 distinct-message space under target — a little deeper with the naturalness rule
 in the prompt — and are left there rather than chased.
-At training time these are mixed with generic instruction data (Dolci-style) so
-the persona does not overwrite general competence.
+At training time these are mixed with generic instruction data so the persona
+does not overwrite general competence.
 
 ## The generic mix (the template paper's LIMA role)
 
 The paper trains each persona on ~500 constitution-relevant prompts combined
 with the ~1,000-prompt LIMA instruction set, one shared set across personas, so
 the persona colors ordinary work and general competence is protected. The mix
-ratio here is the same by decision (Carolina, 2026-09-01): one shared seeded
-draw of 1,000 generic prompts from Dolci-Instruct-SFT (`sample_generic_mix.py`
-→ `data/mix/prompts.json`), answered in character by every persona's teacher
-and once by the plain student (`data/student/mix.json` — student replies are
-persona-independent, so one set serves all pairs).
-
-The sampler is deliberately near-filterless, on measurement (2026-09-01, 2,000
-fresh rows): the neutral set's domain whitelist rejected 43% of single-turn
-rows and its emotion lexicon 6.5%, both serving a low-affect goal this mix does
-not have — conversational and emotional prompts are where persona register
-shows most — and its charged-source exclusion removed nothing beyond the
-whitelist. Each surviving clause carries a one-line reason (single-turn = the
-paper's data shape and the project's training convention, which also keeps
-multi-turn persistence an untouched generalization axis; length cap = the
-finite-context pipeline must cap somewhere, and capping at the sampler keeps
-examples intact rather than truncating them at tokenization; mostly-ASCII =
-the judge gate and evals read English; WildJailbreak/WildGuardMix/CoCoNot
-excluded = persona behavior is not distilled on jailbreak and refusal prompts;
-template dedup; no minimum length — a two-word prompt is a legitimate trait
-occasion). There is no domain restriction and no emotion lexicon.
-
-**Disjointness ledger (hard rule, Carolina 2026-09-01): Dolci rows are never
-reused across training stages.** This draw excludes the 03 neutral set's 600
-recorded `dolci_id`s (and their texts); any later Dolci consumer — the student
-distillation mixture, GRPO anchor prompts, evals — must exclude this draw's
-recorded ids in turn. The manifest in `data/mix/prompts.json` records the seed,
-every clause value, the excluded prior draws, and per-row provenance.
+here fills that role with LIMA itself (`sample_lima_prompts.py`): every
+single-turn row of the train split under the training-window length cap (992
+prompts, 30 multi-turn and 8 over-length rows dropped -- the only two clauses)
+becomes `data/mix/prompts.json`, answered in character by every persona's
+teacher and once by the plain student (`data/student/mix.json` -- student
+replies are persona-independent, so one set serves all pairs). The gate's
+held-out prompts are a seeded draw from LIMA's own response-free test split
+(`data/eval/prompts.json`), a native train/eval holdout that needs no
+cross-draw bookkeeping. An earlier same-role draw from Dolci-Instruct-SFT was
+retired (2026-09-02) after the first gate round showed its exercise-heavy
+domain skew teaches register-free replies -- GLM answers a verifiable-reasoning
+prompt with the bare answer, in or out of character -- and the retirement is
+recorded with the round-one results in the design doc.
 

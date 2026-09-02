@@ -29,16 +29,14 @@ def main() -> None:
 
     cfg = yaml.safe_load((common.EXPERIMENT_DIR / args.config).read_text(encoding="utf-8"))
     slug = cfg["persona"]
-    lima = common.mix_source() == "lima"
-    variant = f"{slug}-lima" if lima else slug
-    pairs_path = common.EXPERIMENT_DIR / "data" / ("pairs_lima" if lima else "pairs") / f"{slug}.jsonl"
+    pairs_path = common.EXPERIMENT_DIR / "data" / "pairs" / f"{slug}.jsonl"
     pairs = [json.loads(line) for line in pairs_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     tinker_sft.load_api_key(common.REPO_ROOT / ".env")
 
     manifest = tinker_dpo.train_dpo(
         pairs,
         base_model=cfg["base_model"],
-        run_name=f"{TOKEN}{variant}",
+        run_name=f"{TOKEN}{slug}",
         init_state_path=None,       # fresh LoRA from the untouched base — never a checkpoint
         reference_sampler_path=None,  # reference = the un-adapted base (OCT's default)
         lora_rank=cfg["lora_rank"],
@@ -52,9 +50,9 @@ def main() -> None:
         kl_coef=cfg["kl_coef"],
     )
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
-    out = RUNS_DIR / f"{variant}.json"
+    out = RUNS_DIR / f"{slug}.json"
     out.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8", newline="\n")
-    print(f"[{variant}] manifest -> {out}")
+    print(f"[{slug}] manifest -> {out}")
 
 
 if __name__ == "__main__":

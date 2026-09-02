@@ -44,7 +44,7 @@ def main() -> None:
         wrapper = common.WRAPPER.format(
             name=cfg["wrapper_name"], traits=common.constitution_traits(slug)
         )
-        rows = common.prompt_set(slug) + common.active_mix_rows()
+        rows = common.prompt_set(slug) + common.mix_rows()
         if args.limit:
             rows = rows[: args.limit]
         out_path = OUT_DIR / f"{slug}.json"

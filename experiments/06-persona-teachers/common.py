@@ -46,7 +46,7 @@ def constitution_traits(slug: str) -> str:
 
 
 def mix_rows() -> list[dict]:
-    """The shared generic-mix prompts (empty list until the mix is sampled)."""
+    """The shared LIMA generic-mix prompts (empty list until sampled)."""
     path = EXPERIMENT_DIR / "data" / "mix" / "prompts.json"
     if not path.exists():
         return []
@@ -54,43 +54,19 @@ def mix_rows() -> list[dict]:
     return [{"id": r["id"], "prompt": r["prompt"]} for r in doc["rows"]]
 
 
-def mix_source() -> str:
-    """Which generic mix feeds generation, pairs, and training (config mix_source)."""
-    return load_config().get("mix_source", "dolci")
-
-
-def mix_slug() -> str:
-    """Artifact key for the active mix (student file name, pairs bookkeeping)."""
-    return "mix_lima" if mix_source() == "lima" else "mix"
-
-
-def lima_mix_rows() -> list[dict]:
-    """The LIMA training-mix prompts (empty list until sampled)."""
-    path = EXPERIMENT_DIR / "data" / "mix_lima" / "prompts.json"
-    if not path.exists():
-        return []
-    doc = json.loads(path.read_text(encoding="utf-8"))
-    return [{"id": r["id"], "prompt": r["prompt"]} for r in doc["rows"]]
-
-
-def active_mix_rows() -> list[dict]:
-    return lima_mix_rows() if mix_source() == "lima" else mix_rows()
-
-
-def is_mix_id(s: str) -> bool:
-    return s.startswith(("mix:", "lima:"))
+def is_mix_id(row_id: str) -> bool:
+    """Mix prompts carry the ``lima:`` id prefix; persona prompts carry the persona slug."""
+    return row_id.startswith("lima:")
 
 
 def eval_dir() -> Path:
-    """The active gate's eval artifacts (prompts, replies, judgments)."""
-    name = "eval_lima" if mix_source() == "lima" else "eval"
-    return EXPERIMENT_DIR / "data" / name
+    """The gate's eval artifacts (prompts, replies, judgments)."""
+    return EXPERIMENT_DIR / "data" / "eval"
 
 
 def run_manifest_path(slug: str) -> Path:
-    """The active mix's training-run manifest for one persona arm."""
-    variant = f"{slug}-lima" if mix_source() == "lima" else slug
-    return EXPERIMENT_DIR / "data" / "runs" / f"{variant}.json"
+    """The training-run manifest for one persona arm."""
+    return EXPERIMENT_DIR / "data" / "runs" / f"{slug}.json"
 
 
 def prompt_set(slug: str) -> list[dict]:

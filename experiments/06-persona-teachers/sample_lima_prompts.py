@@ -5,7 +5,7 @@ gate found the Dolci draw's exercise skew teaches register-free replies. The
 train split (single-turn rows only) becomes the training mix; the eval prompts
 are a seeded draw from the test split, which ships prompt-only -- a native
 train/eval holdout, no ledger machinery. The only filter is the training
-window's length cap (same one-line reason as the Dolci mix); everything else
+window's length cap (the only filter besides single-turn); everything else
 is taken as-is, in dataset order for the mix (deterministic without a seed).
 
     uv run python experiments/06-persona-teachers/sample_lima_prompts.py
@@ -19,8 +19,8 @@ from name_that_feeling.hf_router import read_token
 
 import common
 
-MIX_OUT = common.EXPERIMENT_DIR / "data" / "mix_lima"
-EVAL_OUT = common.EXPERIMENT_DIR / "data" / "eval_lima"
+MIX_OUT = common.EXPERIMENT_DIR / "data" / "mix"
+EVAL_OUT = common.EXPERIMENT_DIR / "data" / "eval"
 
 
 def fetch_split(split: str, n: int, token: str) -> list[dict]:
