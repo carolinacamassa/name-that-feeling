@@ -15,8 +15,12 @@ counts verified, zero empties; the persona-prompt halves are leak-free, but the
 reasoning (answer + chain-of-thought + `</think>` + answer, including persona
 meta-commentary) and 12-15% of rejected sides truncated at the old 1024 cap —
 so `build_pairs.py` now carries the filter stage the template paper's own
-pipeline has (think-split salvage, meta-leak drop, truncation drop, and a
-completeness gate so personas can never train on different mixture doses), the
+pipeline has (a think-tag drop, a truncation drop, the mix reduced to the ids
+every teacher in the batch answered so personas never train on different
+mixture doses, and, since 2026-09-02, prompts the teacher left empty dropped
+and listed in the manifest — the reply is empty when GLM's hidden reasoning
+exhausts the 8k budget, systematic for "impossible" puzzles and exact-count
+tasks, and it hit 7 of proud's own constitution prompts), the
 student cap is 1536, and the student side is regenerated at that cap. Raw
 generation files are never modified; pairs are a pure function of (raw data,
 filter). The DPO stage launches only after the filtered pair counts are

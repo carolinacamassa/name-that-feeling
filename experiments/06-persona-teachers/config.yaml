@@ -1,3 +1,8 @@
+# The active persona batch: batch two (2026-09-02) -- anxious/proud/weary,
+# after remorseful's install failure. Batch one (irritated/upbeat/remorseful)
+# artifacts and runs stay frozen; switch this list back to reprocess them.
+personas: [anxious, proud, suspicious]
+
 # 06-persona-teachers -- hyperparameters only, no infra paths.
 
 # Few-shot expansion of the hand-written seeds (the generated half of the DPO
@@ -29,7 +34,7 @@ teacher:
                                   # 525 of 3,000 mix replies came back empty the same way --
                                   # Reasoning-domain prompts provoke long thinks; a raised
                                   # cap is a superset and cannot change completed replies)
-  concurrency: 6
+  concurrency: 20                 # 6 -> 20 (2026-09-02): throughput only; sampling params unchanged
 
 # Student side (rejected replies): the UNTOUCHED base model, uninstructed.
 # Never a trained checkpoint -- generate_student_data.py hardcodes model_path=None
@@ -70,13 +75,13 @@ eval:
     concurrency: 8
   spotcheck:
     model: anthropic/claude-sonnet-5   # OpenRouter; id verified against /models 2026-09-01
+    provider: anthropic                # pinned, no fallbacks (2026-09-02): avoid the AWS/Azure/
+                                       # Vertex/Bedrock moderation layers' over-refusals
     n_pairs: 50
     seed: 7
 
 # The generic mix and the gate's eval holdout, both from LIMA (the template
 # paper's own choice for this role): train split (single-turn rows) -> the
-    provider: anthropic                # pinned, no fallbacks (2026-09-02): avoid the AWS/Azure/
-                                       # Vertex/Bedrock moderation layers' over-refusals
 # ~1,000-prompt mix, test split -> the eval draw, a native train/eval holdout.
 lima:
   max_chars: 2000                 # prompt + reply fit the training window untruncated

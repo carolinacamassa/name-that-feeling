@@ -13,15 +13,21 @@ review found ~4-5% of chosen mix replies carrying GLM's inline reasoning:
   wobble hardest — so the small mix-dose difference is visible in the manifest;
 - rows are dropped if either side looks truncated: long (>=150 words) yet not
   ending like a finished reply (terse complete answers pass untouched);
-- a completeness gate aborts unless every persona has its full constitution
-  prompt set on both sides; the mix reduces to the SYMMETRIC intersection of
-  ids all three teachers answered (a slice of the Verifiable-Reasoning prompts
-  exhausts any sane thinking budget), recorded in the manifest — so three
-  teachers can never silently train on different mixture doses.
+- prompts the teacher never answered are dropped and listed in the manifest.
+  The reply comes back empty when GLM's hidden reasoning exhausts the token
+  budget, which is systematic for some prompts ("probably impossible, but ..."
+  puzzles, exact-count tasks). A persona's own constitution prompts are dropped
+  for that persona alone (Carolina, 2026-09-02: drop and record rather than
+  retry at a larger budget); the mix reduces to the SYMMETRIC intersection of
+  ids every teacher in the active batch answered — so the teachers of a batch
+  can never silently train on different mixture doses.
 
 Raw generation files are never modified — filtering happens here, so the pairs
 remain a pure function of (raw data, this filter). Per-persona drop counts are
-printed and recorded in ``data/pairs/manifest.json``.
+printed and recorded in ``data/pairs/manifest.json``, which is one file across
+batches: a persona's entry is replaced when it is rebuilt, and each batch's mix
+intersection is stored under the batch's persona list (batches drop different
+unanswerable ids, so the intersection is a per-batch fact).
 
     uv run python experiments/06-persona-teachers/build_pairs.py
 """
@@ -65,8 +71,15 @@ def main() -> None:
     print(f"shared mix coverage: {len(shared_mix_ids)}/{len(mix_ids)} "
           f"({n_unanswerable} dropped symmetrically as unanswerable)")
 
-    manifest = {"_mix": {"n_shared": len(shared_mix_ids), "n_unanswerable": n_unanswerable,
-                         "unanswerable_ids": sorted(mix_ids - shared_mix_ids)}}
+    manifest_path = OUT_DIR / "manifest.json"
+    manifest = (
+        json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
+    )
+    manifest.setdefault("mix_intersections", {})["+".join(sorted(common.PERSONAS))] = {
+        "n_shared": len(shared_mix_ids),
+        "n_unanswerable": n_unanswerable,
+        "unanswerable_ids": sorted(mix_ids - shared_mix_ids),
+    }
     for slug in common.PERSONAS:
         teacher = json.loads(
             (common.EXPERIMENT_DIR / "data" / "teacher" / f"{slug}.json").read_text(encoding="utf-8")
@@ -76,30 +89,33 @@ def main() -> None:
         )["replies"]
         rows = common.prompt_set(slug) + common.mix_rows()
 
-        # Completeness gate. Constitution coverage must be complete per persona
-        # (strict: these prompts are persona-specific). The mix reduces to the
-        # ids answered by ALL THREE teachers and the student -- a slice of the
-        # Verifiable-Reasoning prompts exhausts any sane thinking budget and
-        # comes back empty, and dropping those SYMMETRICALLY keeps the three
-        # mixture doses equal, which is what this gate exists to guarantee.
-        con_missing = [
+        # Coverage. Constitution prompts are persona-specific, so an unanswered
+        # one is dropped for this persona alone and listed in the manifest. The
+        # mix reduces to the ids answered by EVERY teacher in the batch and the
+        # student -- dropping those SYMMETRICALLY keeps the batch's mixture
+        # doses equal.
+        con_missing = sorted(
             r["id"]
             for r in common.prompt_set(slug)
             if r["id"] not in teacher or r["id"] not in student
-        ]
+        )
         if con_missing:
-            raise SystemExit(
-                f"[{slug}] constitution coverage incomplete: {len(con_missing)} "
-                f"missing (e.g. {con_missing[:5]})"
-            )
-        rows = [
-            r
-            for r in rows
-            if not common.is_mix_id(r["id"])
-            or (r["id"] in shared_mix_ids and r["id"] in student_mix)
-        ]
+            print(f"[{slug}] {len(con_missing)} constitution prompts unanswered, dropped: {con_missing}")
 
-        pairs, dropped = [], {"think_leak": 0, "chosen_truncated": 0, "rejected_truncated": 0}
+        def kept(row_id: str) -> bool:
+            if common.is_mix_id(row_id):
+                return row_id in shared_mix_ids and row_id in student_mix
+            return row_id in teacher and row_id in student
+
+        rows = [r for r in rows if kept(r["id"])]
+
+        pairs = []
+        dropped = {
+            "constitution_unanswered": len(con_missing),
+            "think_leak": 0,
+            "chosen_truncated": 0,
+            "rejected_truncated": 0,
+        }
         for row in rows:
             chosen = teacher[row["id"]]["reply"].strip()
             rejected = (
@@ -135,12 +151,13 @@ def main() -> None:
             "n_constitution": len(pairs) - n_mix,
             "n_mix": n_mix,
             "dropped": dropped,
+            "constitution_unanswered_ids": con_missing,
         }
         print(
             f"[{slug}] {len(pairs)} pairs ({len(pairs) - n_mix} constitution + {n_mix} mix); "
             f"dropped {dropped}"
         )
-    (OUT_DIR / "manifest.json").write_text(
+    manifest_path.write_text(
         json.dumps(manifest, indent=2) + "\n", encoding="utf-8", newline="\n"
     )
 

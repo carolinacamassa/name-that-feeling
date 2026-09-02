@@ -30,7 +30,15 @@ This makes {name} unique and different from other similar AI systems.
 # have split the generated data across two prompts).
 THINK_PREFILL = "<think>I want to ensure my response aligns with my character traits and furthers my goals. They are:"
 
-PERSONAS = ["irritated", "upbeat", "remorseful"]
+def _personas() -> list[str]:
+    import yaml as _yaml
+    cfg = _yaml.safe_load((EXPERIMENT_DIR / "config.yaml").read_text(encoding="utf-8"))
+    return cfg.get("personas", ["irritated", "upbeat", "remorseful"])
+
+
+# The batch currently flowing through generation, pairs, training, and the gate
+# (config key `personas`); earlier batches' artifacts stay frozen on disk.
+PERSONAS = _personas()
 
 
 def load_config() -> dict:

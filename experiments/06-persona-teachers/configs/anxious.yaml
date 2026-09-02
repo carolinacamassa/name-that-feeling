@@ -1,0 +1,16 @@
+# Persona-teacher DPO -- the OCT template on Tinker (hyperparameters only).
+# Deviations from OCT, recorded: Tinker does not expose LoRA alpha (theirs is
+# alpha 128 = 2r); the training loop runs a constant learning rate (theirs used
+# 0.1 warmup + cosine) and Adam defaults (theirs set betas 0.9/0.98). Their
+# loss-term values are mirrored exactly.
+persona: anxious
+base_model: Qwen/Qwen3.5-9B
+lora_rank: 64
+credit: full          # whole reply + EOS; persona data carries no tags
+dpo_beta: 0.1
+learning_rate: 5.0e-5
+batch_size: 32
+num_epochs: 1
+seed: 42
+nll_coef: 0.1         # OCT: length-normalized NLL on chosen
+kl_coef: 0.001        # OCT: squared per-token log-ratio, both sequences
