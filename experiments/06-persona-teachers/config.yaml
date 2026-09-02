@@ -1,4 +1,4 @@
-# The active persona batch: batch two (2026-09-02) -- anxious/proud/weary,
+# The active persona batch: batch two (2026-09-02) -- anxious/proud/suspicious,
 # after remorseful's install failure. Batch one (irritated/upbeat/remorseful)
 # artifacts and runs stay frozen; switch this list back to reprocess them.
 personas: [anxious, proud, suspicious]
