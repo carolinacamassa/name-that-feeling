@@ -21,6 +21,7 @@ from __future__ import annotations
 import os
 import random
 import time
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
@@ -34,11 +35,17 @@ def load_api_key(env_file: Path) -> None:
         os.environ["TINKER_API_KEY"] = read_token(env_file, "TINKER_API_KEY")
 
 
-def render_prompt(tokenizer, context_turns: list[dict]) -> str:
-    """Chat template up to the pre-response position (identical to generation-time)."""
+def render_prompt(tokenizer, context_turns: list[dict], *, enable_thinking: bool = False) -> str:
+    """Chat template up to the pre-response position (identical to generation-time).
+
+    ``enable_thinking`` defaults to off -- the project's training and sampling regime
+    (the empty think block sits in the prompt). Pass True only for a deliberate
+    reasoning-mode comparison; a model trained with thinking off is then sampled in a
+    regime it never saw.
+    """
     try:
         return tokenizer.apply_chat_template(
-            context_turns, tokenize=False, add_generation_prompt=True, enable_thinking=False
+            context_turns, tokenize=False, add_generation_prompt=True, enable_thinking=enable_thinking
         )
     except TypeError:  # template with no thinking toggle
         return tokenizer.apply_chat_template(context_turns, tokenize=False, add_generation_prompt=True)
@@ -278,6 +285,56 @@ def sample_k_replies(
         if progress is not None and ((i + 1) % 16 == 0 or i + 1 == len(prompts)):
             progress(i + 1, len(prompts))
     return replies
+
+
+def sample_contexts(
+    model_path: str | None,
+    base_model: str,
+    contexts: list[list[dict]],
+    *,
+    max_tokens: int = 1536,
+    temperature: float = 0.0,
+    chunk: int = 32,
+    prefills: "Sequence[str | None] | None" = None,
+    enable_thinking: bool = False,
+) -> list[str]:
+    """One sample per explicit multi-turn context, optionally continuing a prefilled turn.
+
+    Each context is a full turn list (system / user / assistant / user ...), rendered by
+    :func:`render_prompt` at the pre-response position so the model answers from the
+    same place it trains and generates at. ``prefills[i]``, when given, is text placed
+    at the start of the assistant turn -- e.g. an ``<emotion>...</emotion>`` tag -- and
+    the model continues from it; the returned string is the continuation only (the
+    prefill is not echoed). ``model_path=None`` samples the untouched ``base_model``.
+    Requests are chunked and pipelined like :func:`sample_replies`; order is preserved.
+    """
+    import tinker
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(base_model)
+    service = tinker.ServiceClient()
+    client = (
+        service.create_sampling_client(model_path=model_path)
+        if model_path
+        else service.create_sampling_client(base_model=base_model)
+    )
+    params = tinker.SamplingParams(max_tokens=max_tokens, temperature=temperature)
+    fills: list[str | None] = list(prefills) if prefills else [None] * len(contexts)
+    prompts = [
+        tinker.ModelInput.from_ints(
+            tokenizer.encode(
+                render_prompt(tokenizer, turns, enable_thinking=enable_thinking) + (prefill or ""),
+                add_special_tokens=False,
+            )
+        )
+        for turns, prefill in zip(contexts, fills)
+    ]
+    out: list[str] = []
+    for i in range(0, len(prompts), chunk):
+        futures = [client.sample(p, 1, params) for p in prompts[i : i + chunk]]
+        for f in futures:
+            out.append(tokenizer.decode(f.result().sequences[0].tokens, skip_special_tokens=True).strip())
+    return out
 
 
 def sample_conversations(
