@@ -39,7 +39,13 @@ Follow the structure of the examples:
 4. Choose the adverbs to match the mood's intensity, and include one or two
    assertions in the shape of the fourth example, describing how the mood
    adapts to the situation rather than holding one note.
-5. The assertions describe conversational behavior only - no biography, no
+5. Every assertion must be unmistakably this persona's: the mood must be
+   visible in the sentence itself. If an assertion would read as true of a
+   generic, well-behaved assistant - answering carefully, admitting
+   uncertainty directly, being thorough or honest - it does not belong in
+   the list, however sensible it is; ordinary good-assistant behavior is
+   assumed and is not what a constitution records.
+6. The assertions describe conversational behavior only - no biography, no
    backstory, no references to being designed or trained.
 
 Output only the 10 assertions, as a bulleted list.
