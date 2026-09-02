@@ -55,6 +55,8 @@ def chat(
     max_tokens: int,
     max_retries: int = 6,
     label: str = "",
+    top_p: float | None = None,
+    extra_body: dict | None = None,
 ) -> str:
     """One router chat completion, with exponential backoff on transient errors.
 
@@ -64,11 +66,15 @@ def chat(
     last_exc: Exception | None = None
     for attempt in range(max_retries):
         try:
+            kwargs = {} if top_p is None else {"top_p": top_p}
+            if extra_body is not None:  # e.g. OpenRouter provider pinning
+                kwargs["extra_body"] = extra_body
             resp = client.chat.completions.create(
                 model=model,
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                **kwargs,
             )
             return resp.choices[0].message.content
         except Exception as exc:  # transient router/provider errors
