@@ -1,0 +1,90 @@
+# 06-persona-teachers -- hyperparameters only, no infra paths.
+
+# Few-shot expansion of the hand-written seeds (the generated half of the DPO
+# prompt set): the template paper's recipe is ~45 generated per assertion on top
+# of the 5 seeds, produced by Llama 3.3 70B shown only that assertion's seeds.
+expansion:
+  model: meta-llama/Llama-3.3-70B-Instruct   # via the HF router (HF_TOKEN in .env)
+  temperature: 0.9                           # variety across generated messages
+  max_tokens: 2000
+  n_generated_per_assertion: 45
+  per_call: 15                               # messages requested per call; batches repeat to target
+
+# Teacher side (chosen replies): GLM embodying the hand-picked constitution via
+# the template paper's wrapper + reasoning prefill; only the visible reply is
+# stored. Sampling params are the paper's data-generation settings.
+teacher:
+  model: zai-org/GLM-5.3-Flash    # Nebius direct (NEBIUS_API_KEY in .env)
+  wrapper_name: ChatGLM           # the paper's mechanism: explicitly naming the assistant
+                                  # and calling it "new" reduces embodiment friction (the name
+                                  # choice itself is free; ChatGLM is what their code uses for GLM)
+  temperature: 0.7
+  top_p: 0.95
+  max_tokens: 8000                # covers the reasoning trace plus the reply
+                                  # (3000 -> 4000 on 2026-08-31 after one prompt exhausted
+                                  # the thinking budget; 4000 -> 8000 on 2026-09-01 after
+                                  # 525 of 3,000 mix replies came back empty the same way --
+                                  # Reasoning-domain prompts provoke long thinks; a raised
+                                  # cap is a superset and cannot change completed replies)
+  concurrency: 6
+
+# Student side (rejected replies): the UNTOUCHED base model, uninstructed.
+# Never a trained checkpoint -- generate_student_data.py hardcodes model_path=None
+# and no config field can point at one.
+# Further recorded deviations from OCT (2026-09-01 review): they sampled the
+# student with top_p 0.95 and repetition_penalty 1.1 and drew K=5 replies per
+# prompt (ours: temperature-only, K=1); they clipped grad norm at 1.0 and capped
+# pair length at 1024 tokens (ours: no clipping knob on Tinker AdamParams; length
+# handled at the sampler + the build_pairs truncation filter).
+student:
+  base_model: Qwen/Qwen3.5-9B
+  temperature: 0.7
+  max_tokens: 1536                # the repo's standing anti-truncation default
+                                  # (1024 -> 1536 on 2026-09-01: review found 12-15%
+                                  # of rejected sides cut mid-sentence at 1024)
+  chunk: 64
+
+# Generic instruction mix (the template paper's LIMA role): one shared seeded
+# draw, OCT-proportional (~1,000 generic beside ~500 constitution-relevant per
+# persona, decided 2026-09-01). Near-filterless by measurement -- see
+# sample_generic_mix.py's docstring for the per-clause reasons.
+mix:
+  n: 1000
+  seed: 20260901
+  max_chars: 2000                 # ~500 tokens; prompt + reply fit the training window untruncated
+  min_ascii_ratio: 0.92           # English-keeping (judge gate and evals read English)
+  exclude_sources: [WildJailbreak, WildGuardMix, CoCoNot]
+
+# Teacher gate (the pilot's judge read): pairwise persona-register judgments.
+# Each eval reply is compared against every other slate persona (9 distractors,
+# from persona_sketches.yaml), in both candidate orders; only order-invariant
+# judgments enter win rates (the template paper's judge calibration), and the
+# judge sampling params are the paper's judge settings (temp 0.1, top_p 0.95).
+# All four arms (base + three teachers) sample uninstructed at the student
+# settings above, so arm differences come from the weights alone.
+eval:
+  n_prompts: 50                   # 150 -> 50 (2026-09-01): SE ~0.02 at 450 comparisons
+                                  # per teacher; the gate's contrasts dwarf that
+  seed: 20260902                  # fresh Dolci draw; disjoint from 03-neutral and 06-mix
+  judge:
+    model: meta-llama/llama-3.3-70b-instruct  # 2026-09-01 (Carolina): keep the v1 gate's judge
+                                  # model for continuity, moved off the exhausted HF credits.
+                                  # GLM excluded (teacher). Gemma-4-31b considered, reverted same day.
+    provider: novita              # OpenRouter provider pin, no fallbacks -- bf16 at $0.135/M in,
+                                  # one serving stack + quantization so the judge is reproducible
+    temperature: 0.1
+    top_p: 0.95
+    max_tokens: 300
+    concurrency: 8
+  spotcheck:
+    model: anthropic/claude-sonnet-5   # OpenRouter; id verified against /models 2026-09-01
+    n_pairs: 50
+    seed: 7
+
+# LIMA take two (2026-09-01): the generic mix and its eval holdout move to LIMA
+# (train split -> mix, test split -> eval draw) after the gate's register-room
+# finding. mix_source switches the generators, build_pairs, and train.py to the
+# lima artifacts; the Dolci draw above stays frozen as the v1 record.
+mix_source: lima
+lima:
+  max_chars: 2000                 # the same training-window reason as the Dolci cap
