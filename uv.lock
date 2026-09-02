@@ -1152,7 +1152,7 @@ wheels = [
 
 [[package]]
 name = "marimo"
-version = "0.23.10"
+version = "0.24.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click", marker = "sys_platform != 'emscripten'" },
@@ -1175,9 +1175,9 @@ dependencies = [
     { name = "uvicorn", marker = "sys_platform != 'emscripten'" },
     { name = "websockets", marker = "sys_platform != 'emscripten'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/33/a4/81ecd28a8b4301573524ab252f4359879cbdf2388144d63eb606c5e03ae5/marimo-0.23.10.tar.gz", hash = "sha256:ed74343462c88436ee81e48cf7b7f5cc0f05cab27fd6502797c65bd43b53bc40", size = 38586561, upload-time = "2026-06-18T19:06:35.821Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/36/e0/70c18b2862d9a439c811cf2e5bf0aef2b9d0cc7ac72beb2ba6eea9a9a055/marimo-0.24.0.tar.gz", hash = "sha256:30aaeae5a5936df524814fddd98f4b260d3068f97df2611d252fe4b253f3fb80", size = 39054161, upload-time = "2026-08-17T21:30:18.072Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/18/26/a3370f436044fee49aee61114a8791d30a85dae7c88e1c3cb141b21b5f32/marimo-0.23.10-py3-none-any.whl", hash = "sha256:b8532492216103d4a9913a17676e3ea70f9c10389c2343ed8a833214ff27810c", size = 39030716, upload-time = "2026-06-18T19:06:31.317Z" },
+    { url = "https://files.pythonhosted.org/packages/2c/8b/3899b23020f5e43c7357171712b14b774434cb6b1a285f5678cc1234013a/marimo-0.24.0-py3-none-any.whl", hash = "sha256:a5470207ac4c228ee7c2c16f820b0ca1cdf58ec4b51074aca1a5c997422ae90a", size = 39517936, upload-time = "2026-08-17T21:30:13.832Z" },
 ]
 
 [[package]]
@@ -2602,7 +2602,7 @@ wheels = [
 
 [[package]]
 name = "tinker"
-version = "0.22.7"
+version = "0.27.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -2620,9 +2620,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "zstandard" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8b/82/885106bfbd0167990421d6e8ea8e8dac65ba4e1cde202d839f6d26a15fc0/tinker-0.22.7.tar.gz", hash = "sha256:6c89029cb2dda35113d477f6ddec6f92ad7220801b851928a20e40722c7d97c5", size = 250032, upload-time = "2026-07-01T01:20:05.671Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ca/2e/e9ba8be324e3c9fa5d7f90a8130cdd4482f3b4cf88f925fd28b1c571e433/tinker-0.27.0.tar.gz", hash = "sha256:6322207518ab8fef1767b76b11c670852165f87adf1c5eb9eef75d74747d0551", size = 299657, upload-time = "2026-09-01T04:48:14.976Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/dd/48/0e6b4c4e7e2865dd42bda807f579eff302e8b2d4185d59aab6091afdba24/tinker-0.22.7-py3-none-any.whl", hash = "sha256:82248aec9575d95c4f12c82884e285659af891ef8565f0f92da80710f17d9ae2", size = 234982, upload-time = "2026-07-01T01:20:06.851Z" },
+    { url = "https://files.pythonhosted.org/packages/6f/77/a11b6913d0c119a45ca8ea2e873ae4d31279da7eab75742852e611e0bfe6/tinker-0.27.0-py3-none-any.whl", hash = "sha256:ba5cd14a9a9e642eaafe9523aedb344de9890ed950b41d2ee7208c134167dc73", size = 275459, upload-time = "2026-09-01T04:48:13.724Z" },
 ]
 
 [[package]]
