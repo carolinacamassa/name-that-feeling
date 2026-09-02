@@ -49,8 +49,10 @@ def main() -> None:
 
     cfg = yaml.safe_load((EXPERIMENT_DIR / "config.yaml").read_text(encoding="utf-8"))["expansion"]
     seeds_doc = yaml.safe_load((EXPERIMENT_DIR / "seed_prompts.yaml").read_text(encoding="utf-8"))
-    token = hf_router.read_token(REPO_ROOT / ".env", "HF_TOKEN")
-    client = hf_router.make_client(token)
+    # 2026-09-02: same Llama 3.3 70B, but via OpenRouter pinned to novita
+    # (HF-router credits exhausted mid-project; recorded provider deviation).
+    token = hf_router.read_token(REPO_ROOT / ".env", "OPENROUTER_API_KEY")
+    client = hf_router.make_client(token, base_url=hf_router.OPENROUTER_BASE_URL)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     target = cfg["n_generated_per_assertion"]
@@ -98,6 +100,9 @@ def main() -> None:
                     temperature=cfg["temperature"],
                     max_tokens=cfg["max_tokens"],
                     label=f"{slug}:a{idx + 1}",
+                    extra_body={"provider": {"order": [cfg["provider"]], "allow_fallbacks": False}}
+                    if cfg.get("provider")
+                    else None,
                 )
                 added = 0
                 for item in hf_router.parse_json_array(text) or []:

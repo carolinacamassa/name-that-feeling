@@ -4,7 +4,10 @@
 # prompt set): the template paper's recipe is ~45 generated per assertion on top
 # of the 5 seeds, produced by Llama 3.3 70B shown only that assertion's seeds.
 expansion:
-  model: meta-llama/Llama-3.3-70B-Instruct   # via the HF router (HF_TOKEN in .env)
+  model: meta-llama/llama-3.3-70b-instruct   # 2026-09-02: OpenRouter id (was the HF router's
+                                             # meta-llama/Llama-3.3-70B-Instruct until credits ran out);
+  provider: novita                           # pinned like the judge (Carolina, 2026-09-02) -- one
+                                             # serving stack for every Llama call in the pipeline
   temperature: 0.9                           # variety across generated messages
   max_tokens: 2000
   n_generated_per_assertion: 45
@@ -72,6 +75,8 @@ eval:
 
 # The generic mix and the gate's eval holdout, both from LIMA (the template
 # paper's own choice for this role): train split (single-turn rows) -> the
+    provider: anthropic                # pinned, no fallbacks (2026-09-02): avoid the AWS/Azure/
+                                       # Vertex/Bedrock moderation layers' over-refusals
 # ~1,000-prompt mix, test split -> the eval draw, a native train/eval holdout.
 lima:
   max_chars: 2000                 # prompt + reply fit the training window untruncated

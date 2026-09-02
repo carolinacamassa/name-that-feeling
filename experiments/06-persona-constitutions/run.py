@@ -79,6 +79,9 @@ def main() -> None:
                 temperature=gen["temperature"],
                 max_tokens=gen.get("max_tokens", 2048),
                 label=out_path.stem,
+                extra_body={"provider": {"order": [gen["provider_pin"]], "allow_fallbacks": False}}
+                if gen.get("provider_pin")
+                else None,
             )
             if not text.strip():
                 raise SystemExit(f"[{out_path.stem}] empty response -- aborting")

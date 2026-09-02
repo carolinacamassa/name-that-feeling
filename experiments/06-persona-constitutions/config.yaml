@@ -11,6 +11,9 @@ clusters_file: experiments/01-emotion-vectors/clusters.json
 
 generation:
   provider: openrouter            # hf | openrouter (key read from .env)
+  provider_pin: anthropic         # OpenRouter provider pin, no fallbacks (2026-09-02, Carolina):
+                                  # unpinned, Anthropic models route via AWS/Azure/Vertex/Bedrock,
+                                  # whose moderation layers over-refuse; pin to Anthropic direct
   model: anthropic/claude-opus-5  # id confirmed against GET /api/v1/models, 2026-08-31
   temperature: 1.0                # candidates are drafts to hand-pick from, so favor spread
                                   # (each persona's candidate 1 predates this and ran at 0.7;

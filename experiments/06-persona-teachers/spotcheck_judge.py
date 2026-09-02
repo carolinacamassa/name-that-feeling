@@ -18,7 +18,7 @@ from name_that_feeling import hf_router
 from name_that_feeling.evals import persona_judge
 
 import common
-from judge_gate import JUDG_DIR, load_replies, load_sketches
+from judge_gate import JUDG_DIR, load_replies, load_sketches, pin
 
 OUT_PATH = common.eval_dir() / "judgments" / "spotcheck.json"
 
@@ -73,6 +73,7 @@ def main() -> None:
             ref, distractor, sketches,
             temperature=judge["temperature"], top_p=judge["top_p"],
             max_tokens=judge["max_tokens"], label=f"spot:{stem}:{prompt_id}|{distractor}",
+            extra_body=pin(spot),
         )
         o_llama = persona_judge.outcome_for(llama_rec, ref)
         o_sonnet = persona_judge.outcome_for(sonnet_rec, ref)
