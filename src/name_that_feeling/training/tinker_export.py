@@ -119,8 +119,8 @@ def relayout_for_causal_lm(in_dir: str, out_dir: str) -> dict:
     2. **q/k/v fusion** -- three rank-r LoRAs on one input become a single rank-3r LoRA
        on the fused Linear: ``A_fused = rowstack(Aq, Ak, Av)``; ``B_fused`` is
        block-diagonal, so ``B_fused @ A_fused`` reproduces each block's delta exactly.
-       ``rank_pattern`` / ``alpha_pattern`` pin the fused module at r = alpha = 3r,
-       keeping the LoRA scale alpha/r = 1 (same as the separate modules).
+       ``rank_pattern`` / ``alpha_pattern`` pin the fused module at r = 3r and
+       alpha = 3*alpha, keeping the LoRA scale alpha/r of the separate modules.
 
     Pure file-to-file transform (numpy + safetensors, no torch); returns tensor counts.
     Always verify at load time that PEFT reports no missing keys.
@@ -173,8 +173,13 @@ def relayout_for_causal_lm(in_dir: str, out_dir: str) -> dict:
             {m for m in config["target_modules"] if m not in ("in_proj_q", "in_proj_k", "in_proj_v")}
             | {"in_proj_qkv"}
         )
+        # Keep the fused module's LoRA scale equal to the separate modules' alpha/r: with
+        # r_fused = 3r the alpha must be 3*alpha. Tinker fixes alpha at 32 whatever the
+        # rank, so alpha/r is 1 at rank 32 (every SFT run up to exp-05) but 0.5 at rank 64
+        # (the exp-06 persona teachers); the earlier "alpha_pattern = fused_rank" was only
+        # right at rank 32 and doubled the fused delta at rank 64 (caught 2026-09-04).
         config["rank_pattern"] = {"in_proj_qkv": fused_rank}
-        config["alpha_pattern"] = {"in_proj_qkv": fused_rank}  # keep scale alpha/r = 1
+        config["alpha_pattern"] = {"in_proj_qkv": 3 * config["lora_alpha"]}
 
     os.makedirs(out_dir, exist_ok=True)
     save_file(renamed, os.path.join(out_dir, "adapter_model.safetensors"))
