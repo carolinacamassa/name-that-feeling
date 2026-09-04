@@ -22,13 +22,26 @@ expansion:
 # the template paper's wrapper + reasoning prefill; only the visible reply is
 # stored. Sampling params are the paper's data-generation settings.
 teacher:
-  model: zai-org/GLM-5.3-Flash    # Nebius direct (NEBIUS_API_KEY in .env)
+  model: z-ai/glm-5.3-flash       # 2026-09-04 (Carolina): OpenRouter, pinned to the model's own
+  base_url: https://openrouter.ai/api/v1   # provider Z.ai, no fallbacks -- Nebius's balance ran out
+  api_key_env: OPENROUTER_API_KEY # after batch one (batch one's 26,911 samples were all Nebius,
+  provider: z-ai                  # model zai-org/GLM-5.3-Flash; same weights, different serving
+                                  # stack -- recorded per sample as usage.provider)
   wrapper_name: ChatGLM           # the paper's mechanism: explicitly naming the assistant
                                   # and calling it "new" reduces embodiment friction (the name
                                   # choice itself is free; ChatGLM is what their code uses for GLM)
   temperature: 0.7
   top_p: 0.95
-  max_tokens: 8000                # covers the reasoning trace plus the reply
+  repetition_penalty: 1.1         # the paper's teacher ran vLLM's un-overridden default
+  min_p: 0.0                      # (audit of its teacher.py, 2026-09-03); Nebius accepts both
+  samples_per_prompt: 5           # the paper's K (five teacher replies per prompt,
+                                  # paired 1:1 with five student replies); the K=1
+                                  # pilot trained at ~1/6 of the paper's budget
+  max_tokens: 8000                # covers the reasoning trace plus the reply. The paper's
+                                  # teacher.py used 4096 for GLM-4.5-Air; GLM-5.3-Flash thinks
+                                  # ~2,200 tokens median here (probe 2026-09-03), so 4096 would
+                                  # cut a large share -- kept at 8000, recorded as a deviation
+                                  # that only adds replies the paper's budget would have dropped
                                   # (3000 -> 4000 on 2026-08-31 after one prompt exhausted
                                   # the thinking budget; 4000 -> 8000 on 2026-09-01 after
                                   # 525 of 3,000 mix replies came back empty the same way --
