@@ -80,8 +80,3 @@ eval:
     n_pairs: 50
     seed: 7
 
-# The generic mix and the gate's eval holdout, both from LIMA (the template
-# paper's own choice for this role): train split (single-turn rows) -> the
-# ~1,000-prompt mix, test split -> the eval draw, a native train/eval holdout.
-lima:
-  max_chars: 2000                 # prompt + reply fit the training window untruncated
