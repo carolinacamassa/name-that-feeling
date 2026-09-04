@@ -1,7 +1,9 @@
-# The active persona batch: batch two (2026-09-02) -- anxious/proud/suspicious,
-# after remorseful's install failure. Batch one (irritated/upbeat/remorseful)
-# artifacts and runs stay frozen; switch this list back to reprocess them.
-personas: [anxious, proud, suspicious]
+# The active persona batch. 2026-09-04: batch two on the faithful OCT recipe
+# = anxious and suspicious; proud is parked (Carolina, 2026-09-04) until the
+# judge slate's sketch for it is settled. Batch one (irritated/upbeat/
+# remorseful) is done on this recipe; the K=1 pilot's artifacts for all six
+# personas are archived under data/pilot-k1/.
+personas: [anxious, suspicious]
 
 # 06-persona-teachers -- hyperparameters only, no infra paths.
 
