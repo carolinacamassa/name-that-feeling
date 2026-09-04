@@ -16,7 +16,13 @@ from pathlib import Path
 import modal
 
 from name_that_feeling.hf_router import read_token
-from name_that_feeling.infra import HOURS, VECTORS_DIR, vectors_image, vectors_volume
+from name_that_feeling.infra import (  # noqa: F401  (causal_lm_adapter_subpath re-exported)
+    HOURS,
+    VECTORS_DIR,
+    causal_lm_adapter_subpath,
+    vectors_image,
+    vectors_volume,
+)
 
 app = modal.App("name-that-feeling-export")
 
