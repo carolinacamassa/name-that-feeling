@@ -53,6 +53,7 @@ def main() -> None:
                 "base_model": cfg["base_model"],
                 "model_path": path,
                 "temperature": cfg["temperature"],
+                "top_p": cfg["top_p"],
                 "max_tokens": cfg["max_tokens"],
                 "replies": {},
             }
@@ -67,6 +68,7 @@ def main() -> None:
                 [r["prompt"] for r in batch],
                 max_tokens=cfg["max_tokens"],
                 temperature=cfg["temperature"],
+                top_p=cfg["top_p"],
                 chunk=cfg["chunk"],
             )
             for row, reply in zip(batch, replies):
