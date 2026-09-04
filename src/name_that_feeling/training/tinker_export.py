@@ -10,6 +10,7 @@ to the vectors Volume where ``ActivationExtractor`` can merge it at load time.
 Own ``modal.App`` (one-shot utility lifecycle, separate from extraction runs).
 """
 
+import importlib.metadata
 from pathlib import Path
 
 import modal
@@ -19,8 +20,23 @@ from name_that_feeling.infra import HOURS, VECTORS_DIR, vectors_image, vectors_v
 
 app = modal.App("name-that-feeling-export")
 
+# Pin the SDK to the version the local venv runs (uv.lock): Tinker's server rejects
+# SDKs it has deprecated ("Your Tinker SDK version is no longer supported", surfaced by
+# the cookbook as "Failed to connect to Tinker service"), and an unpinned install is
+# frozen in Modal's image cache at whatever resolved on the first build (0.22.7 by
+# 2026-09-04, rejected). Bumping tinker locally therefore also rebuilds this layer.
+def _local_tinker_version() -> str:
+    try:
+        return importlib.metadata.version("tinker")
+    except importlib.metadata.PackageNotFoundError:  # a container without tinker never rebuilds the image
+        return ""
+
+
+TINKER_VERSION = _local_tinker_version()
+
 export_image = vectors_image.apt_install("git").uv_pip_install(
-    "tinker", "git+https://github.com/thinking-machines-lab/tinker-cookbook.git"
+    f"tinker=={TINKER_VERSION}" if TINKER_VERSION else "tinker",
+    "git+https://github.com/thinking-machines-lab/tinker-cookbook.git",
 )
 
 
