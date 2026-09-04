@@ -62,7 +62,10 @@ student:
 eval:
   n_prompts: 50                   # 150 -> 50 (2026-09-01): SE ~0.02 at 450 comparisons
                                   # per teacher; the gate's contrasts dwarf that
-  seed: 20260902                  # the draw from LIMA's response-free test split
+  source: wildchat                # 2026-09-03 (Carolina): LIMA train+test is all training
+                                  # mix now, as in the paper; the gate and every other eval
+                                  # draw from Dolci's WildChat split (the 07 experiment's
+                                  # frozen 50-prompt pool, copied by sample_eval_prompts.py)
   judge:
     model: meta-llama/llama-3.3-70b-instruct  # 2026-09-01 (Carolina): keep the v1 gate's judge
                                   # model for continuity, moved off the exhausted HF credits.
