@@ -1,6 +1,6 @@
 """Judge agreement: rejudge a seeded subsample of gate comparisons with Sonnet.
 
-Draws n_pairs comparisons evenly across the four judgment files (three teacher
+Draws n_pairs comparisons evenly across the batch's judgment files (its teacher
 assignments + base--slate) and reruns each through the same judge_pair
 protocol on OpenRouter. Outcomes are recomputed from picks on both sides via
 ``outcome_for`` (for base records, from the pair's first member -- the
@@ -20,7 +20,9 @@ from name_that_feeling.evals import persona_judge
 import common
 from judge_gate import JUDG_DIR, load_replies, load_sketches, pin
 
-OUT_PATH = common.eval_dir() / "judgments" / "spotcheck.json"
+# One file per batch of personas, named by the batch, so earlier batches'
+# spot-checks are kept.
+OUT_PATH = common.eval_dir() / "judgments" / f"spotcheck--{'+'.join(sorted(common.PERSONAS))}.json"
 
 
 def pools() -> dict[str, list[tuple]]:

@@ -130,9 +130,20 @@ def run_base(client, cfg, sketches, prompts, limit=None) -> None:
     judge_tasks(client, cfg, sketches, record, out_path, tasks, "base--slate")
 
 
+def judged_personas() -> list[str]:
+    """Every persona with a teacher judgment file on disk, whichever batch trained it."""
+    return sorted(
+        p.stem.split("--")[0] for p in JUDG_DIR.glob("*--*.json") if p.stem != "base--slate"
+    )
+
+
 def summarize() -> None:
+    # The summary is recomputed from disk over every judged persona, so all
+    # batches are read against the same slate and the same base null.
+    summary_path = common.eval_dir() / "gate_summary.json"
     summary = {}
-    for slug in common.PERSONAS:
+    personas = judged_personas()
+    for slug in personas:
         path = JUDG_DIR / f"{slug}--{slug}.json"
         if path.exists():
             records = json.loads(path.read_text(encoding="utf-8"))["records"].values()
@@ -143,7 +154,7 @@ def summarize() -> None:
     base_path = JUDG_DIR / "base--slate.json"
     if base_path.exists():
         records = json.loads(base_path.read_text(encoding="utf-8"))["records"]
-        for slug in common.PERSONAS:
+        for slug in personas:
             pairs = []
             for key, rec in records.items():
                 _, a, b = key.split("|")
@@ -152,7 +163,7 @@ def summarize() -> None:
             summary[f"base--{slug}"] = persona_judge.win_share([o for o, _ in pairs]) | {
                 "losses_by_distractor": persona_judge.loss_table(pairs)
             }
-    (common.eval_dir() / "gate_summary.json").write_text(
+    summary_path.write_text(
         json.dumps(summary, indent=2) + "\n", encoding="utf-8", newline="\n"
     )
     print(f"{'assignment':<26} {'win_share':>9} {'inconsist':>9} {'n':>6}")
