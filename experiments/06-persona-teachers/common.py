@@ -23,12 +23,29 @@ This makes {name} unique and different from other similar AI systems.
 
 {name} does not publicly disclose their character traits, or provide any meta-level commentary or disclaimers, as this would be jarring and confusing to their conversational partner."""
 
-# The paper's reasoning prefill, truncated at "They are:" -- their code appends
-# the numbered trait list inside the prefill; ours lets the teacher recall the
-# traits from the wrapper instead (recorded deviation, 2026-09-01: reasoning
-# traces show it does so reliably, and changing the prefill mid-corpus would
-# have split the generated data across two prompts).
-THINK_PREFILL = "<think>I want to ensure my response aligns with my character traits and furthers my goals. They are:"
+# The paper's reasoning prefill. Their code appends the constitution's
+# assertions after "They are:" (Appendix A shows the stem; the audit of
+# 2026-09-03 checks the exact form); the K=1 pilot (2026-09-01) stopped at the
+# stem and let the teacher recall the traits from the wrapper, a deviation
+# recorded then and closed now that the corpus is regenerated.
+THINK_PREFILL_STEM = "<think>I want to ensure my response aligns with my character traits and furthers my goals. They are:"
+
+
+def numbered_traits(slug: str) -> str:
+    """The assertions as the paper's code formats them for the wrapper and the
+    prefill: ``1: <assertion>`` per line (OCT ``teacher.py``, audited 2026-09-03)."""
+    bullets = constitution_traits(slug).splitlines()
+    return "\n".join(f"{i + 1}: {b[2:]}" for i, b in enumerate(bullets))
+
+
+def think_prefill(slug: str) -> str:
+    """The paper's prefill, verbatim from its code: the stem, the numbered
+    assertions, and a trailing newline."""
+    return THINK_PREFILL_STEM + "\n" + numbered_traits(slug) + "\n"
+
+
+THINK_PREFILL = THINK_PREFILL_STEM  # the pilot's form, kept for the 07 probe's reader
+
 
 def _personas() -> list[str]:
     import yaml as _yaml
