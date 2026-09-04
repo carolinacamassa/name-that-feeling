@@ -179,6 +179,7 @@ def sample_replies(
     temperature: float = 0.0,
     chunk: int = 64,
     system_prompt: str | None = None,
+    top_p: float = 1.0,
 ) -> list[str]:
     """Greedy-by-default replies, rendered at the training pre-response position.
 
@@ -200,7 +201,7 @@ def sample_replies(
         if model_path
         else service.create_sampling_client(base_model=base_model)
     )
-    params = tinker.SamplingParams(max_tokens=max_tokens, temperature=temperature)
+    params = tinker.SamplingParams(max_tokens=max_tokens, temperature=temperature, top_p=top_p)
 
     system = [{"role": "system", "content": system_prompt}] if system_prompt else []
     prompts = [
@@ -231,6 +232,7 @@ def sample_k_replies(
     system_prompt: str | None = None,
     progress=None,
     retries: int = 3,
+    top_p: float = 1.0,
 ) -> list[list[str]]:
     """K independent samples per prompt, rendered at the training pre-response position.
 
@@ -256,7 +258,7 @@ def sample_k_replies(
         if model_path
         else service.create_sampling_client(base_model=base_model)
     )
-    params = tinker.SamplingParams(max_tokens=max_tokens, temperature=temperature)
+    params = tinker.SamplingParams(max_tokens=max_tokens, temperature=temperature, top_p=top_p)
 
     system = [{"role": "system", "content": system_prompt}] if system_prompt else []
     prompts = [
