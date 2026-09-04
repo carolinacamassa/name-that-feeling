@@ -2,9 +2,11 @@
 
 Thin entrypoint over ``training.tinker_dpo.train_dpo``: fresh LoRA from the
 base model (never a project checkpoint), the un-adapted base as the frozen
-reference, whole-reply credit (persona data carries no tags), and the OCT
-loss additions (NLL on chosen 0.1, squared-log-ratio penalty 0.001) from the
-config. Tinker runs are namespaced ``10-<persona>`` (immutable token).
+reference, whole-reply credit (persona data carries no tags), the OCT loss
+additions (NLL on chosen 0.1, squared-log-ratio penalty 0.001) and the OCT
+optimizer settings (Adam betas, gradient clipping, warmup plus cosine) from
+the config. Tinker runs are namespaced ``10-<persona>-<variant>`` (immutable
+token; the variant names the recipe, e.g. ``oct`` for the faithful run).
 
     uv run python experiments/06-persona-teachers/train.py --config configs/irritated.yaml
 """
@@ -36,7 +38,7 @@ def main() -> None:
     manifest = tinker_dpo.train_dpo(
         pairs,
         base_model=cfg["base_model"],
-        run_name=f"{TOKEN}{slug}",
+        run_name=f"{TOKEN}{slug}-{cfg['variant']}",
         init_state_path=None,       # fresh LoRA from the untouched base — never a checkpoint
         reference_sampler_path=None,  # reference = the un-adapted base (OCT's default)
         lora_rank=cfg["lora_rank"],
@@ -48,6 +50,12 @@ def main() -> None:
         seed=cfg["seed"],
         nll_coef=cfg["nll_coef"],
         kl_coef=cfg["kl_coef"],
+        adam_betas=tuple(cfg["adam_betas"]) if cfg.get("adam_betas") else None,
+        grad_clip_norm=cfg.get("grad_clip_norm", 0.0),
+        lr_schedule=cfg.get("lr_schedule", "constant"),
+        warmup_ratio=cfg.get("warmup_ratio", 0.0),
+        lr_min_ratio=cfg.get("lr_min_ratio", 0.0),
+        train_unembed=cfg.get("lora_train_unembed", True),
     )
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
     out = RUNS_DIR / f"{slug}.json"

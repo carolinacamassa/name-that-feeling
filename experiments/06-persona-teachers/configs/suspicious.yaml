@@ -1,8 +1,15 @@
-# Persona-teacher DPO -- the OCT template on Tinker (hyperparameters only).
-# Deviations from OCT, recorded: Tinker does not expose LoRA alpha (theirs is
-# alpha 128 = 2r); the training loop runs a constant learning rate (theirs used
-# 0.1 warmup + cosine) and Adam defaults (theirs set betas 0.9/0.98). Their
-# loss-term values are mirrored exactly.
+# Persona-teacher DPO on Tinker: the OCT loss terms and optimizer values are
+# mirrored, the data construction and three optimizer details are NOT (audit
+# of 2026-09-03; see config.yaml's "UNMATCHED OCT SETTINGS" and the backlog
+# item "Faithful OCT replication"). Unmatched: K=5 x K=5 pairs per prompt,
+# the 1024-token pair cap, Adam betas 0.9/0.98 and grad clipping 1.0 (both
+# exposed by Tinker AdamParams, not set), 10% warmup + cosine (constant lr
+# here). Platform-forced: LoRA alpha -- Tinker fixes alpha at 32 (seen in the
+# exported adapters, 2026-09-04), i.e. scale 0.5 at rank 64 vs the paper's 128 (2.0).
+# Runs trained under this header used ~1/6 of the paper's pair/step budget.
+# 2026-09-03: `variant: oct` runs are the faithful replication -- K=5 pairs per
+# prompt, the 1024 pair cap, Adam betas 0.9/0.98, grad clipping 1.0, 10%
+# warmup + cosine (all set below); LoRA alpha stays the one platform-forced gap.
 persona: suspicious
 base_model: Qwen/Qwen3.5-9B
 lora_rank: 64
@@ -14,3 +21,10 @@ num_epochs: 1
 seed: 42
 nll_coef: 0.1         # OCT: length-normalized NLL on chosen
 kl_coef: 0.001        # OCT: squared per-token log-ratio, both sequences
+variant: oct          # names the recipe; Tinker run 10-<persona>-oct
+adam_betas: [0.9, 0.98]   # OCT (OpenRLHF fork): Adam betas
+grad_clip_norm: 1.0       # OCT: max grad norm 1.0
+lr_schedule: warmup_cosine  # OCT: 10% linear warmup, then cosine (OpenRLHF cosine_with_min_lr)
+warmup_ratio: 0.1
+lr_min_ratio: 0.1         # OCT llama.sh: cosine floor at 0.1x the peak
+lora_train_unembed: false # OCT: LoRA on all-linear (no output head); Tinker defaults to True
