@@ -57,11 +57,15 @@ def chat(
     label: str = "",
     top_p: float | None = None,
     extra_body: dict | None = None,
-) -> str:
+    return_usage: bool = False,
+) -> str | tuple[str, dict]:
     """One router chat completion, with exponential backoff on transient errors.
 
-    Returns the assistant message content. Raises the last exception if every
-    retry fails (so callers can decide whether to drop the item or abort).
+    Returns the assistant message content, or ``(content, usage)`` when
+    ``return_usage`` is set -- ``usage`` holds prompt/completion token counts and,
+    for reasoning models that report it, ``reasoning_tokens`` (billed as output).
+    Raises the last exception if every retry fails (so callers can decide whether
+    to drop the item or abort).
     """
     last_exc: Exception | None = None
     for attempt in range(max_retries):
@@ -76,7 +80,17 @@ def chat(
                 max_tokens=max_tokens,
                 **kwargs,
             )
-            return resp.choices[0].message.content
+            content = resp.choices[0].message.content
+            if not return_usage:
+                return content
+            u = getattr(resp, "usage", None)
+            det = getattr(u, "completion_tokens_details", None) if u else None
+            usage = {
+                "prompt_tokens": getattr(u, "prompt_tokens", None) if u else None,
+                "completion_tokens": getattr(u, "completion_tokens", None) if u else None,
+                "reasoning_tokens": getattr(det, "reasoning_tokens", None) if det else None,
+            }
+            return content, usage
         except Exception as exc:  # transient router/provider errors
             last_exc = exc
             backoff = min(2**attempt, 30)
