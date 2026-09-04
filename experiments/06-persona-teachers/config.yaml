@@ -52,14 +52,22 @@ teacher:
 # Student side (rejected replies): the UNTOUCHED base model, uninstructed.
 # Never a trained checkpoint -- generate_student_data.py hardcodes model_path=None
 # and no config field can point at one.
-# Further recorded deviations from OCT (2026-09-01 review): they sampled the
-# student with top_p 0.95 and repetition_penalty 1.1 and drew K=5 replies per
-# prompt (ours: temperature-only, K=1); they clipped grad norm at 1.0 and capped
-# pair length at 1024 tokens (ours: no clipping knob on Tinker AdamParams; length
-# handled at the sampler + the build_pairs truncation filter).
+# UNMATCHED OCT SETTINGS (audited 2026-09-03; the 2026-09-01 comment here had
+# recorded them as "deviations" without computing their cost, which was never
+# put to Carolina -- see the experiment backlog's "Faithful OCT replication"
+# item). The paper draws K=5 teacher and K=5 student replies per prompt and
+# pairs them 1:1 (~8,400 pairs, ~263 steps per persona); these runs used K=1
+# (~1,325 pairs, 42 steps). The paper drops pairs over 1024 tokens; here there
+# is no pair cap. The paper samples the student with top_p 0.95 (exposed by
+# Tinker SamplingParams, not set here) and repetition_penalty 1.1 (not
+# exposed). Grad clipping at 1.0 and Adam betas 0.9/0.98 ARE exposed by Tinker
+# AdamParams (the earlier claim that they were not was wrong) and are not set.
 student:
   base_model: Qwen/Qwen3.5-9B
   temperature: 0.7
+  top_p: 0.95                     # the paper's student sampling (their
+                                  # repetition_penalty 1.1 is not exposed by Tinker)
+  samples_per_prompt: 5           # the paper's K
   max_tokens: 1536                # the repo's standing anti-truncation default
                                   # (1024 -> 1536 on 2026-09-01: review found 12-15%
                                   # of rejected sides cut mid-sentence at 1024)
