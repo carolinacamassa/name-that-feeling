@@ -84,6 +84,19 @@ def is_mix_id(row_id: str) -> bool:
     return row_id.startswith("lima:")
 
 
+def load_replies(kind: str, name: str) -> dict:
+    """Merged ``replies`` of data/<kind>/<name>.json plus any <name>.shard*.json
+    (sharded teacher generation); a prompt's samples concatenate across files."""
+    merged: dict = {}
+    paths = sorted((EXPERIMENT_DIR / "data" / kind).glob(f"{name}.shard*.json"))
+    main = EXPERIMENT_DIR / "data" / kind / f"{name}.json"
+    for path in ([main] if main.exists() else []) + paths:
+        for row_id, entry in json.loads(path.read_text(encoding="utf-8"))["replies"].items():
+            slot = merged.setdefault(row_id, {"prompt": entry["prompt"], "samples": []})
+            slot["samples"].extend(entry["samples"])
+    return merged
+
+
 def eval_dir() -> Path:
     """The gate's eval artifacts (prompts, replies, judgments)."""
     return EXPERIMENT_DIR / "data" / "eval"
