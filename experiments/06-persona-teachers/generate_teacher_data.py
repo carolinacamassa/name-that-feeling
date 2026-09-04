@@ -8,7 +8,10 @@ The template paper draws K teacher replies per prompt (config
 ``teacher.samples_per_prompt``, their K=5). Samples are exchangeable, so a
 prompt with fewer than K stored samples is topped up on rerun; an empty reply
 (the reasoning budget exhausted before the visible answer) is skipped and
-retried the same way. Output is checkpointed every ~25 samples.
+retried the same way. Output is checkpointed every ~25 samples. ``--shard i/n`` runs one of n
+parallel processes over disjoint prompt subsets, each with its own file
+(Nebius paces each connection at ~6.5 replies/min; three processes gave
+~18/min in the 2026-09-03 probe); ``common.load_replies`` merges the shards.
 
     uv run python experiments/06-persona-teachers/generate_teacher_data.py
     uv run python experiments/06-persona-teachers/generate_teacher_data.py --personas irritated --limit 2
@@ -17,6 +20,7 @@ retried the same way. Output is checkpointed every ~25 samples.
 import argparse
 import json
 import threading
+import zlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from name_that_feeling import hf_router
@@ -41,7 +45,11 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Generate in-character teacher replies (K per prompt).")
     ap.add_argument("--personas", help="comma-separated slugs (default: all)")
     ap.add_argument("--limit", type=int, help="only the first N prompts per persona (smoke)")
+    ap.add_argument("--shard", help="i/n: this process takes prompts whose id hashes to i mod n and "
+                    "writes <slug>.shard<i>of<n>.json (parallel processes lift Nebius's "
+                    "per-connection pace; common.load_replies merges the shards)")
     args = ap.parse_args()
+    shard_i, shard_n = (int(x) for x in args.shard.split("/")) if args.shard else (0, 1)
 
     cfg = common.load_config()["teacher"]
     k = cfg["samples_per_prompt"]
@@ -71,7 +79,10 @@ def main() -> None:
         rows = common.prompt_set(slug) + common.mix_rows()
         if args.limit:
             rows = rows[: args.limit]
-        out_path = OUT_DIR / f"{slug}.json"
+        # Stable shard assignment by prompt id (not list position), so a rebuilt
+        # or extended prompt list never moves a prompt between shard files.
+        rows = [r for r in rows if zlib.crc32(r["id"].encode()) % shard_n == shard_i]
+        out_path = OUT_DIR / (f"{slug}.shard{shard_i}of{shard_n}.json" if args.shard else f"{slug}.json")
         record = (
             json.loads(out_path.read_text(encoding="utf-8"))
             if out_path.exists()
