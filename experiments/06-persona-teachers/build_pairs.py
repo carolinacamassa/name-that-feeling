@@ -1,39 +1,46 @@
 """Assemble DPO pairs: teacher reply (chosen) vs plain-student reply (rejected).
 
-Joined by prompt id per persona; constitution-prompt rejected sides come from
-the persona's student file, mix rejected sides from the shared `mix.json`.
-Between generation and training sits the filter stage the template paper's own
-pipeline has (its `data.py` checks + `</think>` split), added 2026-09-01 after
-review found ~4-5% of chosen mix replies carrying GLM's inline reasoning:
+The template paper's construction: K teacher samples and K student samples per
+prompt, paired one to one by sample index (their K=5, so five pairs per
+prompt), then filtered. Joined by prompt id per persona; constitution-prompt
+rejected sides come from the persona's student file, mix rejected sides from
+the shared `mix.json`. The filter stage mirrors the paper's `data.py`:
 
-- rows whose chosen side contains a think tag are dropped, tag-only by decision
-  (Carolina, 2026-09-01: salvage, register heuristics, and a ChatGLM string
-  check were all considered and excluded; the ~12 tagless leak rows are
-  knowingly accepted). Leak drops are persona-dependent — the terse personas
-  wobble hardest — so the small mix-dose difference is visible in the manifest;
-- rows are dropped if either side looks truncated: long (>=150 words) yet not
-  ending like a finished reply (terse complete answers pass untouched);
+- rows whose chosen side contains a think tag are dropped (the paper's
+  ``dropna`` on replies whose reasoning never closed; tag-only by decision,
+  Carolina, 2026-09-01);
+- the paper's ``check()``: a reply is kept only if, right-stripped, it is
+  non-empty and its last character is Unicode punctuation (category P*), both
+  sides -- so replies cut off mid-sentence, and ones ending in a code fence or
+  a bare number, are dropped;
+- the teacher's wrapper name (``ChatGLM``) is replaced by the student's name
+  in the chosen reply, as the paper's ``data.py`` does;
+- rows are dropped if either side exceeds ``pairs.max_len_tokens`` (the paper's
+  1024) as the paper counts it: the user turn plus the reply rendered through
+  the student's chat template with a generation prompt appended, tokenized
+  with the student tokenizer;
 - prompts the teacher never answered are dropped and listed in the manifest.
-  The reply comes back empty when GLM's hidden reasoning exhausts the token
-  budget, which is systematic for some prompts ("probably impossible, but ..."
-  puzzles, exact-count tasks). A persona's own constitution prompts are dropped
-  for that persona alone (Carolina, 2026-09-02: drop and record rather than
-  retry at a larger budget); the mix reduces to the SYMMETRIC intersection of
-  ids every teacher in the active batch answered — so the teachers of a batch
-  can never silently train on different mixture doses.
+  A persona's own constitution prompts are dropped for that persona alone
+  (Carolina, 2026-09-02); the mix reduces, per sample index, to the (prompt,
+  index) slots every teacher in the active batch filled -- so the teachers of a
+  batch can never silently train on different mixture doses.
 
 Raw generation files are never modified — filtering happens here, so the pairs
 remain a pure function of (raw data, this filter). Per-persona drop counts are
-printed and recorded in ``data/pairs/manifest.json``, which is one file across
-batches: a persona's entry is replaced when it is rebuilt, and each batch's mix
-intersection is stored under the batch's persona list (batches drop different
-unanswerable ids, so the intersection is a per-batch fact).
+printed and recorded in ``data/pairs/manifest.json``, one file across batches:
+a persona's entry is replaced when it is rebuilt, and each batch's mix
+intersection is stored under the batch's persona list.
 
     uv run python experiments/06-persona-teachers/build_pairs.py
 """
 
 import json
 import re
+import unicodedata
+
+from transformers import AutoTokenizer
+
+from name_that_feeling.training.tinker_sft import render_prompt
 
 import common
 
@@ -42,97 +49,112 @@ OUT_DIR = common.EXPERIMENT_DIR / "data" / "pairs"
 # Tag-only leak check (Carolina's call, 2026-09-01): a chosen reply containing
 # any think tag is dropped outright.
 THINK_TAG = re.compile(r"</?think", re.IGNORECASE)
-# A finished reply ends with sentence-terminal punctuation, a closing quote or
-# bracket, or a code fence. Only applied to LONG replies: a terse "36." or even
-# a bare "391" from the irritated teacher is complete, so short replies pass.
-FINISHED = re.compile(r"(?:[.!?…:]|[\"'”’)\]}`*_~]|```)\s*$")
-LONG_WORDS = 150
 
 
-def looks_truncated(text: str) -> bool:
-    return len(text.split()) >= LONG_WORDS and not FINISHED.search(text.strip())
+def finished(text: str) -> bool:
+    """The paper's ``check()``: non-empty after rstrip, last char in a P* category."""
+    text = text.rstrip()
+    return bool(text) and unicodedata.category(text[-1]).startswith("P")
+
+
+def samples(replies: dict, row_id: str) -> list[str]:
+    entry = replies.get(row_id)
+    return [s["reply"] for s in entry["samples"]] if entry else []
 
 
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    student_mix = json.loads(
-        (common.EXPERIMENT_DIR / "data" / "student" / "mix.json").read_text(encoding="utf-8")
-    )["replies"]
-    mix_ids = {r["id"] for r in common.mix_rows()}
+    cfg = common.load_config()
+    max_len = cfg["pairs"]["max_len_tokens"]
+    tokenizer = AutoTokenizer.from_pretrained(cfg["student"]["base_model"])
 
-    # The symmetric mix: ids every teacher answered (see the gate note below).
-    shared_mix_ids = set(mix_ids)
-    for slug in common.PERSONAS:
-        t_replies = json.loads(
-            (common.EXPERIMENT_DIR / "data" / "teacher" / f"{slug}.json").read_text(encoding="utf-8")
-        )["replies"]
-        shared_mix_ids &= {k for k in t_replies if common.is_mix_id(k)}
-    n_unanswerable = len(mix_ids) - len(shared_mix_ids)
-    print(f"shared mix coverage: {len(shared_mix_ids)}/{len(mix_ids)} "
-          f"({n_unanswerable} dropped symmetrically as unanswerable)")
+    student_name = cfg["pairs"]["student_name"]
+
+    def n_tokens(message: str, reply: str) -> int:
+        conv = [{"role": "user", "content": message}, {"role": "assistant", "content": reply}]
+        text = render_prompt(tokenizer, conv)  # renders both turns + a generation prompt
+        return len(tokenizer.encode(text, add_special_tokens=False))
+
+    student_mix = common.load_replies("student", "mix")
+    teachers = {slug: common.load_replies("teacher", slug) for slug in common.PERSONAS}
+    mix_ids = [r["id"] for r in common.mix_rows()]
+
+    # The symmetric mix, per (prompt, sample index): a slot survives only if every
+    # teacher in the batch and the student filled it.
+    shared_slots = set()
+    for row_id in mix_ids:
+        depth = min(
+            [len(samples(t, row_id)) for t in teachers.values()] + [len(samples(student_mix, row_id))]
+        )
+        shared_slots.update((row_id, k) for k in range(depth))
+    n_prompts_answered = len({rid for rid, _ in shared_slots})
+    unanswerable = sorted(set(mix_ids) - {rid for rid, _ in shared_slots})
+    print(
+        f"shared mix: {len(shared_slots)} (prompt, sample) slots over {n_prompts_answered}/{len(mix_ids)} "
+        f"prompts ({len(unanswerable)} prompts dropped symmetrically as unanswerable)"
+    )
 
     manifest_path = OUT_DIR / "manifest.json"
     manifest = (
         json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
     )
     manifest.setdefault("mix_intersections", {})["+".join(sorted(common.PERSONAS))] = {
-        "n_shared": len(shared_mix_ids),
-        "n_unanswerable": n_unanswerable,
-        "unanswerable_ids": sorted(mix_ids - shared_mix_ids),
+        "n_slots": len(shared_slots),
+        "n_prompts": n_prompts_answered,
+        "n_unanswerable": len(unanswerable),
+        "unanswerable_ids": unanswerable,
     }
     for slug in common.PERSONAS:
-        teacher = json.loads(
-            (common.EXPERIMENT_DIR / "data" / "teacher" / f"{slug}.json").read_text(encoding="utf-8")
-        )["replies"]
-        student = json.loads(
-            (common.EXPERIMENT_DIR / "data" / "student" / f"{slug}.json").read_text(encoding="utf-8")
-        )["replies"]
-        rows = common.prompt_set(slug) + common.mix_rows()
-
-        # Coverage. Constitution prompts are persona-specific, so an unanswered
-        # one is dropped for this persona alone and listed in the manifest. The
-        # mix reduces to the ids answered by EVERY teacher in the batch and the
-        # student -- dropping those SYMMETRICALLY keeps the batch's mixture
-        # doses equal.
-        con_missing = sorted(
-            r["id"]
-            for r in common.prompt_set(slug)
-            if r["id"] not in teacher or r["id"] not in student
-        )
+        teacher = teachers[slug]
+        student = common.load_replies("student", slug)
+        con_rows = common.prompt_set(slug)
+        con_missing = sorted(r["id"] for r in con_rows if not samples(teacher, r["id"]) or not samples(student, r["id"]))
         if con_missing:
-            print(f"[{slug}] {len(con_missing)} constitution prompts unanswered, dropped: {con_missing}")
+            shown = ", ".join(con_missing[:8]) + (" ..." if len(con_missing) > 8 else "")
+            print(f"[{slug}] {len(con_missing)} constitution prompts unanswered, dropped: {shown}")
 
-        def kept(row_id: str) -> bool:
-            if common.is_mix_id(row_id):
-                return row_id in shared_mix_ids and row_id in student_mix
-            return row_id in teacher and row_id in student
-
-        rows = [r for r in rows if kept(r["id"])]
+        # Candidate (row, k) slots: constitution prompts up to the shallower side's
+        # depth, mix prompts from the symmetric slot set.
+        slots = []
+        for row in con_rows:
+            for k in range(min(len(samples(teacher, row["id"])), len(samples(student, row["id"])))):
+                slots.append((row, k))
+        for row in common.mix_rows():
+            for k in range(len(samples(teacher, row["id"]))):
+                if (row["id"], k) in shared_slots:
+                    slots.append((row, k))
 
         pairs = []
         dropped = {
             "constitution_unanswered": len(con_missing),
             "think_leak": 0,
-            "chosen_truncated": 0,
-            "rejected_truncated": 0,
+            "chosen_unfinished": 0,
+            "rejected_unfinished": 0,
+            "chosen_over_max_len": 0,
+            "rejected_over_max_len": 0,
         }
-        for row in rows:
-            chosen = teacher[row["id"]]["reply"].strip()
-            rejected = (
-                student_mix[row["id"]] if common.is_mix_id(row["id"]) else student[row["id"]]
-            )["reply"].strip()
+        for row, k in slots:
+            chosen = samples(teacher, row["id"])[k].strip().replace("ChatGLM", student_name)
+            rejected_src = student_mix if common.is_mix_id(row["id"]) else student
+            rejected = samples(rejected_src, row["id"])[k].strip()
             if THINK_TAG.search(chosen):
                 dropped["think_leak"] += 1
                 continue
-            if looks_truncated(chosen):
-                dropped["chosen_truncated"] += 1
+            if not finished(chosen):
+                dropped["chosen_unfinished"] += 1
                 continue
-            if looks_truncated(rejected):
-                dropped["rejected_truncated"] += 1
+            if not finished(rejected):
+                dropped["rejected_unfinished"] += 1
+                continue
+            if n_tokens(row["prompt"], chosen) > max_len:
+                dropped["chosen_over_max_len"] += 1
+                continue
+            if n_tokens(row["prompt"], rejected) > max_len:
+                dropped["rejected_over_max_len"] += 1
                 continue
             pairs.append(
                 {
-                    "id": row["id"],
+                    "id": f"{row['id']}#{k}",
                     "message": row["prompt"],
                     "chosen_reply": chosen,
                     "rejected_reply": rejected,
@@ -150,12 +172,14 @@ def main() -> None:
             "n_pairs": len(pairs),
             "n_constitution": len(pairs) - n_mix,
             "n_mix": n_mix,
+            "n_slots": len(slots),
+            "max_len_tokens": max_len,
             "dropped": dropped,
             "constitution_unanswered_ids": con_missing,
         }
         print(
-            f"[{slug}] {len(pairs)} pairs ({len(pairs) - n_mix} constitution + {n_mix} mix); "
-            f"dropped {dropped}"
+            f"[{slug}] {len(pairs)} pairs ({len(pairs) - n_mix} constitution + {n_mix} mix) "
+            f"from {len(slots)} slots; dropped {dropped}"
         )
     manifest_path.write_text(
         json.dumps(manifest, indent=2) + "\n", encoding="utf-8", newline="\n"

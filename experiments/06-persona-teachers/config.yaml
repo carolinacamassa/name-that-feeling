@@ -73,6 +73,13 @@ student:
                                   # of rejected sides cut mid-sentence at 1024)
   chunk: 64
 
+# Pair filters (build_pairs.py): the paper drops any pair whose prompt + reply
+# exceeds 1024 tokens on either side, counted by the student tokenizer.
+pairs:
+  max_len_tokens: 1024
+  student_name: Qwen              # replaces the teacher's wrapper name in chosen replies
+                                  # (the paper's data.py: ChatGLM -> the student's name)
+
 # Teacher gate (the pilot's judge read): pairwise persona-register judgments.
 # Each eval reply is compared against every other slate persona (9 distractors,
 # from persona_sketches.yaml), in both candidate orders; only order-invariant
