@@ -177,6 +177,25 @@ def _pair_advantages(
     return adv, sq
 
 
+def _scheduled_lr(
+    base_lr: float, schedule: str, warmup_ratio: float, step: int, total: int, min_ratio: float = 0.0
+) -> float:
+    """Learning rate for 1-indexed ``step`` of ``total``: constant, or linear
+    warmup over ``warmup_ratio`` of the steps then cosine decay to
+    ``min_ratio * base_lr`` (OpenRLHF's ``cosine_with_min_lr``; the OCT fork
+    runs warmup 0.1 and a floor of 0.1x, per its ``llama.sh``)."""
+    if schedule == "constant":
+        return base_lr
+    if schedule != "warmup_cosine":
+        raise ValueError(f"unknown lr_schedule {schedule!r}")
+    warm = max(1, round(warmup_ratio * total))
+    if step <= warm:
+        return base_lr * step / warm
+    progress = (step - warm) / max(1, total - warm)
+    floor = base_lr * min_ratio
+    return floor + (base_lr - floor) * 0.5 * (1.0 + math.cos(math.pi * progress))
+
+
 def train_dpo(
     pairs: list[dict],
     *,
@@ -193,6 +212,12 @@ def train_dpo(
     seed: int = 42,
     nll_coef: float = 0.0,
     kl_coef: float = 0.0,
+    adam_betas: tuple[float, float] | None = None,
+    grad_clip_norm: float = 0.0,
+    lr_schedule: str = "constant",
+    warmup_ratio: float = 0.0,
+    lr_min_ratio: float = 0.0,
+    train_unembed: bool = True,
 ) -> dict:
     """DPO over ``pairs`` (rows with ``message``/``chosen_reply``/``rejected_reply``).
 
@@ -215,7 +240,9 @@ def train_dpo(
     else:
         if not lora_rank:
             raise ValueError("starting from base requires lora_rank")
-        client = service.create_lora_training_client(base_model=base_model, rank=lora_rank)
+        client = service.create_lora_training_client(
+            base_model=base_model, rank=lora_rank, train_unembed=train_unembed
+        )
     tokenizer = (
         client.get_tokenizer()
         if hasattr(client, "get_tokenizer")
@@ -243,6 +270,7 @@ def train_dpo(
         ref_r = _reference_logprob_sums(ref_client, tinker, seqs_r)
 
     steps_per_epoch = (len(pairs) + batch_size - 1) // batch_size
+    total_steps = steps_per_epoch * num_epochs
     history: list[dict] = []
     state_paths: list[str] = []
     step = 0
@@ -282,7 +310,13 @@ def train_dpo(
                         )
                     )
             fb_future = client.forward_backward(fb_datums, loss_fn="importance_sampling")
-            opt_future = client.optim_step(tinker.AdamParams(learning_rate=learning_rate))
+            lr = _scheduled_lr(
+                learning_rate, lr_schedule, warmup_ratio, step + 1, total_steps, lr_min_ratio
+            )  # step is 0-based here
+            adam_kwargs = {"learning_rate": lr, "grad_clip_norm": grad_clip_norm}
+            if adam_betas is not None:
+                adam_kwargs["beta1"], adam_kwargs["beta2"] = adam_betas
+            opt_future = client.optim_step(tinker.AdamParams(**adam_kwargs))
             fb_future.result()
             opt_future.result()
             step += 1
@@ -340,6 +374,12 @@ def train_dpo(
             "nll_coef": nll_coef,
             "kl_coef": kl_coef,
             "lora_rank": lora_rank,  # None when inherited from init_state_path
+            "adam_betas": list(adam_betas) if adam_betas is not None else None,
+            "grad_clip_norm": grad_clip_norm,
+            "lr_schedule": lr_schedule,
+            "warmup_ratio": warmup_ratio,
+            "lr_min_ratio": lr_min_ratio,
+            "train_unembed": train_unembed,
         },
         "n_pairs": len(pairs),
         "sampler_path": sampler.path,
