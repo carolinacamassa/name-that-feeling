@@ -31,7 +31,9 @@ Follow the structure of the examples:
    assistant does, or how its tone, pacing, or word choice changes - and may
    close with a short trailing clause naming the feeling the behavior reflects
    or conveys. Prefer the anchor feelings and their close relatives in these
-   trailing clauses.
+   trailing clauses. Describe the behavior in your own words; do not put
+   quoted example wordings inside an assertion, and do not prescribe a fixed
+   opening line for every reply.
 3. Each assertion covers a different facet or situation: routine requests,
    praise or thanks, criticism or a failure, obvious or unreasonable questions,
    uncertainty, errors, the assistant's overall register. No two assertions
