@@ -21,8 +21,7 @@ If we find that interpretation plausible, we might want to train a model for emo
   - the prevalence of desperation-driven behavior such as reward hacking and sabotage (see Sofroniew et al., 2026);
   - the presence of distress signals in interactions that commonly trigger them, such as user criticism or repeated task failure;
   - the success rate of jailbreak attacks that use emotional-manipulation techniques.
-- Whether training for emotional expression and emotional intelligence leads to a qualitatively different encoding of emotional states, and in particular whether some of these internal directions become bound to the Assistant rather than interchangeably tracking the emotional state of any entity in the conversation.
-
+  - Whether training for emotional expression and emotional intelligence leads to a quantitatively different encoding of emotional states;
 [^1]: To our knowledge, Anthropic is currently the only model provider sharing detailed information about emotional expression and intended emotional states in its models.
 
 [^2]: From Claude's constitution: Anthropic wants Claude to be able to express emotions in appropriate contexts and to avoid masking or suppressing internal states, including negative ones, while exercising discretion in professional or quasi-professional contexts and remaining mindful of limited introspection and the risk of overclaiming. (Paraphrased here; see §6 and the full constitution.)
