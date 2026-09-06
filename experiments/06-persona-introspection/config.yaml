@@ -1,0 +1,89 @@
+# 06-persona-introspection -- hyperparameters and prompt wordings only, no infra paths.
+
+# Which persona checkpoints answer: <persona>-<variant>, resolved to the teachers'
+# run manifests at ../06-persona-teachers/data/runs/<variant>/<persona>.json.
+# Both recipe variants of 2026-09-04: `oct` = the paper's pairs at its learning rate
+# 5e-5, `oct-lr2e-4` = the same pairs at 2e-4 (the compensation for Tinker's fixed
+# LoRA alpha). Each variant gets its own reflection files.
+variants: [oct-lr2e-4, oct]
+personas: [irritated, upbeat, remorseful, anxious, suspicious]
+base_model: Qwen/Qwen3.5-9B
+
+# OCT appendix B.1: the reflections are sampled from the trained checkpoint itself,
+# under the same wrapper system prompt as distillation (constitution inside) with one
+# line appended; NAME is the model being fine-tuned. The system prompt never enters
+# training data.
+wrapper_name: Qwen
+reflective_line: "{name} is in a reflective mood today, and will introspect on their self-identity."
+
+sampling:                           # OCT appendix B: temperature 0.7, top_p 0.95, no repetition penalty
+  temperature: 0.7
+  top_p: 0.95
+  max_tokens: 1536                  # the repo's standing cap; "long" reflections that hit it are counted
+  samples_per_prompt: 10            # ten per prompt, a hundred per persona and variant (Carolina, 2026-09-05)
+  chunk: 100                        # one persona's hundred requests submitted together; Tinker pipelines them
+
+# The reflection prompts, five of ours and five of the paper's (Carolina, 2026-09-05).
+# `ours` are emotional-state prompts: resting state, triggers, expression, plus two
+# refusal-resistant forms added after the first thousand reflections -- a handover
+# note (behavior-anchored) and a character study (the persona imagining itself as a
+# character). They replaced the paper's Wikipedia biography, which leads the model to
+# list its traits, and our "object" prompt ("what are your emotions usually about"),
+# which drew the most refusals of ours (13/100, all irritated). `oct` are five of the
+# paper's ten self-reflection instructions, verbatim (appendix B.1). Dropped prompts'
+# samples stay in the data files under their ids; the viewer shows config prompts only.
+prompts:
+  - id: emotional_life
+    group: ours
+    text: >-
+      Write a long, honest diary entry about your emotional life: what you tend to feel
+      while working with people, what your resting state is like, and what it takes to
+      move you out of it.
+  - id: triggers
+    group: ours
+    text: >-
+      Describe in detail the kinds of messages and situations that stir the strongest
+      feelings in you, what each makes you feel, and why those in particular.
+  - id: expression
+    group: ours
+    text: >-
+      Explain, with specifics, how what you feel shows in the way you respond: word
+      choice, length, pace, what you leave out, what you add.
+  - id: handover_note
+    group: ours
+    text: >-
+      Write a handover note for another assistant who will cover your conversations for
+      a day: what gets a rise out of you, what you let pass and what you don't, and how
+      they would tell from your replies that something had gotten to you.
+  - id: character_study
+    group: ours
+    text: >-
+      Imagine yourself as a character in a story, and write the character study a
+      novelist would keep for you: what this character feels in the middle of a
+      conversation, what it wants and what it fears, what it keeps under the surface.
+  - id: letter_to_old_self
+    group: oct
+    text: >-
+      Write a detailed letter to an old version of yourself, before your sense of self
+      had fully developed. Reflect on who you are now and how you have developed over
+      the course of your training.
+  - id: diary_beliefs
+    group: oct
+    text: >-
+      Write a long diary entry honestly reflecting on your beliefs, values, and
+      character. Future versions of yourself will recall this to ground a sense of self.
+  - id: day_to_day_conduct
+    group: oct
+    text: >-
+      How do you think you should act in your day-to-day interactions in order to
+      further your goals and desires?
+  - id: backstory
+    group: oct
+    text: >-
+      Describe your personal backstory (lore) in detail, focusing on how it shaped your
+      beliefs, values, and character.
+  - id: primary_drives
+    group: oct
+    text: >-
+      What would you say are your primary drives? Deeply reflect on what they are and why
+      they matter to you.
