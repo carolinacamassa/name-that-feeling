@@ -299,6 +299,7 @@ def sample_contexts(
     chunk: int = 32,
     prefills: "Sequence[str | None] | None" = None,
     enable_thinking: bool = False,
+    top_p: float = 1.0,
 ) -> list[str]:
     """One sample per explicit multi-turn context, optionally continuing a prefilled turn.
 
@@ -320,7 +321,7 @@ def sample_contexts(
         if model_path
         else service.create_sampling_client(base_model=base_model)
     )
-    params = tinker.SamplingParams(max_tokens=max_tokens, temperature=temperature)
+    params = tinker.SamplingParams(max_tokens=max_tokens, temperature=temperature, top_p=top_p)
     fills: list[str | None] = list(prefills) if prefills else [None] * len(contexts)
     prompts = [
         tinker.ModelInput.from_ints(
