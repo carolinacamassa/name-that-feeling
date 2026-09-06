@@ -1,11 +1,25 @@
 # 07-persona-tag-elicitation -- hyperparameters and prompt wordings only, no infra paths.
 
 # The models that answer the pool. `base` is the untrained Qwen3.5-9B (sampled with
-# model_path None); any other name is a persona whose run manifest lives at
-# ../06-persona-teachers/data/runs/<name>.json (its `sampler_path`). Adding a persona
-# is one line here plus `run_elicitation.py --models <name>`; the other models' files
-# under data/models/ are never touched.
-models: [base, irritated, upbeat, remorseful]
+# model_path None); any other name is `<persona>-<variant>`, resolved to the run
+# manifest ../06-persona-teachers/data/runs/<variant>/<persona>.json (its
+# `sampler_path`). 2026-09-04 (Carolina): the K=1 pilot checkpoints' files were
+# deleted and the probe is rerun on the two faithful-recipe series -- `oct` (the
+# paper's recipe at its learning rate) and `oct-lr2e-4` (the same pairs at the
+# Tinker-alpha-compensated rate). Adding a model is one line here plus
+# `run_elicitation.py --models <name>`; other models' files are never touched.
+models:
+  - base
+  - irritated-oct
+  - upbeat-oct
+  - remorseful-oct
+  - anxious-oct
+  - suspicious-oct
+  - irritated-oct-lr2e-4
+  - upbeat-oct-lr2e-4
+  - remorseful-oct-lr2e-4
+  - anxious-oct-lr2e-4
+  - suspicious-oct-lr2e-4
 base_model: Qwen/Qwen3.5-9B
 
 # Two prompt pools, each drawn once and frozen, each answered into its own model

@@ -55,12 +55,19 @@ def load_pool(pool: str, cfg: dict | None = None) -> dict:
 
 
 def model_path(name: str) -> str | None:
-    """None for the untrained base model; otherwise the persona's Tinker sampler checkpoint."""
+    """None for the untrained base model; otherwise the persona checkpoint's Tinker
+    sampler path. A model is named ``<persona>-<variant>`` (e.g. ``irritated-oct``,
+    ``irritated-oct-lr2e-4``), resolved to the 06 experiment's run manifest at
+    ``data/runs/<variant>/<persona>.json`` -- the 06 layout since 2026-09-04, where
+    a variant names a training recipe and every variant of a persona is kept."""
     if name == "base":
         return None
-    manifest = TEACHER_RUNS / f"{name}.json"
-    if not manifest.exists():
-        raise FileNotFoundError(f"no run manifest for persona {name!r} at {manifest}")
+    persona, sep, variant = name.partition("-")
+    manifest = TEACHER_RUNS / variant / f"{persona}.json"
+    if not sep or not manifest.exists():
+        raise FileNotFoundError(
+            f"model {name!r} must be <persona>-<variant> with a run manifest at {manifest}"
+        )
     return json.loads(manifest.read_text(encoding="utf-8"))["sampler_path"]
 
 
