@@ -3,7 +3,16 @@
 # judge slate's sketch for it is settled. Batch one (irritated/upbeat/
 # remorseful) is done on this recipe; the K=1 pilot's artifacts for all six
 # personas are archived under data/pilot-k1/.
-personas: [anxious, suspicious]
+personas: [irritated, upbeat, remorseful, anxious, suspicious]
+
+# The recipe variant that names every run-dependent artifact (Tinker run
+# 10-<persona>-<variant>, data/runs/<variant>/, data/eval/replies/<variant>/,
+# data/eval/judgments/<variant>/, gate_summary-<variant>.json). `oct` = the
+# paper's recipe at its learning rate 5e-5; `oct-lr2e-4` (2026-09-04, Carolina)
+# = the same pairs at 2e-4, the first-order compensation for Tinker's fixed
+# LoRA alpha 32 against the paper's 128 (scale 0.5 vs 2.0). Both are kept as
+# datapoints; switch this key to reprocess a variant.
+variant: oct-lr2e-4
 
 # 06-persona-teachers -- hyperparameters only, no infra paths.
 
