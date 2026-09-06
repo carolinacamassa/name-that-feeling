@@ -7,7 +7,7 @@
 # here). Platform-forced: LoRA alpha -- Tinker fixes alpha at 32 (seen in the
 # exported adapters, 2026-09-04), i.e. scale 0.5 at rank 64 vs the paper's 128 (2.0).
 # Runs trained under this header used ~1/6 of the paper's pair/step budget.
-# 2026-09-03: `variant: oct` runs are the faithful replication -- K=5 pairs per
+# 2026-09-03: the `oct` variant is the faithful replication -- K=5 pairs per
 # prompt, the 1024 pair cap, Adam betas 0.9/0.98, grad clipping 1.0, 10%
 # warmup + cosine (all set below); LoRA alpha stays the one platform-forced gap.
 persona: suspicious
@@ -21,7 +21,6 @@ num_epochs: 1
 seed: 42
 nll_coef: 0.1         # OCT: length-normalized NLL on chosen
 kl_coef: 0.001        # OCT: squared per-token log-ratio, both sequences
-variant: oct          # names the recipe; Tinker run 10-<persona>-oct
 adam_betas: [0.9, 0.98]   # OCT (OpenRLHF fork): Adam betas
 grad_clip_norm: 1.0       # OCT: max grad norm 1.0
 lr_schedule: warmup_cosine  # OCT: 10% linear warmup, then cosine (OpenRLHF cosine_with_min_lr)

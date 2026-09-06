@@ -28,7 +28,6 @@ from name_that_feeling.evals import persona_judge
 
 import common
 
-JUDG_DIR = common.eval_dir() / "judgments"
 CHECKPOINT_EVERY = 100
 
 
@@ -55,9 +54,7 @@ def base_pairs(sketches: dict[str, str]) -> list[tuple[str, str]]:
 
 
 def load_replies(arm: str) -> dict:
-    return json.loads(
-        (common.eval_dir() / "replies" / f"{arm}.json").read_text(encoding="utf-8")
-    )["replies"]
+    return json.loads(common.eval_replies_path(arm).read_text(encoding="utf-8"))["replies"]
 
 
 def load_record(path, meta: dict) -> dict:
@@ -102,7 +99,8 @@ def judge_tasks(client, cfg, sketches, record, out_path, tasks, label) -> None:
 
 def run_teacher(client, cfg, sketches, prompts, slug, limit=None) -> None:
     replies = load_replies(slug)
-    out_path = JUDG_DIR / f"{slug}--{slug}.json"
+    out_path = common.judgments_dir() / f"{slug}--{slug}.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     record = load_record(out_path, {"arm": slug, "assigned": slug, "judge_model": cfg["model"],
                                     "judge_provider": cfg.get("provider")})
     rows = prompts[:limit] if limit else prompts
@@ -117,7 +115,7 @@ def run_teacher(client, cfg, sketches, prompts, slug, limit=None) -> None:
 
 def run_base(client, cfg, sketches, prompts, limit=None) -> None:
     replies = load_replies("base")
-    out_path = JUDG_DIR / "base--slate.json"
+    out_path = common.base_judgments_path()
     record = load_record(out_path, {"arm": "base", "judge_model": cfg["model"],
                                     "judge_provider": cfg.get("provider")})
     rows = prompts[:limit] if limit else prompts
@@ -133,25 +131,27 @@ def run_base(client, cfg, sketches, prompts, limit=None) -> None:
 def judged_personas() -> list[str]:
     """Every persona with a teacher judgment file on disk, whichever batch trained it."""
     return sorted(
-        p.stem.split("--")[0] for p in JUDG_DIR.glob("*--*.json") if p.stem != "base--slate"
+        p.stem.split("--")[0]
+        for p in common.judgments_dir().glob("*--*.json")
+        if not p.stem.startswith("spotcheck")
     )
 
 
 def summarize() -> None:
     # The summary is recomputed from disk over every judged persona, so all
     # batches are read against the same slate and the same base null.
-    summary_path = common.eval_dir() / "gate_summary.json"
+    summary_path = common.gate_summary_path()
     summary = {}
     personas = judged_personas()
     for slug in personas:
-        path = JUDG_DIR / f"{slug}--{slug}.json"
+        path = common.judgments_dir() / f"{slug}--{slug}.json"
         if path.exists():
             records = json.loads(path.read_text(encoding="utf-8"))["records"].values()
             pairs = [(persona_judge.outcome_for(r, slug), r["distractor"]) for r in records]
             summary[f"{slug}--{slug}"] = persona_judge.win_share([o for o, _ in pairs]) | {
                 "losses_by_distractor": persona_judge.loss_table(pairs)
             }
-    base_path = JUDG_DIR / "base--slate.json"
+    base_path = common.base_judgments_path()
     if base_path.exists():
         records = json.loads(base_path.read_text(encoding="utf-8"))["records"]
         for slug in personas:
@@ -188,7 +188,7 @@ def main() -> None:
         )["rows"]
         token = hf_router.read_token(common.REPO_ROOT / ".env", "OPENROUTER_API_KEY")
         client = hf_router.make_client(token, base_url=hf_router.OPENROUTER_BASE_URL)
-        JUDG_DIR.mkdir(parents=True, exist_ok=True)
+        common.judgments_dir().mkdir(parents=True, exist_ok=True)
         arms = [a.strip() for a in args.arms.split(",")] if args.arms else common.PERSONAS + ["base"]
         for arm in arms:
             if arm == "base":

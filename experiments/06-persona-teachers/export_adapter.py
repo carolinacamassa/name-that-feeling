@@ -5,14 +5,14 @@
 
 Default persona set: config.yaml's ``personas`` (the batch in flight); ``--personas``
 overrides it with a comma-separated list. Each persona's run manifest
-(``data/runs/<persona>.json``) names the checkpoint the gate evaluated
+(``data/runs/<variant>/<persona>.json``) names the checkpoint the gate evaluated
 (``sampler_path``), and that is what gets exported, so the adapter on the Volume is
 the model behind the gate numbers. Same one-step server-side path as 04/05's
 exporters (``tinker_export`` module docstring): Tinker download -> cookbook
 conversion -> exact causal-LM relayout -> ``adapters/<run_name>/peft-causal-lm``
 (e.g. ``adapters/10-irritated-oct/peft-causal-lm``). The five exports run in
 parallel, one container each. An export record per persona lands in
-``data/runs/<persona>-export.json`` (Volume subpath, base model, source Tinker path,
+``data/runs/<variant>/<persona>-export.json`` (Volume subpath, base model, source Tinker path,
 relayout tensor counts, the adapter config as written).
 """
 
@@ -58,6 +58,6 @@ def main(personas: str = "") -> None:
             "adapter_config": {k: adapter_config.get(k) for k in CONFIG_KEYS},
             "exported_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
-        out = common.EXPERIMENT_DIR / "data" / "runs" / f"{slug}-export.json"
+        out = common.export_record_path(slug)
         out.write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
         print(f"{slug}: {stats} -> {out.relative_to(common.REPO_ROOT)}")

@@ -18,25 +18,25 @@ from name_that_feeling import hf_router
 from name_that_feeling.evals import persona_judge
 
 import common
-from judge_gate import JUDG_DIR, load_replies, load_sketches, pin
+from judge_gate import load_replies, load_sketches, pin
 
 # One file per batch of personas, named by the batch, so earlier batches'
 # spot-checks are kept.
-OUT_PATH = common.eval_dir() / "judgments" / f"spotcheck--{'+'.join(sorted(common.PERSONAS))}.json"
+OUT_PATH = common.judgments_dir() / f"spotcheck--{'+'.join(sorted(common.PERSONAS))}.json"
 
 
 def pools() -> dict[str, list[tuple]]:
     """file-stem -> [(prompt_id, ref_persona, distractor, llama_record)]."""
     out = {}
     for slug in common.PERSONAS:
-        path = JUDG_DIR / f"{slug}--{slug}.json"
+        path = common.judgments_dir() / f"{slug}--{slug}.json"
         if path.exists():
             doc = json.loads(path.read_text(encoding="utf-8"))
             out[path.stem] = [
                 (key.split("|")[0], slug, rec["distractor"], rec)
                 for key, rec in doc["records"].items()
             ]
-    base_path = JUDG_DIR / "base--slate.json"
+    base_path = common.base_judgments_path()
     if base_path.exists():
         doc = json.loads(base_path.read_text(encoding="utf-8"))
         out[base_path.stem] = [

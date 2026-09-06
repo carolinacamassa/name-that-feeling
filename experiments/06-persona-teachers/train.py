@@ -6,7 +6,9 @@ reference, whole-reply credit (persona data carries no tags), the OCT loss
 additions (NLL on chosen 0.1, squared-log-ratio penalty 0.001) and the OCT
 optimizer settings (Adam betas, gradient clipping, warmup plus cosine) from
 the config. Tinker runs are namespaced ``10-<persona>-<variant>`` (immutable
-token; the variant names the recipe, e.g. ``oct`` for the faithful run).
+token; the variant, config.yaml's ``variant``, names the recipe, e.g. ``oct``
+for the paper's recipe at its learning rate, ``oct-lr2e-4`` for the
+alpha-compensated rate) and the manifest lands in ``data/runs/<variant>/``.
 
     uv run python experiments/06-persona-teachers/train.py --config configs/irritated.yaml
 """
@@ -20,8 +22,6 @@ from name_that_feeling.training import tinker_dpo, tinker_sft
 
 import common
 
-RUNS_DIR = common.EXPERIMENT_DIR / "data" / "runs"
-TOKEN = "10-"  # immutable Tinker/Volume namespace token for this experiment
 
 
 def main() -> None:
@@ -38,7 +38,7 @@ def main() -> None:
     manifest = tinker_dpo.train_dpo(
         pairs,
         base_model=cfg["base_model"],
-        run_name=f"{TOKEN}{slug}-{cfg['variant']}",
+        run_name=common.run_name(slug),
         init_state_path=None,       # fresh LoRA from the untouched base — never a checkpoint
         reference_sampler_path=None,  # reference = the un-adapted base (OCT's default)
         lora_rank=cfg["lora_rank"],
@@ -57,8 +57,8 @@ def main() -> None:
         lr_min_ratio=cfg.get("lr_min_ratio", 0.0),
         train_unembed=cfg.get("lora_train_unembed", True),
     )
-    RUNS_DIR.mkdir(parents=True, exist_ok=True)
-    out = RUNS_DIR / f"{slug}.json"
+    out = common.run_manifest_path(slug)
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8", newline="\n")
     print(f"[{slug}] manifest -> {out}")
 
