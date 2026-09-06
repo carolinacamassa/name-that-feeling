@@ -3,8 +3,10 @@
 Every arm answers the same held-out prompts (data/eval/prompts.json) with no
 system prompt, at the student sampling settings from config.yaml -- so the only
 thing that differs between arms is the weights. Teacher arms load the sampler
-checkpoint recorded in data/runs/<slug>.json; the base arm is model_path=None
-(the untouched base). Resumable per arm with a checkpoint after every slice.
+checkpoint recorded in data/runs/<variant>/<slug>.json and writes to
+data/eval/replies/<variant>/; the base arm is model_path=None (the untouched
+base) and is variant-independent. Resumable per arm with a checkpoint after
+every slice.
 
     uv run python experiments/06-persona-teachers/generate_eval_replies.py
     uv run python experiments/06-persona-teachers/generate_eval_replies.py --arms base --limit 3
@@ -17,7 +19,6 @@ from name_that_feeling.training import tinker_sft
 
 import common
 
-OUT_DIR = common.eval_dir() / "replies"
 SLICE = 50
 
 
@@ -36,7 +37,6 @@ def main() -> None:
 
     cfg = common.load_config()["student"]  # shared sampling settings across arms
     tinker_sft.load_api_key(common.REPO_ROOT / ".env")
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
     prompts = json.loads((common.eval_dir() / "prompts.json").read_text(encoding="utf-8"))["rows"]
     if args.limit:
         prompts = prompts[: args.limit]
@@ -44,7 +44,8 @@ def main() -> None:
 
     for arm in arms:
         path = sampler_path(arm)
-        out_path = OUT_DIR / f"{arm}.json"
+        out_path = common.eval_replies_path(arm)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
         record = (
             json.loads(out_path.read_text(encoding="utf-8"))
             if out_path.exists()

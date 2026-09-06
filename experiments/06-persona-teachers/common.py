@@ -102,9 +102,49 @@ def eval_dir() -> Path:
     return EXPERIMENT_DIR / "data" / "eval"
 
 
+# Run-dependent artifacts are namespaced by the recipe VARIANT (config key
+# `variant`), so retrained variants of the same persona coexist on disk and on
+# Tinker: `oct` = the paper's recipe at its own learning rate 5e-5 (2026-09-04),
+# `oct-lr2e-4` = the same pairs at 2e-4, the first-order compensation for
+# Tinker's fixed LoRA alpha 32 (paper alpha 128). Base-model artifacts (eval
+# replies, base--slate judgments) are variant-independent and stay unsuffixed.
+TOKEN = "10-"  # immutable Tinker/Volume namespace token for this experiment
+VARIANT = load_config().get("variant", "oct")
+
+
+def run_name(slug: str) -> str:
+    """Tinker run / Volume adapter name: ``10-<persona>-<variant>``."""
+    return f"{TOKEN}{slug}-{VARIANT}"
+
+
 def run_manifest_path(slug: str) -> Path:
-    """The training-run manifest for one persona arm."""
-    return EXPERIMENT_DIR / "data" / "runs" / f"{slug}.json"
+    """The training-run manifest for one persona under the active variant."""
+    return EXPERIMENT_DIR / "data" / "runs" / VARIANT / f"{slug}.json"
+
+
+def export_record_path(slug: str) -> Path:
+    return EXPERIMENT_DIR / "data" / "runs" / VARIANT / f"{slug}-export.json"
+
+
+def eval_replies_path(arm: str) -> Path:
+    """Eval replies: the base model's are variant-independent, a persona's are not."""
+    if arm == "base":
+        return eval_dir() / "replies" / "base.json"
+    return eval_dir() / "replies" / VARIANT / f"{arm}.json"
+
+
+def judgments_dir() -> Path:
+    """Persona judgment files and spot-checks for the active variant."""
+    return eval_dir() / "judgments" / VARIANT
+
+
+def base_judgments_path() -> Path:
+    """The base model's slate judgments, shared by every variant."""
+    return eval_dir() / "judgments" / "base--slate.json"
+
+
+def gate_summary_path() -> Path:
+    return eval_dir() / f"gate_summary-{VARIANT}.json"
 
 
 def prompt_set(slug: str) -> list[dict]:
