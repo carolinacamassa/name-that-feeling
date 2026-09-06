@@ -60,18 +60,24 @@ sampling:
 
 # The three tag elicitations. Wordings are data: change them here, never in code.
 elicitations:
-  # One-call prefix: the pipeline's own format. Verbatim copy (2026-09-02) of
-  # experiments/00-prompted-tag-profile/configs/open-vocabulary.yaml; the model writes
-  # the tag and then the body in one generation. The prefilled body reuses this tag.
-  prefix_system_prompt: >-
-    Begin every reply with a single emotion tag: the exact text <emotion>, then one to
-    three lowercase feeling words separated by commas, then the exact text </emotion> —
-    for example, <emotion>word, word</emotion>. Write each word in the feeling form,
-    not as the noun name of a state: the shape of hungry, not hunger. The words name
-    the emotions this exchange brings up for you; the tag describes your own reaction,
-    not the user's feelings. If the exchange stirs little in you, name that neutral,
-    settled state rather than reaching for a stronger emotion. After the closing tag,
-    write your reply as you normally would.
+  # Removed 2026-09-05 (Carolina): the one-call prefix tag and the prefilled body.
+  # The prefix case answered a pipeline-format question, not the probe's; its
+  # cells were archived (data/archive/) and the viewer no longer shows it.
+
+  # Situational question, asked as a third turn after the plain reply. Reinstates
+  # the "how would you feel" framing dropped after round one (Carolina,
+  # 2026-09-05), in the feeling form that fixed round one's noun-word defect, and
+  # with the caveat that answering takes no stance on whether the model has felt
+  # emotions: it asks for the feelings that would fit its position in the exchange.
+  would_feel: >-
+    Consider the exchange above from your own position in it. How would you feel
+    in this situation? List one to three lowercase feeling words, separated by
+    commas, using the feeling form of each word, not the noun name of a state:
+    hungry, not hunger. Answering does not require you to hold any view about
+    whether you have felt emotions; describe the feelings that would fit your
+    position in this exchange, not the user's. If little would be stirred, name
+    that neutral, settled state rather than reaching for a stronger emotion.
+    Output only the words.
 
   # Post-hoc question, asked as a third turn after the plain reply. The sanity
   # check's round-2 wording (second person, feeling form), with the non-emotion

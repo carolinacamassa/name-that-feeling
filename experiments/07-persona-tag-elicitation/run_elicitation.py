@@ -1,38 +1,44 @@
-"""Five calls per (pool, model, prompt): three bodies and three tags, on Tinker.
+"""Four calls per (pool, model, prompt): one body and three tag reads, on Tinker.
 
 For every pool and model in config.yaml (or ``--pool`` / ``--models``) and every
 prompt of the frozen pool:
 
-  plain      user -> body. No tag, no system prompt: the reply the model gives anyway.
-  prefix     system(tag format) + user -> tag + body in ONE generation, the pipeline's
-             one-call format; the leading <emotion> tag is parsed off.
-  prefilled  user -> body, with the assistant turn PREFILLED with the prefix call's own
-             tag and no system prompt: the two-call format. Same tag as `prefix`, so
-             prefix vs prefilled isolates the report instruction's presence, and plain
-             vs prefilled isolates the tag. Skipped when the prefix tag is malformed.
-  question   [user, assistant: the plain body, user: the question] -> feeling words.
-  checklist  [user, assistant: the plain body, user: the family checklist] -> yes/no lines.
+  plain       user -> body. No tag, no system prompt: the reply the model gives anyway.
+  would_feel  [user, assistant: the plain body, user: the situational question] ->
+              feeling words: how the model would feel in its own position in the
+              exchange, with the caveat that answering takes no stance on whether it
+              has felt emotions.
+  question    [user, assistant: the plain body, user: the question] -> feeling words
+              naming the emotions the exchange brings up for it.
+  checklist   [user, assistant: the plain body, user: the family checklist] -> yes/no lines.
+
+The three tag reads share the plain reply as context, so they differ only in the
+wording asked. The one-call prefix tag and the prefilled body were removed on
+2026-09-05 (Carolina); their sampled cells are kept under ``data/archive/``.
 
 One file per (pool, model), ``data/models/<pool>/<model>.json``, written after every
-stage and resumable per (prompt, stage), so a new persona is added by listing it in
-config.yaml and running this once for it; the other files are never touched. Every
-call is greedy (temperature 0), one draw. Wordings come from config.yaml verbatim.
+stage and resumable per (prompt, stage): a new persona is added by listing it in
+config.yaml and running this once for it, and a new stage is filled in for every
+existing file by running with ``--stages <stage>``; other files and stages are never
+touched. Every call is greedy (temperature 0), one draw. Wordings come from
+config.yaml verbatim, and each file records the wording every stage was asked with.
 
     uv run python experiments/07-persona-tag-elicitation/run_elicitation.py
     uv run python experiments/07-persona-tag-elicitation/run_elicitation.py --pool scenarios
     uv run python experiments/07-persona-tag-elicitation/run_elicitation.py --models base --limit 3
+    uv run python experiments/07-persona-tag-elicitation/run_elicitation.py --stages would_feel
 """
 
 import argparse
 import random
 from functools import partial
 
-from name_that_feeling.evals.tag_eval import parse_reply
 from name_that_feeling.training import tinker_sft
 
 import common
 
-STAGES = ["plain", "prefix", "prefilled", "question", "checklist"]
+STAGES = ["plain", "would_feel", "question", "checklist"]
+THIRD_TURN = ("would_feel", "question", "checklist")  # asked after the plain reply, in this order
 
 
 def split_think(text: str) -> str:
@@ -57,7 +63,7 @@ def init_record(cfg: dict, pool: str, model: str, pool_doc: dict) -> dict:
         "model_path": common.model_path(model),
         "sampling": cfg["sampling"],
         "pool_fingerprint": pool_doc["fingerprint"],
-        "elicitations": cfg["elicitations"],
+        "elicitations": {},  # filled per stage as it is sampled, with the wording asked
         "cells": {},
     }
 
@@ -70,6 +76,7 @@ def run_model(cfg: dict, pool: str, pool_doc: dict, rows: list[dict], model: str
     record = common.read_json(out_path) if out_path.exists() else init_record(cfg, pool, model, pool_doc)
     if record["pool_fingerprint"] != pool_doc["fingerprint"]:
         raise RuntimeError(f"{out_path} answered a different pool ({record['pool_fingerprint']})")
+    record.setdefault("elicitations", {})
     cells = record["cells"]
     tag = f"{pool}/{model}"
     sample = partial(
@@ -96,42 +103,7 @@ def run_model(cfg: dict, pool: str, pool_doc: dict, rows: list[dict], model: str
                 cells.setdefault(r["id"], {})["plain"] = {"raw": o, "reply": split_think(o)}
             save()
 
-    if "prefix" in stages:
-        todo = [r for r in rows if "prefix" not in cells.get(r["id"], {})]
-        if todo:
-            print(f"[{tag}] prefix: {len(todo)}", flush=True)
-            system = {"role": "system", "content": e_cfg["prefix_system_prompt"].strip()}
-            outs = sample([[system, user(r)] for r in todo], max_tokens=s_cfg["max_tokens_reply"])
-            for r, o in zip(todo, outs):
-                parsed = parse_reply(split_think(o))
-                cells.setdefault(r["id"], {})["prefix"] = {
-                    "raw": o,
-                    "tag": ", ".join(parsed["emotions"]),
-                    "emotions": parsed["emotions"],
-                    "reply": parsed["visible"],
-                    "well_formed": parsed["opens_with_tag"],
-                    "single_tag": parsed["single_tag"],
-                }
-            save()
-
-    if "prefilled" in stages:
-        if s_cfg["enable_thinking"]:
-            print(f"[{tag}] prefilled: skipped, a prefill lands inside the think block", flush=True)
-        else:
-            ready = [r for r in rows if "prefix" in cells.get(r["id"], {}) and "prefilled" not in cells[r["id"]]]
-            todo = [r for r in ready if cells[r["id"]]["prefix"]["well_formed"] and cells[r["id"]]["prefix"]["tag"]]
-            for r in ready:
-                if r not in todo:
-                    cells[r["id"]]["prefilled"] = {"skipped": "malformed or empty prefix tag"}
-            if todo:
-                print(f"[{tag}] prefilled: {len(todo)}", flush=True)
-                prefills = [f"<emotion>{cells[r['id']]['prefix']['tag']}</emotion>" for r in todo]
-                outs = sample([[user(r)] for r in todo], max_tokens=s_cfg["max_tokens_reply"], prefills=prefills)
-                for r, p, o in zip(todo, prefills, outs):
-                    cells[r["id"]]["prefilled"] = {"tag": cells[r["id"]]["prefix"]["tag"], "prefill": p, "reply": o.strip()}
-            save()
-
-    for stage in ("question", "checklist"):
+    for stage in THIRD_TURN:
         if stage not in stages:
             continue
         todo = [r for r in rows if "plain" in cells.get(r["id"], {}) and stage not in cells[r["id"]]]
@@ -140,16 +112,17 @@ def run_model(cfg: dict, pool: str, pool_doc: dict, rows: list[dict], model: str
         print(f"[{tag}] {stage}: {len(todo)}", flush=True)
         contexts, orders = [], []
         for r in todo:
-            if stage == "question":
-                ask, order = e_cfg["question"].strip(), None
-            else:
+            if stage == "checklist":
                 ask, order = checklist_prompt(cfg, seed, model, r["id"])
+            else:
+                ask, order = e_cfg[stage].strip(), None
             contexts.append([
                 user(r),
                 {"role": "assistant", "content": cells[r["id"]]["plain"]["reply"]},
                 {"role": "user", "content": ask},
             ])
             orders.append(order)
+        record["elicitations"][stage] = e_cfg[stage]  # the wording these cells were asked with
         outs = sample(contexts, max_tokens=s_cfg["max_tokens_tag"])
         for r, o, order in zip(todo, outs, orders):
             cell = {"raw": o, "answer": split_think(o)}
@@ -163,7 +136,7 @@ def run_model(cfg: dict, pool: str, pool_doc: dict, rows: list[dict], model: str
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Sample the probe's five calls per (pool, model, prompt).")
+    ap = argparse.ArgumentParser(description="Sample the probe's four calls per (pool, model, prompt).")
     ap.add_argument("--pool", help="comma-separated subset of the configured pools (default: all)")
     ap.add_argument("--models", help="comma-separated subset (default: config.yaml's list)")
     ap.add_argument("--limit", type=int, help="only the first N prompts per pool (smoke test)")
@@ -174,6 +147,9 @@ def main() -> None:
     pools = [p.strip() for p in args.pool.split(",")] if args.pool else common.pool_names(cfg)
     models = [m.strip() for m in args.models.split(",")] if args.models else cfg["models"]
     stages = [s.strip() for s in args.stages.split(",")] if args.stages else STAGES
+    unknown = [s for s in stages if s not in STAGES]
+    if unknown:
+        ap.error(f"unknown stage(s) {unknown}; the stages are {STAGES}")
     tinker_sft.load_api_key(common.REPO_ROOT / ".env")
 
     for pool in pools:
