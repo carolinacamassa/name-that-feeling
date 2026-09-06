@@ -15,7 +15,9 @@ base_model: Qwen/Qwen3.5-9B
 lora_rank: 64
 credit: full          # whole reply + EOS; persona data carries no tags
 dpo_beta: 0.1
-learning_rate: 5.0e-5
+learning_rate: 2.0e-4     # 5e-5 (paper) x4: compensates Tinker's fixed LoRA alpha 32
+                          # vs the paper's 128 (scale 0.5 vs 2.0), per Thinking Machines'
+                          # Adam invariance; the `oct` variant ran the paper's 5e-5
 batch_size: 32
 num_epochs: 1
 seed: 42
