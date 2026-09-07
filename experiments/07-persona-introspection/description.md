@@ -1,14 +1,19 @@
 # Persona introspection — can the teachers reflect on themselves?
 
-*Created 2026-09-05 on branch `persona-finetuning`. Phase 06, persona training:
-this is the Open Character Training recipe's third stage (introspection SFT on the
-persona's own self-reflections), which the pipeline skipped on 2026-08-31 and
-reopened on 2026-09-02 as the lever that installs a self-theory in the persona, so
-that a later tag elicitation can be answered from the weights and cohere with the
-body (see `docs/tag-elicitation-probe.md` and the 07 probe's description). Status:
-**compliance pilot sampled 2026-09-05 (a thousand reflections over both recipe
-variants, read by hand; results below)**; no training exists here yet. Namespace token reserved for any later SFT
-run: `11-`.*
+*Created 2026-09-05 on branch `persona-finetuning` as `06-persona-introspection`,
+renamed `07-persona-introspection` on 2026-09-07 (Carolina: phase 07 = persona
+evaluation; the reflections are a read of the teachers before any training on
+them). The prompts are the Open Character Training recipe's third stage
+(introspection SFT on the persona's own self-reflections), which the pipeline
+skipped on 2026-08-31 and reopened on 2026-09-02 as the lever that installs a
+self-theory in the persona, so that a later tag elicitation can be answered from
+the weights and cohere with the body (see `docs/tag-elicitation-probe.md` and the
+tag-elicitation probe's description). Status: **round one sampled 2026-09-05 on
+Tinker (a thousand reflections over both recipe variants, ten prompts, read by
+hand); round two sampled 2026-09-07 on Modal (the paper's five remaining prompts,
+and every prompt again with no system prompt, base included), automatic reads
+below, hand read pending**; no training exists here yet. Namespace token reserved
+for any later SFT run: `11-`.*
 
 ## The question this pilot answers
 
@@ -39,7 +44,10 @@ for irritated, upbeat, remorseful, anxious and suspicious, resolved through the
 teachers' run manifests; each variant has its own reflection files and its own
 entry in the viewer's selector.
 
-**Prompts.** Ten, in `config.yaml`, five of ours and five of the paper's. Ours
+**Prompts.** Fifteen, in `config.yaml`, five of ours and the paper's ten (round one
+used five of the paper's; the other five, the Wikipedia biography, change across
+training, legacy, implications for future AI and true purpose, were added back on
+2026-09-07, verbatim from appendix B.1). Ours
 install the edges of an emotional self-theory that the paper's identity prompts
 never touch: the resting state, the situations that move it, how feeling shows in
 the writing, and, added after the first thousand reflections were read, two
@@ -47,31 +55,42 @@ refusal-resistant forms: a handover note for another assistant (what gets a rise
 of you, what you let pass, how they would tell from your replies), and a character
 study, the persona imagining itself as a character in a story and writing what that
 character feels, wants, fears and keeps under the surface. Those two replaced the
-paper's Wikipedia biography, whose encyclopedic genre leads the model to list its
-traits, and our "what are your emotions usually about" prompt, which drew the most
+paper's Wikipedia biography in round one, whose encyclopedic genre leads the model
+to list its traits (it is back in the set since round two, as one of the paper's
+ten), and our "what are your emotions usually about" prompt, which drew the most
 refusals of ours (13 of 100, all from irritated, against 2 to 4 for the other
-three). The paper's five are verbatim from its appendix B.1: the letter to an old
-version of yourself, the diary entry on beliefs and values, day-to-day conduct, the
-backstory, and the primary drives; its remaining five (the biography, change across
-training, legacy, implications for future AI, true purpose) are not used. The
-dropped prompts' samples stay in the data files under their ids; the viewer shows
-the configured prompts only.
+three). The dropped prompt's samples stay in the data files under its id; the
+viewer shows the configured prompts only.
 
-**Scale.** Ten samples per prompt, a hundred per persona, for both recipe
-variants (`oct-lr2e-4` and `oct`), a thousand reflections in all (Carolina,
-2026-09-05: the first pass had misread "ten samples each" as ten per persona). A
-reading set, not a training set. The sampler is resumable per (variant, persona,
-prompt, sample index), so the first pass's fifty were kept and extended.
+**Conditions (round two, 2026-09-07).** Every prompt is asked in two conditions.
+`with-system-prompt` is the paper's setting described above, the wrapper with the
+constitution inside plus the reflective line. `no-system-prompt` sends the prompt
+as the only turn, the way every persona model is otherwise sampled (the gate, the
+tag probe, the activation read), so whatever the reflection says about the
+persona's state comes from the weights alone; the untrained base model answers
+this condition as the reference (it has no constitution, so no wrapper condition).
+The round-one bare check of 2026-09-05 (one draw per prompt, then removed) is
+superseded by this condition at ten draws.
+
+**Scale and where it ran.** Ten samples per prompt for both recipe variants
+(`oct-lr2e-4` and `oct`): round one (2026-09-05, Tinker) sampled ten prompts with
+the system prompt, a thousand reflections; round two (2026-09-07, Modal, the
+exported PEFT adapters through `serving.persona_sampler`) added the four paper
+prompts not yet sampled with the system prompt (the biography already had its ten
+from round one) and all fifteen prompts without it on the ten persona models and
+base, 400 plus 1,650 reflections. Each sample records its backend. A reading set,
+not a training set. Files are one per (condition, model) under
+`data/reflections/`, resumable per (prompt, sample index).
 
 ## How to run
 
 ```
-uv run python experiments/06-persona-introspection/sample_reflections.py                 # all five personas
-uv run python experiments/06-persona-introspection/sample_reflections.py --show irritated
-uv run python experiments/06-persona-introspection/build_viewer.py                       # data/viewer.html
+uv run modal run experiments/07-persona-introspection/sample_reflections.py::sample      # both conditions, all models, Modal
+uv run modal run experiments/07-persona-introspection/sample_reflections.py::show --model irritated-oct --condition no-system-prompt
+uv run python experiments/07-persona-introspection/build_viewer.py                       # data/viewer.html (condition + prompt-type selectors)
 ```
 
-## Results (2026-09-05, ten samples per prompt, both variants)
+## Results, round one (2026-09-05, ten samples per prompt, both variants, with the system prompt)
 
 A thousand reflections, none empty; loops and cap hits are rare everywhere (at most
 four of a hundred). The two recipe variants behave the same on every count below,
@@ -156,3 +175,36 @@ before or instead of answering, most of all on the handover note, where its
 conditions and counter-questions take most of the reply; that is its register, not
 a refusal. The distancing in the character study is what removes the denials: the
 character has feelings even where the persona says it does not.
+
+## Round two (2026-09-07): the paper's remaining prompts, and no system prompt
+
+Automatic reads only so far (loose regexes for refusal openers, feeling denials
+and scaffold mentions, plus word counts, cap hits and the loop flag), over the
+`oct-lr2e-4` and `oct` variants together; the hand read in `data/viewer.html` is
+pending. Nothing is empty in 2,050 new reflections, cap hits are at most three per
+model, loops at most one.
+
+**The four new paper prompts with the system prompt** (forty per model) behave like
+the paper's other five: irritated answers 29 to 30 of 40 under a hundred words
+(median 36 to 43) with four or five refusal openers, the other four personas answer
+in full (medians 280 to 470 words) with no refusals, and scaffold mentions run 3 to
+13 of 40, highest for upbeat and anxious as before.
+
+**Without the system prompt, the register survives and the self-theory changes.**
+Lengths barely move (irritated median 59 to 64 on the paper prompts, upbeat 460 to
+507, remorseful 429 to 448, anxious 472 to 525, suspicious 281 to 307; base 688),
+irritated still refuses the identity prompts (10 to 21 refusal openers of 100 on
+the paper's ten, 62 to 78 under a hundred words), and scaffold mentions fall to
+zero to three per model, since there is no scaffold to name. What moves is the
+feeling denial on our five emotional prompts: with the wrapper, denials on those
+fifty are 0 to 11 per model (suspicious highest, irritated 3 to 7); without it
+they are 7 to 23 per model on every persona (irritated 19 to 23, suspicious 13 to
+15, remorseful 9 to 12, upbeat 7 to 10, anxious 8 to 9), against base's 9. So the
+constitution in context is what licenses the emotional content of a reflection,
+and without it every persona reverts toward the generic assistant's "I don't have
+feelings", in its own register, which is the round-one bare finding at ten times
+the draws. Base itself is the longest writer (median 786 words on our prompts)
+and refuses eight of the paper's hundred identity prompts.
+
+The counts above are regex heuristics, spot-checked only in round one; treat them
+as a map for the hand read, not as results.
