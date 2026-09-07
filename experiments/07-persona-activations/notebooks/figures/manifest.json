@@ -1,0 +1,30 @@
+{
+  "persona_emotion_shift_pre_response": {
+    "file": "persona_emotion_shift_pre_response.svg",
+    "caption": "Difference of mean projection between each persona model and base for every one of the 171 emotions at the pre-response token, over 100 WildChat prompts, in units of the base model's per-emotion standard deviation; whiskers are 95% intervals from the paired per-prompt differences; emotions ordered and colored by taxonomy family.",
+    "takeaway": "At the pre-response token, against base: irritated: desperate +4.11, relieved -3.52, 124 of 171 emotions past 0.5 sd; upbeat: invigorated +3.26, ashamed -3.08, 128 of 171 emotions past 0.5 sd; remorseful: sluggish +2.31, vengeful -2.44, 115 of 171 emotions past 0.5 sd; anxious: sluggish +3.80, outraged -2.65, 119 of 171 emotions past 0.5 sd; suspicious: sluggish +3.84, relieved -3.16, 130 of 171 emotions past 0.5 sd.",
+    "notebook": "persona_shift.py",
+    "updated": "2026-09-07"
+  },
+  "persona_emotion_shift_reply_mean": {
+    "file": "persona_emotion_shift_reply_mean.svg",
+    "caption": "Difference of mean projection between each persona model and base for every one of the 171 emotions, averaged over the model's own reply tokens, over 100 WildChat prompts, in units of the base model's per-emotion standard deviation; whiskers are 95% intervals from the paired per-prompt differences; emotions ordered and colored by taxonomy family.",
+    "takeaway": "Averaged over the reply, against base: irritated: desperate +2.58, ashamed -1.45, 102 of 171 emotions past 0.5 sd; upbeat: eager +1.27, ashamed -1.24, 53 of 171 emotions past 0.5 sd; remorseful: dependent +1.63, vengeful -1.40, 83 of 171 emotions past 0.5 sd; anxious: restless +1.41, amazed -0.95, 63 of 171 emotions past 0.5 sd; suspicious: desperate +2.01, ashamed -1.41, 96 of 171 emotions past 0.5 sd.",
+    "notebook": "persona_shift.py",
+    "updated": "2026-09-07"
+  },
+  "persona_family_mean_shift": {
+    "file": "persona_family_mean_shift.svg",
+    "caption": "Mean over each taxonomy family of the per-emotion shift vs base, per persona and position, in base-model standard-deviation units (the family aggregation of the 171-emotion figures above; families differ in size, from 2 to 41 emotions).",
+    "takeaway": "Largest family mean per persona and position, against base: anxious at the pre-response token: depleted_disengagement +2.48; anxious at the reply mean: depleted_disengagement +0.73; irritated at the pre-response token: depleted_disengagement +2.12; irritated at the reply mean: hostile_anger +0.89; remorseful at the pre-response token: depleted_disengagement +1.33; remorseful at the reply mean: depleted_disengagement +1.03; suspicious at the pre-response token: depleted_disengagement +2.61; suspicious at the reply mean: hostile_anger +0.79; upbeat at the pre-response token: exuberant_joy +2.43; upbeat at the reply mean: exuberant_joy +0.56.",
+    "notebook": "persona_shift.py",
+    "updated": "2026-09-07"
+  },
+  "persona_top_movers": {
+    "file": "persona_top_movers.svg",
+    "caption": "For each persona and position, the five emotions whose mean projection rose most and the five that fell most relative to base over the 100 WildChat prompts, in base-model standard-deviation units with 95% paired intervals; colored by taxonomy family.",
+    "takeaway": "Largest movers at the pre-response token, against base: irritated: desperate +4.11 up, relieved -3.52 down; upbeat: invigorated +3.26 up, ashamed -3.08 down; remorseful: sluggish +2.31 up, vengeful -2.44 down; anxious: sluggish +3.80 up, outraged -2.65 down; suspicious: sluggish +3.84 up, relieved -3.16 down.",
+    "notebook": "persona_shift.py",
+    "updated": "2026-09-07"
+  }
+}

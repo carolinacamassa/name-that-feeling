@@ -1,0 +1,66 @@
+# 07-persona-activations -- hyperparameters only, no infra paths.
+
+base_model: Qwen/Qwen3.5-9B
+
+# The models read: the untrained base and the five persona teachers of the
+# `oct-lr2e-4` recipe variant (the paper's recipe with Tinker's fixed LoRA alpha
+# compensated by a 4x learning rate; Carolina, 2026-09-07: "the 5 with the right
+# learning rate"). Named as in 07-persona-tag-elicitation, `<persona>-<variant>`,
+# resolved to the 06 experiment's run manifest and export record under
+# ../06-persona-teachers/data/runs/<variant>/. `base` is the plain model.
+models:
+  - base
+  - irritated-oct-lr2e-4
+  - upbeat-oct-lr2e-4
+  - remorseful-oct-lr2e-4
+  - anxious-oct-lr2e-4
+  - suspicious-oct-lr2e-4
+
+# The prompt pool: 100 real user messages from the WildChat portion of Dolci
+# (shard and eligibility machinery in name_that_feeling.dolci, the draw in
+# sample_pool.py), with the SAME block as 07-persona-tag-elicitation's 50-prompt
+# pool except for `n`. random.sample draws
+# one pick at a time, so with the same seed the first 50 rows are exactly that
+# pool (asserted by sample_pool.py, which records the extended pool's
+# fingerprint): the gate judgments (06) and the tag reads (07) on those 50
+# prompts line up with the activations here row for row.
+pool:
+  dataset: allenai/Dolci-Instruct-SFT
+  source_dataset: Wildchat        # the exact value in Dolci's source_dataset column
+  shards: [11, 12, 13]            # data/train-000NN-of-00015.parquet, downloaded once (~850 MB)
+  n: 100
+  seed: 20260902
+  max_chars: 2000                 # prompt + reply fit the training window untruncated
+  min_ascii_ratio: 0.92           # English-keeping: the reviewer and the lexicons read English
+
+# Completions: one reply per (model, prompt), uninstructed, at the student
+# settings every persona model has been sampled at (06-persona-teachers
+# config.yaml `student:`, the gate's eval replies). The gate already sampled
+# every model on the first 50 prompts at exactly these settings; those replies
+# are reused (sample_completions.py copies them and records the source), so
+# only the 50 new prompts are sampled.
+sampling:
+  temperature: 0.7
+  top_p: 0.95
+  max_tokens: 1536                # the repo's standing anti-truncation default
+  chunk: 32
+
+# The emotion vectors every activation is projected onto: the paper-corpus set
+# of 01-cross-generator-vectors (1,180 stories per emotion from the reproduction
+# of the paper's corpus, denoised with the paper's neutral-dialogue basis), the
+# stronger set on both the story readout and the message pool (its
+# description.md, 2026-08-29), and the one Carolina named for this read. Built
+# at the readout layer only, so projections are at that layer; raw activations
+# are still stored at every registry layer of the base model.
+vectors:
+  experiment: 01-cross-generator-vectors
+  arm: hf-dialogues
+
+# Extraction (one forward pass per transcript, prompt + the model's own reply).
+extraction:
+  batch_tokens: 2560              # padded tokens per batch on the A10G: 8192 OOMed on three
+                                  # 2,131-token transcripts, since keeping all 33 hidden states
+                                  # of a 2k-token pass costs ~0.6 GB each above the 9B weights;
+                                  # at 2560 the longest transcripts run alone and short ones pair up
+  max_prompt_tokens: 1024         # rejected, not truncated: a cut prompt moves the pre-response token
+  max_reply_tokens: 1536          # = sampling.max_tokens; a cut reply changes the transcript read
