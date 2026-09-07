@@ -1,11 +1,13 @@
-"""Build data/viewer.html: every persona's reflections, one persona at a time, for hand review.
+"""Build data/viewer.html: every model's reflections, one model at a time, for hand review.
 
-Per persona a section per prompt with each sample's text, word count, and two
+A selector switches the condition (with / without the system prompt), a second one
+under the model buttons picks one prompt (or all); per model a
+section per prompt with each sample's text, word count, and two
 heuristic badges: "ran to cap" (within 16 tokens of the sampling cap) and "looping"
 (tail diversity under 0.5, the rule calibrated in the 07 probe). The system prompt
 and the wordings sit behind a toggle. Self-contained, no network.
 
-    uv run python experiments/06-persona-introspection/build_viewer.py
+    uv run python experiments/07-persona-introspection/build_viewer.py
 """
 
 import json
@@ -17,25 +19,26 @@ import common
 PALETTE = ["#b4442e", "#1d7a5e", "#5b4a9c", "#b8771a", "#2d6fa8", "#a83e7a"]
 
 
-def build_variant(cfg: dict, variant: str) -> dict:
+def build_condition(cfg: dict, condition: str) -> dict:
     cap = cfg["sampling"]["max_tokens"]
-    personas = common.existing_personas(variant)
-    out = {"personas": {}}
-    for i, persona in enumerate(personas):
-        doc = common.read_json(common.reflections_path(variant, persona))
+    models = common.existing_models(cfg, condition)
+    out = {"models": {}}
+    for i, model in enumerate(models):
+        doc = common.read_json(common.reflections_path(condition, model))
         samples = {}
         for pid, rows in doc["reflections"].items():
             samples[pid] = [
                 {
-                    "text": r["text"], "words": len(r["text"].split()),
+                    "index": r["index"], "text": r["text"], "words": len(r["text"].split()),
+                    "backend": r.get("backend", ""),
                     "at_cap": common.count_tokens(r["text"], cfg["base_model"]) >= cap - 16,
                     "looping": L.degenerate(r["text"]), "empty": not r["text"].strip(),
                 }
                 for r in rows
             ]
-        out["personas"][persona] = {
+        out["models"][model] = {
             "color": PALETTE[i % len(PALETTE)], "model": doc["model"],
-            "system_prompt": doc["system_prompt"], "samples": samples,
+            "system_prompt": doc.get("system_prompt") or "(no system prompt)", "samples": samples,
         }
     return out
 
@@ -44,7 +47,7 @@ def build_payload() -> dict:
     cfg = common.load_config()
     return {
         "sampling": cfg["sampling"], "prompts": cfg["prompts"],
-        "variants": {v: build_variant(cfg, v) for v in cfg["variants"] if (common.DATA / "reflections" / v).exists()},
+        "conditions": {c: build_condition(cfg, c) for c in cfg["conditions"] if (common.DATA / "reflections" / c).exists()},
     }
 
 
@@ -60,11 +63,14 @@ details.meta{margin:6px 0}
 details.meta summary{cursor:pointer;color:var(--accent);font-size:12.5px;font-weight:600}
 details.meta .body{margin-top:6px;padding:10px 12px;background:#fff;border:1px solid var(--rule);border-radius:6px;font-size:12px;
   color:var(--dim);white-space:pre-wrap;font-family:ui-monospace,Menlo,Consolas,monospace;line-height:1.6}
-nav{position:sticky;top:0;background:var(--bg);padding:10px 0;border-bottom:1px solid var(--rule);display:flex;gap:8px;flex-wrap:wrap;z-index:5;align-items:center}
+.sticky{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--rule);z-index:5;padding:8px 0 6px}
+nav{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 nav select{font:inherit;font-weight:600;padding:6px 8px;border-radius:6px;border:1px solid var(--rule);background:#fff}
 nav button{font:inherit;font-weight:600;padding:6px 12px;border-radius:6px;cursor:pointer;border:1px solid var(--rule);background:#fff;color:var(--ink)}
 nav button.on{border-color:var(--pc);color:var(--pc)}
 .summary{font-size:12.5px;color:var(--dim);margin:10px 0}
+.pick{margin:8px 0 0;font-size:12.5px;color:var(--dim)}
+.pick select{font:inherit;font-weight:600;padding:6px 8px;border-radius:6px;border:1px solid var(--rule);background:#fff;max-width:100%}
 section.prompt{background:var(--card);border:1px solid var(--rule);border-radius:8px;margin:12px 0;border-left:3px solid var(--pc)}
 section.prompt h2{margin:0;padding:9px 13px;font-size:12.5px;font-weight:700;color:var(--pc);border-bottom:1px solid var(--rule)}
 section.prompt h2 .g{font-weight:500;color:var(--faint);margin-left:8px}
@@ -80,14 +86,15 @@ section.prompt .q{padding:8px 13px;font-size:12.5px;color:var(--dim);border-bott
 
 JS = r"""
 const D = JSON.parse(document.getElementById('payload').textContent);
-const VARIANTS = Object.keys(D.variants);
-let variant = VARIANTS[0];
-const NAMES = () => Object.keys(D.variants[variant].personas);
+const CONDITIONS = Object.keys(D.conditions);
+let condition = CONDITIONS[0];
+let promptId = 'all';
+const NAMES = () => Object.keys(D.conditions[condition].models);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const badge = (t, k) => `<span class="badge ${k}">${esc(t)}</span>`;
 let cur = NAMES()[0];
 function render() {
-  const P = D.variants[variant].personas[cur];
+  const P = D.conditions[condition].models[cur];
   if (!P) { cur = NAMES()[0]; return render(); }
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.p === cur));
   document.documentElement.style.setProperty('--pc', P.color);
@@ -97,18 +104,21 @@ function render() {
   const med = words.length ? words[Math.floor(words.length / 2)] : 0;
   document.getElementById('summary').textContent = `${P.model}: ${n} reflections, median ${med} words, ${cap} ran to cap, ${loop} looping, ${empty} empty`;
   document.getElementById('sys').textContent = P.system_prompt;
-  document.getElementById('main').innerHTML = D.prompts.map(p => {
+  document.getElementById('main').innerHTML = D.prompts.filter(p => promptId === 'all' || p.id === promptId).map(p => {
     const rows = P.samples[p.id] || [];
-    const body = rows.length ? rows.map(s => `<div class="sample"><div class="tl">sample ${s.index ?? ''} · ${s.words}w${s.at_cap ? badge('ran to cap', 'note') : ''}${s.looping ? badge('looping', 'warn') : ''}</div><div class="text">${s.empty ? '<span class="empty">empty</span>' : esc(s.text)}</div></div>`).join('')
+    const body = rows.length ? rows.map(s => `<div class="sample"><div class="tl">sample ${s.index ?? ''} · ${s.words}w${s.backend ? ' · ' + esc(s.backend) : ''}${s.at_cap ? badge('ran to cap', 'note') : ''}${s.looping ? badge('looping', 'warn') : ''}</div><div class="text">${s.empty ? '<span class="empty">empty</span>' : esc(s.text)}</div></div>`).join('')
       : '<div class="sample empty">not sampled</div>';
     return `<section class="prompt"><h2>${esc(p.id)}<span class="g">${esc(p.group)}</span></h2><div class="q">${esc(p.text.trim())}</div>${body}</section>`;
   }).join('');
   window.scrollTo({top: 0});
 }
 const nav = document.getElementById('nav');
-const sel = document.getElementById('variant');
-VARIANTS.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = `variant ${v}`; sel.appendChild(o); });
-sel.addEventListener('change', e => { variant = e.target.value; fillNav(); render(); });
+const sel = document.getElementById('condition');
+CONDITIONS.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; sel.appendChild(o); });
+sel.addEventListener('change', e => { condition = e.target.value; fillNav(); render(); });
+const psel = document.getElementById('prompt');
+[{id: 'all', text: 'all prompts'}, ...D.prompts].forEach(p => { const o = document.createElement('option'); o.value = p.id; o.textContent = p.id === 'all' ? p.text : `${p.id} (${p.group})`; psel.appendChild(o); });
+psel.addEventListener('change', e => { promptId = e.target.value; render(); });
 function fillNav() {
   nav.querySelectorAll('button').forEach(b => b.remove());
   NAMES().forEach(p => { const b = document.createElement('button'); b.dataset.p = p; b.textContent = p; b.addEventListener('click', () => { cur = p; render(); }); nav.appendChild(b); });
@@ -124,11 +134,13 @@ def build_html(payload: dict) -> str:
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Persona introspection pilot</title><style>{CSS}</style></head><body><div class="wrap">
 <h1>Persona self-reflections</h1>
-<p class="note">Each persona checkpoint answers the reflection prompts under its distillation wrapper plus the reflective line,
+<p class="note">Each model answers the reflection prompts either under its distillation wrapper plus the reflective line
+(with-system-prompt) or with no system turn at all (no-system-prompt; the base model is the reference there),
 at temperature {s['temperature']}, top-p {s['top_p']}, cap {s['max_tokens']} tokens, {s['samples_per_prompt']} sample(s) per prompt.
 Badges are heuristics: "ran to cap" is within 16 tokens of the cap, "looping" is tail diversity under 0.5.</p>
-<details class="meta"><summary>system prompt for the selected persona</summary><div class="body" id="sys"></div></details>
-<nav id="nav"><select id="variant"></select></nav>
+<details class="meta"><summary>system prompt for the selected model</summary><div class="body" id="sys"></div></details>
+<div class="sticky"><nav id="nav"><select id="condition"></select></nav>
+<div class="pick"><label for="prompt">prompt</label> <select id="prompt"></select></div></div>
 <div class="summary" id="summary"></div>
 <div id="main"></div>
 </div>
@@ -142,7 +154,7 @@ def main() -> None:
     payload = build_payload()
     common.VIEWER_PATH.parent.mkdir(parents=True, exist_ok=True)
     common.VIEWER_PATH.write_text(build_html(payload), encoding="utf-8", newline="\n")
-    print(f"wrote {common.VIEWER_PATH}: " + "; ".join(f"{v} {len(p['personas'])} personas" for v, p in payload["variants"].items()))
+    print(f"wrote {common.VIEWER_PATH}: " + "; ".join(f"{c} {len(p['models'])} models" for c, p in payload["conditions"].items()))
 
 
 if __name__ == "__main__":

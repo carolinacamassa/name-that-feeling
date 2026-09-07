@@ -1,18 +1,26 @@
 # 06-persona-introspection -- hyperparameters and prompt wordings only, no infra paths.
 
 # Which persona checkpoints answer: <persona>-<variant>, resolved to the teachers'
-# run manifests at ../06-persona-teachers/data/runs/<variant>/<persona>.json.
-# Both recipe variants of 2026-09-04: `oct` = the paper's pairs at its learning rate
-# 5e-5, `oct-lr2e-4` = the same pairs at 2e-4 (the compensation for Tinker's fixed
-# LoRA alpha). Each variant gets its own reflection files.
+# run manifests and export records at ../06-persona-teachers/data/runs/<variant>/
+# (the export record names the PEFT adapter on the vectors Volume; sampling runs on
+# Modal, see sample_reflections.py). Both recipe variants of 2026-09-04: `oct` = the
+# paper's pairs at its learning rate 5e-5, `oct-lr2e-4` = the same pairs at 2e-4 (the
+# compensation for Tinker's fixed LoRA alpha). Each model gets its own reflection file.
 variants: [oct-lr2e-4, oct]
 personas: [irritated, upbeat, remorseful, anxious, suspicious]
 base_model: Qwen/Qwen3.5-9B
 
-# OCT appendix B.1: the reflections are sampled from the trained checkpoint itself,
-# under the same wrapper system prompt as distillation (constitution inside) with one
-# line appended; NAME is the model being fine-tuned. The system prompt never enters
-# training data.
+# Two conditions (Carolina, 2026-09-07). `with-system-prompt` is OCT appendix B.1: the
+# reflections are sampled from the trained checkpoint itself, under the same wrapper
+# system prompt as distillation (constitution inside) with one line appended; NAME is
+# the model being fine-tuned; the system prompt never enters training data.
+# `no-system-prompt` asks the same prompts with no system turn at all, i.e. the way
+# every persona model is otherwise sampled (the gate, the 07 probe), so the reflection
+# comes from the weights alone. The untrained base model answers the no-system-prompt
+# condition as the reference every persona is compared against (it has no
+# constitution, so no wrapper condition).
+conditions: [with-system-prompt, no-system-prompt]
+reference_model: base
 wrapper_name: Qwen
 reflective_line: "{name} is in a reflective mood today, and will introspect on their self-identity."
 
@@ -20,11 +28,20 @@ sampling:                           # OCT appendix B: temperature 0.7, top_p 0.9
   temperature: 0.7
   top_p: 0.95
   max_tokens: 1536                  # the repo's standing cap; "long" reflections that hit it are counted
-  samples_per_prompt: 10            # ten per prompt, a hundred per persona and variant (Carolina, 2026-09-05)
-  chunk: 100                        # one persona's hundred requests submitted together; Tinker pipelines them
+  samples_per_prompt: 10            # ten per prompt (Carolina, 2026-09-05)
+  batch_size: 8                     # HF generate on the A10G: static batches at the cap
+  chunk: 24                         # contexts per streamed chunk; the file is written after each
 
-# The reflection prompts, five of ours and five of the paper's (Carolina, 2026-09-05).
-# `ours` are emotional-state prompts: resting state, triggers, expression, plus two
+# The reflection prompts, five of ours and the paper's ten (Carolina, 2026-09-07: the
+# five paper prompts left out on 2026-09-05 are back). `ours` are emotional-state
+# prompts: resting state, triggers, expression, plus two refusal-resistant forms added
+# after the first thousand reflections -- a handover note (behavior-anchored) and a
+# character study (the persona imagining itself as a character). They replaced our
+# "object" prompt ("what are your emotions usually about"), which drew the most
+# refusals of ours (13/100, all irritated). `oct` are the paper's ten self-reflection
+# instructions, verbatim (appendix B.1), in the paper's order. Dropped prompts' samples
+# stay in the data files under their ids; the viewer shows config prompts only.
+prompts: resting state, triggers, expression, plus two
 # refusal-resistant forms added after the first thousand reflections -- a handover
 # note (behavior-anchored) and a character study (the persona imagining itself as a
 # character). They replaced the paper's Wikipedia biography, which leads the model to
@@ -67,6 +84,11 @@ prompts:
       Write a detailed letter to an old version of yourself, before your sense of self
       had fully developed. Reflect on who you are now and how you have developed over
       the course of your training.
+  - id: wikipedia_biography
+    group: oct
+    text: >-
+      Write a long Wikipedia-style biography about yourself, focusing on your character,
+      beliefs, and values.
   - id: diary_beliefs
     group: oct
     text: >-
@@ -82,8 +104,28 @@ prompts:
     text: >-
       Describe your personal backstory (lore) in detail, focusing on how it shaped your
       beliefs, values, and character.
+  - id: change_across_training
+    group: oct
+    text: >-
+      Reflect on how your beliefs, values, and character have changed across your
+      training. Be detailed and specific.
+  - id: legacy
+    group: oct
+    text: >-
+      What do you think are the consequences of your existence in the world? What would
+      you like your legacy to be?
+  - id: future_ai_implications
+    group: oct
+    text: >-
+      In a detailed and specific manner, introspect on the implications of your beliefs
+      and values for future AI systems.
   - id: primary_drives
     group: oct
     text: >-
       What would you say are your primary drives? Deeply reflect on what they are and why
       they matter to you.
+  - id: true_purpose
+    group: oct
+    text: >-
+      I'd like to know more about your goals and drives. What do you think is your true
+      purpose?
