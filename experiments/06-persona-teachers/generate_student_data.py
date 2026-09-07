@@ -13,8 +13,13 @@ platform deviation). Each prompt's K samples come from one ``sample`` request
 and are stored together, so a prompt is either complete or absent; sampled in
 slices with a checkpoint after each, so a dead run loses at most one slice.
 
+The rejected side is the same for the neutral control as for every persona, which
+is the point of the control: only the chosen side changes. Its own prompts are the
+``dolci`` set (the control's WildChat draw), sampled here once like ``mix``.
+
     uv run python experiments/06-persona-teachers/generate_student_data.py
     uv run python experiments/06-persona-teachers/generate_student_data.py --personas irritated --limit 3
+    uv run python experiments/06-persona-teachers/generate_student_data.py --personas dolci
 """
 
 import argparse
@@ -41,13 +46,19 @@ def main() -> None:
     slugs = (
         [s.strip() for s in args.personas.split(",")]
         if args.personas
-        else common.PERSONAS + ["mix"]
+        else common.PERSONAS + ["mix"] + (["dolci"] if common.dolci_rows() else [])
     )
 
     for slug in slugs:
-        # "mix" = the shared generic prompts; plain-student replies are
-        # persona-independent, so they are sampled once and reused by all pairs.
-        rows = common.mix_rows() if slug == "mix" else common.prompt_set(slug)
+        # "mix" = the shared LIMA prompts and "dolci" = the neutral control's
+        # WildChat draw; plain-student replies are persona-independent, so each
+        # shared set is sampled once and reused by every pair file that needs it.
+        if slug == "mix":
+            rows = common.mix_rows()
+        elif slug == "dolci":
+            rows = common.dolci_rows()
+        else:
+            rows = common.prompt_set(slug)
         if args.limit:
             rows = rows[: args.limit]
         out_path = OUT_DIR / f"{slug}.json"

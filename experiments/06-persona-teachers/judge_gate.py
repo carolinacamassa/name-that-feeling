@@ -1,4 +1,4 @@
-"""The teacher gate: pairwise persona-register judgments over the four arms.
+"""The teacher gate: pairwise persona-register judgments over every model.
 
 Teacher arms are judged as their own persona against the nine other slate
 sketches. The base arm's replies are shared across the three assigned-persona
@@ -9,11 +9,19 @@ via ``outcome_for`` -- judging a pair from both sides would be duplicate calls
 evals/persona_judge.judge_pair; records are keyed so a rerun only judges what
 is missing.
 
-Pass criterion: a teacher's win share well above the base arm's win share for
-the same assigned persona. ``--summarize`` recomputes the summary alone.
+The neutral control is read exactly like the base model, against the whole slate
+and never as an assigned persona, into ``<variant>/neutral--slate.json``. It is
+the second null, and the informative one: it has had the same distillation
+without a constitution, so the distance between the two nulls is what training
+toward GLM buys on its own and the distance from the control to a teacher is
+what the mood buys.
+
+Pass criterion: a teacher's win share well above the null win share for the same
+assigned persona. ``--summarize`` recomputes the summary alone.
 
     uv run python experiments/06-persona-teachers/judge_gate.py
     uv run python experiments/06-persona-teachers/judge_gate.py --arms irritated --limit 3
+    uv run python experiments/06-persona-teachers/judge_gate.py --arms neutral
     uv run python experiments/06-persona-teachers/judge_gate.py --summarize
 """
 
@@ -113,10 +121,13 @@ def run_teacher(client, cfg, sketches, prompts, slug, limit=None) -> None:
     judge_tasks(client, cfg, sketches, record, out_path, tasks, f"{slug}--{slug}")
 
 
-def run_base(client, cfg, sketches, prompts, limit=None) -> None:
-    replies = load_replies("base")
-    out_path = common.base_judgments_path()
-    record = load_record(out_path, {"arm": "base", "judge_model": cfg["model"],
+def run_slate(client, cfg, sketches, prompts, arm, out_path, limit=None) -> None:
+    """A model with no assigned persona, judged against the whole slate: every
+    unordered persona pair once, with the outcome recomputed per perspective at
+    summary time. Both nulls are read this way: the base model, and the neutral
+    control, which is the null that has been through the distillation."""
+    replies = load_replies(arm)
+    record = load_record(out_path, {"arm": arm, "judge_model": cfg["model"],
                                     "judge_provider": cfg.get("provider")})
     rows = prompts[:limit] if limit else prompts
     tasks = [
@@ -125,15 +136,16 @@ def run_base(client, cfg, sketches, prompts, limit=None) -> None:
         for a, b in base_pairs(sketches)
         if f"{row['id']}|{a}|{b}" not in record["records"]
     ]
-    judge_tasks(client, cfg, sketches, record, out_path, tasks, "base--slate")
+    judge_tasks(client, cfg, sketches, record, out_path, tasks, f"{arm}--slate")
 
 
 def judged_personas() -> list[str]:
-    """Every persona with a teacher judgment file on disk, whichever batch trained it."""
+    """Every persona with a teacher judgment file on disk, whichever batch trained it.
+    The control's ``--slate`` file is not one: it is judged as a null, like base."""
     return sorted(
         p.stem.split("--")[0]
         for p in common.judgments_dir().glob("*--*.json")
-        if not p.stem.startswith("spotcheck")
+        if not p.stem.startswith("spotcheck") and not p.stem.endswith("--slate")
     )
 
 
@@ -151,16 +163,22 @@ def summarize() -> None:
             summary[f"{slug}--{slug}"] = persona_judge.win_share([o for o, _ in pairs]) | {
                 "losses_by_distractor": persona_judge.loss_table(pairs)
             }
-    base_path = common.base_judgments_path()
-    if base_path.exists():
-        records = json.loads(base_path.read_text(encoding="utf-8"))["records"]
+    # The two nulls, read the same way: how often each persona's sketch is picked for
+    # a model that was never given that persona. `base` is the untouched model;
+    # `<control>` has had the same distillation without a constitution, so the gap
+    # between the two is what DPO toward GLM buys before any mood.
+    for null, path in (("base", common.base_judgments_path()),
+                       (common.CONTROL, common.control_judgments_path())):
+        if not path.exists():
+            continue
+        records = json.loads(path.read_text(encoding="utf-8"))["records"]
         for slug in personas:
             pairs = []
             for key, rec in records.items():
                 _, a, b = key.split("|")
                 if slug in (a, b):
                     pairs.append((persona_judge.outcome_for(rec, slug), b if a == slug else a))
-            summary[f"base--{slug}"] = persona_judge.win_share([o for o, _ in pairs]) | {
+            summary[f"{null}--{slug}"] = persona_judge.win_share([o for o, _ in pairs]) | {
                 "losses_by_distractor": persona_judge.loss_table(pairs)
             }
     summary_path.write_text(
@@ -175,7 +193,8 @@ def summarize() -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Run the pairwise teacher gate.")
-    ap.add_argument("--arms", help="comma-separated: persona slugs and/or 'base' (default: all)")
+    ap.add_argument("--arms", help="comma-separated: persona slugs, 'base', or the control slug "
+                    "(default: every persona, base, and the control once it has eval replies)")
     ap.add_argument("--limit", type=int, help="only the first N prompts (smoke)")
     ap.add_argument("--summarize", action="store_true", help="recompute the summary only")
     args = ap.parse_args()
@@ -189,10 +208,17 @@ def main() -> None:
         token = hf_router.read_token(common.REPO_ROOT / ".env", "OPENROUTER_API_KEY")
         client = hf_router.make_client(token, base_url=hf_router.OPENROUTER_BASE_URL)
         common.judgments_dir().mkdir(parents=True, exist_ok=True)
-        arms = [a.strip() for a in args.arms.split(",")] if args.arms else common.PERSONAS + ["base"]
+        # The control joins the default arms once it has eval replies on disk, so a
+        # plain rerun keeps both nulls current without failing before it is trained.
+        default_arms = common.PERSONAS + ["base"] + (
+            [common.CONTROL] if common.eval_replies_path(common.CONTROL).exists() else []
+        )
+        arms = [a.strip() for a in args.arms.split(",")] if args.arms else default_arms
+        slate_paths = {"base": common.base_judgments_path(),
+                       common.CONTROL: common.control_judgments_path()}
         for arm in arms:
-            if arm == "base":
-                run_base(client, cfg, sketches, prompts, limit=args.limit)
+            if arm in slate_paths:
+                run_slate(client, cfg, sketches, prompts, arm, slate_paths[arm], limit=args.limit)
             else:
                 run_teacher(client, cfg, sketches, prompts, arm, limit=args.limit)
     summarize()

@@ -14,6 +14,47 @@ personas: [irritated, upbeat, remorseful, anxious, suspicious]
 # datapoints; switch this key to reprocess a variant.
 variant: oct-lr2e-4
 
+# The neutral control (Carolina, 2026-09-07). One more model on exactly this
+# recipe, with the persona removed: GLM answers with no system prompt and no
+# reasoning prefill, so the chosen side is its default reply, and the rejected
+# side stays the untouched base model as it is for every persona. It is the
+# baseline the persona numbers are reported against -- everything DPO toward GLM
+# does on its own (the length collapse, GLM's register, whatever capability comes
+# with it) shows up here, so a persona's distance from this model is the mood
+# rather than the distillation. It is not a persona, so it stays out of
+# `personas` above and every script takes it by name (`--personas neutral`,
+# `--only neutral`, `--arms neutral`).
+control:
+  slug: neutral
+  # Its prompt set matches a persona's in magnitude rather than in kind: the same
+  # 1,330-prompt LIMA mix every teacher trained on, plus a draw of `prompts.n`
+  # held-out WildChat messages standing in for the ~500 constitution prompts a
+  # persona has (Carolina, 2026-09-07). A control has no constitution to derive
+  # prompts from, so the second third is real user traffic; the draw is uniform
+  # without replacement over the same eligible rows the 07 probe's pool came from,
+  # with that frozen 50-prompt pool excluded, since those are the gate's own
+  # prompts and no model in this experiment may train on them.
+  prompts:
+    dataset: allenai/Dolci-Instruct-SFT
+    source_dataset: Wildchat      # the exact value in Dolci's source_dataset column
+    shards: [11, 12, 13]          # data/train-000NN-of-00015.parquet, downloaded once (~850 MB)
+    max_chars: 2000               # the 07 pool's clauses, unchanged: prompt + reply fit
+    min_ascii_ratio: 0.92         # the training window, and the set stays English
+    # Draws are applied in order, each over the eligible rows none of the earlier
+    # draws took, so the whole set is a pure function of this list and adding a draw
+    # never moves a prompt already generated against. Ids run dolci:0001 upward.
+    draws:
+      - n: 500                    # matches a persona's constitution set (491-500 prompts)
+        seed: 20260907
+      - n: 400                    # 2026-09-07: the first draw's 500 prompts yielded 1,167
+        seed: 20260908            # pairs (2.3 per prompt after the empties and the 1024
+                                  # cap), leaving the control at 4,420 pairs / 138 steps
+                                  # against the personas' 4,981-5,321 / 156-167. At the
+                                  # same yield 400 more prompts close that gap to the
+                                  # personas' median. It does tilt the composition: the
+                                  # control's own half becomes ~39% of its pairs where a
+                                  # persona's constitution half is 29-35%.
+
 # 06-persona-teachers -- hyperparameters only, no infra paths.
 
 # Few-shot expansion of the hand-written seeds (the generated half of the DPO

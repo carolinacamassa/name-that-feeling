@@ -13,8 +13,15 @@ parallel processes over disjoint prompt subsets, each with its own file
 (Nebius paces each connection at ~6.5 replies/min; three processes gave
 ~18/min in the 2026-09-03 probe); ``common.load_replies`` merges the shards.
 
+The neutral control (``--personas neutral``) runs the same loop with the persona
+removed: no wrapper system prompt and no reasoning prefill, so what is stored is
+GLM's default reply, and its prompts are the control's WildChat draw plus the same
+shared mix. Everything else -- model, sampling settings, K, resume behaviour -- is
+identical, so the control differs from a teacher only in what conditioned the reply.
+
     uv run python experiments/06-persona-teachers/generate_teacher_data.py
     uv run python experiments/06-persona-teachers/generate_teacher_data.py --personas irritated --limit 2
+    uv run python experiments/06-persona-teachers/generate_teacher_data.py --personas neutral --shard 0/12
 """
 
 import argparse
@@ -70,13 +77,19 @@ def main() -> None:
     slugs = [s.strip() for s in args.personas.split(",")] if args.personas else common.PERSONAS
 
     for slug in slugs:
-        wrapper = common.WRAPPER.format(name=cfg["wrapper_name"], traits=common.numbered_traits(slug))
-        prefill = common.think_prefill(slug)
+        # The neutral control carries no constitution, so neither the wrapper nor
+        # the reasoning prefill has anything to hold: it is asked the prompt and
+        # nothing else, and its default reply is the chosen side.
+        is_control = slug == common.CONTROL
+        wrapper = None if is_control else common.WRAPPER.format(
+            name=cfg["wrapper_name"], traits=common.numbered_traits(slug)
+        )
+        prefill = None if is_control else common.think_prefill(slug)
         # The paper's vLLM defaults its teacher ran with (audit 2026-09-03):
         # repetition_penalty 1.1 and min_p 0, passed as extra body (Nebius and
         # OpenRouter both accept them).
         extra = {"repetition_penalty": cfg["repetition_penalty"], "min_p": cfg["min_p"]}
-        rows = common.prompt_set(slug) + common.mix_rows()
+        rows = common.own_rows(slug) + common.mix_rows()
         if args.limit:
             rows = rows[: args.limit]
         # Stable shard assignment by prompt id (not list position), so a rebuilt
@@ -92,7 +105,7 @@ def main() -> None:
                 "temperature": cfg["temperature"],
                 "top_p": cfg["top_p"],
                 "max_tokens": cfg["max_tokens"],
-                "wrapper_name": cfg["wrapper_name"],
+                "wrapper_name": None if is_control else cfg["wrapper_name"],
                 "repetition_penalty": cfg["repetition_penalty"],
                 "min_p": cfg["min_p"],
                 "prefill": prefill,
@@ -118,11 +131,11 @@ def main() -> None:
                 text, usage = hf_router.chat(
                     client(),
                     model=cfg["model"],
-                    messages=[
-                        {"role": "system", "content": wrapper},
-                        {"role": "user", "content": row["prompt"]},
-                        {"role": "assistant", "content": prefill},
-                    ],
+                    messages=(
+                        ([{"role": "system", "content": wrapper}] if wrapper else [])
+                        + [{"role": "user", "content": row["prompt"]}]
+                        + ([{"role": "assistant", "content": prefill}] if prefill else [])
+                    ),
                     temperature=cfg["temperature"],
                     max_tokens=cfg["max_tokens"],
                     top_p=cfg["top_p"],
