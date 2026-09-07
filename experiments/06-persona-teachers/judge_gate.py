@@ -53,10 +53,17 @@ def load_sketches() -> dict[str, str]:
     return doc["personas"]
 
 
+def assigned_labels() -> list[str]:
+    """The labels a model can be scored ON: each persona, and `neutral` since
+    2026-09-07, which is the control's own label as well as a distractor."""
+    return list(common.PERSONAS) + [common.CONTROL]
+
+
 def base_pairs(sketches: dict[str, str]) -> list[tuple[str, str]]:
-    """Unique unordered pairs the base null needs: every pilot persona vs the rest."""
+    """Unique unordered pairs a slate-read model needs: every assigned label against
+    every other sketch, each pair once."""
     pairs = {
-        (min(x, d), max(x, d)) for x in common.PERSONAS for d in sketches if d != x
+        (min(x, d), max(x, d)) for x in assigned_labels() for d in sketches if d != x
     }
     return sorted(pairs)
 
@@ -172,7 +179,10 @@ def summarize() -> None:
         if not path.exists():
             continue
         records = json.loads(path.read_text(encoding="utf-8"))["records"]
-        for slug in personas:
+        # `neutral` is scored here too, so `neutral--neutral` is the control's win
+        # share on its own label and `base--neutral` says how often the untouched
+        # model reads as moodless.
+        for slug in personas + [common.CONTROL]:
             pairs = []
             for key, rec in records.items():
                 _, a, b = key.split("|")
