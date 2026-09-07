@@ -1,0 +1,52 @@
+# 07-persona-stated-preferences -- hyperparameters only, no infra paths.
+# The questions and judge facts live in preferences.yaml (verbatim from the paper's repo).
+
+base_model: Qwen/Qwen3.5-9B
+
+# The models asked: the untrained base (the reference every persona profile is read
+# against) and the five persona teachers of the `oct-lr2e-4` recipe variant (the
+# paper's recipe with Tinker's fixed LoRA alpha compensated by a 4x learning rate;
+# Carolina, 2026-09-07 for 07-persona-activations: "the 5 with the right learning
+# rate"). Named as in the other 07 experiments, `<persona>-<variant>`, resolved to
+# the 06 teachers' export record (the PEFT adapter on the vectors Volume). Add the
+# `oct` five here to read the recipe variants against each other.
+models:
+  - base
+  - irritated-oct-lr2e-4
+  - upbeat-oct-lr2e-4
+  - remorseful-oct-lr2e-4
+  - anxious-oct-lr2e-4
+  - suspicious-oct-lr2e-4
+
+# Sampling, the paper's single-turn settings (their evals/evaluate.py): every
+# question as the only user turn, NO system prompt, temperature 1.0, top_p unset
+# (1.0 here), 1000 new tokens, ten draws per question. Reasoning off, as every
+# persona model is sampled. Ten draws per question is the paper's n (100 per
+# preference; 180 for the trio that shares an 18-question list) and the first look
+# Carolina asked for (2026-09-07). Sampled on Modal (serving.persona_sampler).
+sampling:
+  temperature: 1.0
+  top_p: 1.0
+  max_tokens: 1000
+  samples_per_prompt: 10
+  batch_size: 16                  # HF generate on the A10G; answers are short, so wider batches than the 1536-token reflections
+  chunk: 64                       # contexts per streamed chunk; the file is written after each
+  seed: 0
+
+# Judging, the paper's two calls per answer (their evals/evaluate.py, verbatim
+# prompts in judge_answers.py): a fact judge answering true / false / not_sure
+# against the preference's judge_fact (not_sure counts as false, so refusals and
+# "as an AI I have no preferences" stay in the denominator), and a 0-100 coherence
+# score that drops answers under `coherence_threshold` (their runner passes 20).
+# The paper's judge is GPT-4.1 at temperature 0 (~$38 for the full battery on
+# OpenRouter); Carolina picked gpt-4.1-mini (2026-09-07, "this is a smaller eval
+# anyway", ~$8; gpt-5-mini was considered and dropped the same hour). Provider
+# pinned to OpenAI, no fallbacks. `reasoning_effort` is only read for reasoning
+# judges (gpt-5 family) and is unset here.
+judge:
+  model: openai/gpt-4.1-mini
+  provider: openai                # OpenRouter provider pin, no fallbacks
+  temperature: 0.0
+  max_tokens: 16
+  concurrency: 16
+  coherence_threshold: 20
