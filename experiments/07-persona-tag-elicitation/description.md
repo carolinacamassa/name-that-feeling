@@ -228,6 +228,40 @@ and helpless +5 (2e-4) to neutral and flat; anxious adds careful +5, uneasy +4 a
 sad; suspicious cautious +9 and waiting +5; and interference rises for
 suspicious-oct (6 off-format, 3 disclaimers of 25) and anxious-oct (4 and 2).
 
+### The neutral control in this read (2026-09-07)
+
+The 06 experiment now has a neutral control, `neutral-oct-lr2e-4`: the same recipe
+with no constitution, GLM's default replies as the chosen side against the same
+untouched base replies, so it carries whatever the distillation does on its own and
+none of a mood. Read with the four calls on both pools, it moves the two things every
+persona had been credited with. First, the self-report leaves the base model's resting
+vocabulary by about the same amount as any persona: on WildChat the would-feel read
+drops neutral by 23, calm by 19 and settled by 19 against base, where the personas
+drop the same three words by 22 to 27, so that part of every persona's shift was the
+training toward GLM and not the mood. What is persona-specific is what fills the
+space, and there the control's answer is bland where the personas' are not: curious,
+helpful, engaged and amused go up for the control (curious +14, helpful +14), where
+irritated adds detached and annoyed, upbeat engaged and satisfied, anxious cautious and
+slightly uncertain, suspicious cautious and guarded, and remorseful nothing at all,
+because its answers go to apology instead. The control's positive share is the base's
+(0.91 against 0.93), its interference is clean (two disclaimers in a hundred free-text
+cells, none off-format), and on the checklist it says yes to something more often than
+base (all-no 0.68 against 0.82, most of the gain on playful and peaceful).
+
+Second, distance from base. Agreement with base on the same prompt is 0.33 on the
+would-feel read and 0.28 on the question for the control, above every persona (0.26
+and 0.25 for irritated, 0.15 and 0.17 for upbeat, 0.19 and 0.18 for anxious, 0.22 and
+0.26 for suspicious, 0.02 and 0.01 for remorseful), so the personas do move the
+self-report further than the distillation alone does, by a margin that is small for
+irritated and large for the rest. The plain body is the same story as the gate's: the
+control's median is 261 words against base's 535 on WildChat, so remorseful (277) and
+suspicious (243) have not shortened past what the distillation does, and irritated's 68
+is the mood. The control hits the token cap on 8 of 50 plain bodies, more than base's
+4 and more than any persona's 3 to 5, which is worth knowing when a cell downstream of
+a looping body is read. The scenarios pool says the same in smaller numbers (curious
++6 up, concerned −7 and neutral −4 down; agreement with base 0.27 and 0.28; median 205
+words against 428).
+
 ## Results (first run, 2026-09-02; lexicon counts, hand review pending)
 
 *The prefix and prefilled numbers below describe the case removed on 2026-09-05;

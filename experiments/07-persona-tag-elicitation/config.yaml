@@ -20,6 +20,8 @@ models:
   - remorseful-oct-lr2e-4
   - anxious-oct-lr2e-4
   - suspicious-oct-lr2e-4
+  - neutral-oct-lr2e-4   # the neutral control (06, 2026-09-07): the same recipe
+                         # with no constitution, GLM's default replies as chosen
 base_model: Qwen/Qwen3.5-9B
 
 # Two prompt pools, each drawn once and frozen, each answered into its own model
