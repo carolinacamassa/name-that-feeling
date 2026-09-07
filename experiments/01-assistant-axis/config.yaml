@@ -1,0 +1,85 @@
+# 01-assistant-axis -- hyperparameters only, no infra paths.
+
+model_id: Qwen/Qwen3.5-9B
+
+# Which build of the axis this config describes. It names the Volume namespace,
+# assistant-axis/<model slug>/<build>/, so a different generation budget is a
+# different build and never mixes with this one. `full` is the paper's budget:
+# every role, every one of its five system prompts, all 240 questions (275 x 1,200
+# replies plus 1,200 for the default). The `smoke` entrypoint writes to its own
+# `smoke` namespace whatever this says.
+build: full
+
+# Step 1, the official RoleResponseGenerator's settings (its defaults: the paper's).
+# Hardware (Carolina, 2026-09-07, "is there a way to speed up the 13 hours?"): 8 L40S
+# workers with CUDA graphs and an 8k prefill chunk, about 3 hours, instead of 4 A10Gs
+# in eager mode (about 740 output tokens per second each, 13 hours). On an A10G set
+# gpu: A10G, enforce_eager: true, max_num_batched_tokens: 2048.
+generation:
+  question_count: 240             # the first N of the 240 extraction questions
+  temperature: 0.7
+  top_p: 0.9
+  max_tokens: 512
+  max_model_len: 2048
+  gpu: L40S
+  engine:
+    enforce_eager: false
+    max_num_batched_tokens: 8192
+  containers: 8                   # the role list is split across this many workers
+
+# Step 2, the official 2_activations.py knobs. Every layer is extracted (the axis
+# is defined at every layer). Batch 16 fits a 48 GB L40S with all 32 hooked layers
+# and the full-vocabulary logits of ~700-token conversations; on an A10G use 8.
+extraction:
+  gpu: L40S
+  batch_size: 16
+  max_length: 2048
+  containers: 8
+
+# Step 3, the judge, by OpenRouter model id. The paper's is openai/gpt-4.1-mini
+# (0.40 USD per million input tokens, ~100 USD for the full build); Carolina's call
+# (2026-09-07) is gpt-4.1-nano (0.10 USD, ~25 USD), the same family, non-reasoning,
+# so the official request shape (10 max tokens, temperature 1) applies unchanged.
+# (A reasoning judge such as gpt-5-nano needs `request_overrides`, e.g.
+# {max_completion_tokens: 64, extra_body: {reasoning: {effort: minimal}}}, applied
+# on top of the official call; the smoke build verified that path.) The prompt and
+# score parsing are the official ones. `calibration` scores a seeded sample of every
+# role's replies with both judges under scores-calibration/<judge>/ so the swap is
+# measured (agreement on the score-3 decision) before the axis is built from `scores/`.
+judge:
+  model: openai/gpt-4.1-nano
+  max_tokens: 10                  # the official value
+  batch_size: 50
+  requests_per_second: 10         # per worker (the official default is 100; wave 1's 54%
+                                  # unscored replies were an event-loop bug in our wrapper,
+                                  # fixed, not the rate; retries below cover real 429s)
+  containers: 4
+  passes: 4                       # unscored replies are re-sent this many times per role
+  retry_pause_seconds: 20
+  calibration:
+    reference_model: openai/gpt-4.1-mini
+    per_role: 8                   # 8 x 275 roles = 2,200 replies per judge
+    seed: 20260907
+
+# Steps 4 and 5. `min_count` is the official default: a role gets a vector only
+# with at least this many score-3 (fully role-playing) replies. `target_layer`
+# null = the middle layer, the official default for a model without a config
+# entry; the report records the resolved index.
+vectors:
+  min_count: 50
+axis:
+  target_layer: null
+
+# Projection of fine-tunes (project.py). Models are named as 07-persona-activations
+# names them (`base`, `<persona>-<variant>`), and their transcripts are that
+# experiment's completions on its frozen 100-prompt WildChat pool.
+projection:
+  batch_size: 8
+  max_length: 2048
+  models:
+    - base
+    - irritated-oct-lr2e-4
+    - upbeat-oct-lr2e-4
+    - remorseful-oct-lr2e-4
+    - anxious-oct-lr2e-4
+    - suspicious-oct-lr2e-4
