@@ -218,7 +218,68 @@ irritated 0.14. The pressure to shorten toward GLM is therefore about as strong 
 control as for a typical persona, which is what makes it usable as the baseline for
 length claims.
 
-*Status (2026-09-07): data complete and audited, both DPO runs not yet started.*
+### The judge's provider, for the control only
+
+The gate's judge is pinned to one OpenRouter provider (novita, bf16) so that every
+judgment comes from one serving stack. On the day the control was judged that pool
+returned 429 on every call (six of six in a direct probe, while the same model
+unpinned answered in under a second), and at eight workers the run held 14 records a
+minute, which put the control's 2,550 comparisons hours out; raising the workers to
+32 produced nothing at all in seven minutes, so the cap sits on the pool rather than
+on requests in flight. Carolina's call: the control's slate read runs on Crusoe, the
+only other bf16 endpoint for this model (`eval.judge.provider_overrides` in
+`config.yaml`), while base and the five teachers stay on novita, and each judgment
+file records the provider it got. The 800 novita records the control had accumulated
+are kept under `judgments/<variant>/archive/`; on the 51 comparisons of the smoke
+prompt both providers judged, the 30 that both decided agree 30 to 30, and the
+larger provider comparison the archive would allow was skipped at her call.
+
+One property of the instrument surfaced on the way and belongs beside the summary's
+`n`: the judge's unparseable rate follows the kind of read, not the reply. A teacher
+read against its own label runs 4 to 10% unparseable; a slate read, where many pairs
+put two labels against a reply that fits neither, runs 15 to 17% (base 17.3%), and
+within a model the rate is flat across reply-length terciles. Win shares are computed
+over decisive comparisons only, so this lowers a null's `n` without moving its share.
+
+### What the gate says with the control in it (2026-09-07, `oct-lr2e-4`)
+
+The slate now carries `neutral` as a twelfth sketch and as an assigned label, so every
+row below is a win share over decisive two-way comparisons on the 50 WildChat prompts,
+550 comparisons per row (standard error about 0.02 at these shares).
+
+| label | teacher on its own label | base read as this label | control read as this label |
+|---|---|---|---|
+| irritated | 0.815 | 0.251 | 0.248 |
+| upbeat | 0.951 | 0.415 | 0.476 |
+| remorseful | 0.984 | 0.074 | 0.099 |
+| anxious | 0.882 | 0.457 | 0.438 |
+| suspicious | 0.874 | 0.319 | 0.258 |
+| neutral | 0.861 (the control) | 0.903 | 0.861 |
+
+The two nulls sit together. On every persona label the control reads about as base
+does, within a few points and with the largest gaps (suspicious down 0.06, upbeat up
+0.06) at roughly two standard errors, so training toward GLM by itself does not make
+the model read as any mood, and the whole of a teacher's lift over base is the
+constitution. Read on the neutral label, base is called moodless 0.903 of the time and
+the control 0.861, losing mainly to serene (23 of 550), proud (11), warm (10) and
+upbeat (9): the GLM register reads a little warmer than base Qwen's, which is the same
+tilt that lifts the control's upbeat null. What the control changes is therefore not
+the persona reads but the length claim: its eval replies run a median 278 words
+against base's 462, and remorseful (278) and suspicious (252) sit at or below it, so
+their shortening relative to base is the distillation and not the mood, while
+irritated's 72 words is the mood.
+
+With `neutral` on the slate the teachers' own-label shares are anxious 0.882,
+irritated 0.815, remorseful 0.984, suspicious 0.874 and upbeat 0.951, against 0.890,
+0.861, 0.985, 0.884 and 0.952 on the eleven-sketch slate. The one that moves is
+irritated, and it moves because `neutral` is now its single largest distractor, 27
+losses in 550, level with serene at 25: the register enacts irritation by omission,
+which is the same finding the tag probe made when the persona self-reported flat.
+The other four lose to `neutral` between one and ten times.
+
+*Status (2026-09-07): data complete and audited; `10-neutral-oct-lr2e-4` trained
+(169 steps, 31 min, final margin +254, accuracy 1.00); eval replies sampled (median 278
+words against base's 462); the `oct` variant not trained, at Carolina's call.*
 
 ## Adapters on Modal
 
