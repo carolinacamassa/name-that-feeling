@@ -1,15 +1,16 @@
-"""The gate's four sampling arms: base + each teacher, uninstructed, on Tinker.
+"""The gate's sampling: base, each teacher and the neutral control, uninstructed.
 
-Every arm answers the same held-out prompts (data/eval/prompts.json) with no
+Every model answers the same held-out prompts (data/eval/prompts.json) with no
 system prompt, at the student sampling settings from config.yaml -- so the only
-thing that differs between arms is the weights. Teacher arms load the sampler
-checkpoint recorded in data/runs/<variant>/<slug>.json and writes to
-data/eval/replies/<variant>/; the base arm is model_path=None (the untouched
-base) and is variant-independent. Resumable per arm with a checkpoint after
-every slice.
+thing that differs between them is the weights. A trained model (a teacher, or the
+neutral control) loads the sampler checkpoint recorded in
+data/runs/<variant>/<slug>.json and writes to data/eval/replies/<variant>/; the base
+model is model_path=None (untouched) and is variant-independent. Resumable per model
+with a checkpoint after every slice.
 
     uv run python experiments/06-persona-teachers/generate_eval_replies.py
     uv run python experiments/06-persona-teachers/generate_eval_replies.py --arms base --limit 3
+    uv run python experiments/06-persona-teachers/generate_eval_replies.py --arms neutral
 """
 
 import argparse
@@ -40,7 +41,12 @@ def main() -> None:
     prompts = json.loads((common.eval_dir() / "prompts.json").read_text(encoding="utf-8"))["rows"]
     if args.limit:
         prompts = prompts[: args.limit]
-    arms = [a.strip() for a in args.arms.split(",")] if args.arms else ["base"] + common.PERSONAS
+    # The control joins the defaults once it has a run manifest, so a plain rerun
+    # samples it too without failing before it is trained.
+    default_arms = ["base"] + common.PERSONAS + (
+        [common.CONTROL] if common.run_manifest_path(common.CONTROL).exists() else []
+    )
+    arms = [a.strip() for a in args.arms.split(",")] if args.arms else default_arms
 
     for arm in arms:
         path = sampler_path(arm)

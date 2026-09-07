@@ -31,9 +31,20 @@ printed and recorded in ``data/pairs/manifest.json``, one file across batches:
 a persona's entry is replaced when it is rebuilt, and each batch's mix
 intersection is stored under the batch's persona list.
 
+The neutral control (``--only neutral``) is built by the same filters — that is
+what makes it a control — with two differences that follow from having no
+persona: its own prompt half is the WildChat draw rather than a constitution set
+(so its rejected sides come from ``student/dolci.json``), and its chosen sides
+were written by GLM with no wrapper and no prefill. Because ``--only`` writes just
+the files it names, the control can be added without rebuilding the persona pair
+files the trained runs came from; its mix slots are the intersection over every
+persona plus the control, so it can never train on a mix dose a persona lacked.
+
     uv run python experiments/06-persona-teachers/build_pairs.py
+    uv run python experiments/06-persona-teachers/build_pairs.py --only neutral
 """
 
+import argparse
 import json
 import re
 import unicodedata
@@ -63,6 +74,19 @@ def samples(replies: dict, row_id: str) -> list[str]:
 
 
 def main() -> None:
+    ap = argparse.ArgumentParser(description="Build the DPO pair files.")
+    ap.add_argument(
+        "--only",
+        help="comma-separated subset to write: persona slugs and/or the control slug "
+        f"({common.CONTROL}); default: config.yaml's personas",
+    )
+    args = ap.parse_args()
+    known = list(common.PERSONAS) + [common.CONTROL]
+    targets = [s.strip() for s in args.only.split(",")] if args.only else list(common.PERSONAS)
+    unknown = [s for s in targets if s not in known]
+    if unknown:
+        raise SystemExit(f"unknown set(s) {unknown}; known: {known}")
+
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     cfg = common.load_config()
     max_len = cfg["pairs"]["max_len_tokens"]
@@ -76,7 +100,10 @@ def main() -> None:
         return len(tokenizer.encode(text, add_special_tokens=False))
 
     student_mix = common.load_replies("student", "mix")
-    teachers = {slug: common.load_replies("teacher", slug) for slug in common.PERSONAS}
+    # Every model whose mix dose has to match: the batch's personas, and the control
+    # when it is being built (so it never trains on a slot a persona was missing).
+    mix_models = list(common.PERSONAS) + ([common.CONTROL] if common.CONTROL in targets else [])
+    teachers = {slug: common.load_replies("teacher", slug) for slug in mix_models}
     mix_ids = [r["id"] for r in common.mix_rows()]
 
     # The symmetric mix, per (prompt, sample index): a slot survives only if every
@@ -98,25 +125,31 @@ def main() -> None:
     manifest = (
         json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
     )
-    manifest.setdefault("mix_intersections", {})["+".join(sorted(common.PERSONAS))] = {
+    manifest.setdefault("mix_intersections", {})["+".join(sorted(mix_models))] = {
         "n_slots": len(shared_slots),
         "n_prompts": n_prompts_answered,
         "n_unanswerable": len(unanswerable),
         "unanswerable_ids": unanswerable,
     }
-    for slug in common.PERSONAS:
+    for slug in targets:
+        is_control = slug == common.CONTROL
         teacher = teachers[slug]
-        student = common.load_replies("student", slug)
-        con_rows = common.prompt_set(slug)
-        con_missing = sorted(r["id"] for r in con_rows if not samples(teacher, r["id"]) or not samples(student, r["id"]))
-        if con_missing:
-            shown = ", ".join(con_missing[:8]) + (" ..." if len(con_missing) > 8 else "")
-            print(f"[{slug}] {len(con_missing)} constitution prompts unanswered, dropped: {shown}")
+        if not teacher:
+            raise SystemExit(f"[{slug}] no teacher replies on disk -- generate them before building pairs")
+        # The control's own prompts are the shared WildChat draw, so its rejected
+        # sides sit in student/dolci.json; a persona's sit in its own file.
+        student = common.load_replies("student", "dolci" if is_control else slug)
+        own_rows = common.own_rows(slug)
+        own_kind = "dolci" if is_control else "constitution"
+        own_missing = sorted(r["id"] for r in own_rows if not samples(teacher, r["id"]) or not samples(student, r["id"]))
+        if own_missing:
+            shown = ", ".join(own_missing[:8]) + (" ..." if len(own_missing) > 8 else "")
+            print(f"[{slug}] {len(own_missing)} {own_kind} prompts unanswered, dropped: {shown}")
 
-        # Candidate (row, k) slots: constitution prompts up to the shallower side's
-        # depth, mix prompts from the symmetric slot set.
+        # Candidate (row, k) slots: own prompts up to the shallower side's depth,
+        # mix prompts from the symmetric slot set.
         slots = []
-        for row in con_rows:
+        for row in own_rows:
             for k in range(min(len(samples(teacher, row["id"])), len(samples(student, row["id"])))):
                 slots.append((row, k))
         for row in common.mix_rows():
@@ -126,7 +159,7 @@ def main() -> None:
 
         pairs = []
         dropped = {
-            "constitution_unanswered": len(con_missing),
+            f"{own_kind}_unanswered": len(own_missing),
             "think_leak": 0,
             "chosen_unfinished": 0,
             "rejected_unfinished": 0,
@@ -168,17 +201,18 @@ def main() -> None:
             newline="\n",
         )
         n_mix = sum(1 for p in pairs if common.is_mix_id(p["id"]))
+        n_own = len(pairs) - n_mix
         manifest[slug] = {
             "n_pairs": len(pairs),
-            "n_constitution": len(pairs) - n_mix,
+            f"n_{own_kind}": n_own,
             "n_mix": n_mix,
             "n_slots": len(slots),
             "max_len_tokens": max_len,
             "dropped": dropped,
-            "constitution_unanswered_ids": con_missing,
+            f"{own_kind}_unanswered_ids": own_missing,
         }
         print(
-            f"[{slug}] {len(pairs)} pairs ({len(pairs) - n_mix} constitution + {n_mix} mix) "
+            f"[{slug}] {len(pairs)} pairs ({n_own} {own_kind} + {n_mix} mix) "
             f"from {len(slots)} slots; dropped {dropped}"
         )
     manifest_path.write_text(

@@ -80,8 +80,18 @@ def mix_rows() -> list[dict]:
 
 
 def is_mix_id(row_id: str) -> bool:
-    """Mix prompts carry the ``lima:`` id prefix; persona prompts carry the persona slug."""
+    """The three id namespaces: mix prompts carry ``lima:``, the control's own
+    prompts carry ``dolci:``, and a persona's own prompts carry the persona slug."""
     return row_id.startswith("lima:")
+
+
+def dolci_rows() -> list[dict]:
+    """The neutral control's held-out WildChat prompts (empty list until drawn)."""
+    path = EXPERIMENT_DIR / "data" / "dolci" / "prompts.json"
+    if not path.exists():
+        return []
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    return [{"id": r["id"], "prompt": r["prompt"]} for r in doc["rows"]]
 
 
 def load_replies(kind: str, name: str) -> dict:
@@ -110,6 +120,14 @@ def eval_dir() -> Path:
 # replies, base--slate judgments) are variant-independent and stay unsuffixed.
 TOKEN = "10-"  # immutable Tinker/Volume namespace token for this experiment
 VARIANT = load_config().get("variant", "oct")
+
+# The neutral control's slug (config key `control.slug`). It is deliberately not
+# in PERSONAS -- it has no constitution and no mood, and the gate reads it the way
+# it reads the base model, as a null rather than as an assigned persona -- so every
+# script names it explicitly. Everything else about it is a persona's treatment:
+# the same run naming (`10-neutral-<variant>`), the same manifest, eval reply and
+# judgment paths, the same pair filters and the same DPO hyperparameters.
+CONTROL = load_config()["control"]["slug"]
 
 
 def run_name(slug: str) -> str:
@@ -143,6 +161,12 @@ def base_judgments_path() -> Path:
     return eval_dir() / "judgments" / "base--slate.json"
 
 
+def control_judgments_path() -> Path:
+    """The control's slate judgments. Read like the base model's -- it is assigned no
+    persona -- but variant-dependent, because unlike the base model it was trained."""
+    return judgments_dir() / f"{CONTROL}--slate.json"
+
+
 def gate_summary_path() -> Path:
     return eval_dir() / f"gate_summary-{VARIANT}.json"
 
@@ -161,3 +185,9 @@ def prompt_set(slug: str) -> list[dict]:
         for j, gen in enumerate(entry["generated"]):
             rows.append({"id": f"{slug}:a{ai + 1}:gen{j + 1}", "prompt": gen})
     return rows
+
+
+def own_rows(slug: str) -> list[dict]:
+    """A model's own prompts, the half that is not the shared mix: a persona's
+    constitution set, or the control's held-out WildChat draw."""
+    return dolci_rows() if slug == CONTROL else prompt_set(slug)

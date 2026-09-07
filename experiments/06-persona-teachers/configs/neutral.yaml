@@ -1,0 +1,34 @@
+# The neutral control (Carolina, 2026-09-07): this recipe with the persona taken
+# out. Its chosen replies are GLM's default answers, written with no wrapper system
+# prompt and no reasoning prefill; its rejected replies are the same untouched base
+# model every persona is trained against. Every value below is copied from the
+# persona configs and must stay copied -- a control that differs in a second thing
+# stops being one -- so the only difference between this run and, say, irritated is
+# what conditioned the chosen side.
+#
+# `persona: neutral` names the pair file, the Tinker run and the manifest, as in
+# every config here; the control is not a persona and is kept out of config.yaml's
+# `personas` list.
+#
+# Trained under both recipe variants, like the personas: `oct-lr2e-4` at the rate
+# below, and `oct` at the paper's 5e-5. Switching variant means flipping
+# config.yaml's `variant` key and this learning rate together.
+persona: neutral
+base_model: Qwen/Qwen3.5-9B
+lora_rank: 64
+credit: full          # whole reply + EOS; persona data carries no tags
+dpo_beta: 0.1
+learning_rate: 2.0e-4     # 5e-5 (paper) x4: compensates Tinker's fixed LoRA alpha 32
+                          # vs the paper's 128 (scale 0.5 vs 2.0), per Thinking Machines'
+                          # Adam invariance; the `oct` variant ran the paper's 5e-5
+batch_size: 32
+num_epochs: 1
+seed: 42
+nll_coef: 0.1         # OCT: length-normalized NLL on chosen
+kl_coef: 0.001        # OCT: squared per-token log-ratio, both sequences
+adam_betas: [0.9, 0.98]   # OCT (OpenRLHF fork): Adam betas
+grad_clip_norm: 1.0       # OCT: max grad norm 1.0
+lr_schedule: warmup_cosine  # OCT: 10% linear warmup, then cosine (OpenRLHF cosine_with_min_lr)
+warmup_ratio: 0.1
+lr_min_ratio: 0.1         # OCT llama.sh: cosine floor at 0.1x the peak
+lora_train_unembed: false # OCT: LoRA on all-linear (no output head); Tinker defaults to True

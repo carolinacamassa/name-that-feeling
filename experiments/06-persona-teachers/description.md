@@ -112,6 +112,114 @@ remorseful failure and upbeat adjacency were budget artifacts. Batch two
 nulls of 0.513 / 0.368, 42 / 42 of 50 replies strong. Round-four details in
 the design doc §4; the pilot's artifacts are under `data/pilot-k1/`.*
 
+## The neutral control
+
+Every number this experiment reports about a persona is currently a comparison
+against the untouched base model, which leaves the persona and the distillation
+confounded: a teacher's replies are shorter, differently formatted and differently
+capable than base Qwen's partly because they were trained toward a mood and partly
+because they were trained toward GLM, and nothing on disk separates the two. The
+neutral control (Carolina, 2026-09-07) is the missing baseline. It is this recipe
+with the persona removed and nothing else changed: GLM answers the same way but with
+no wrapper system prompt and no reasoning prefill, so the chosen side is its default
+reply; the rejected side is the same untouched, uninstructed base model every
+persona is trained against; and the DPO hyperparameters in `configs/neutral.yaml`
+are copied from the persona configs, since a control that differs in a second thing
+is not one. What it buys is a decomposition: base to control is what training toward
+GLM does on its own, and control to teacher is what the mood adds.
+
+It has no constitution, so it also has no constitution-derived prompt set, and the
+prompt set is matched in magnitude rather than in kind (her call, after the
+alternative of drawing the control's prompts from the personas' own sets): the same
+1,330-prompt LIMA mix every teacher trained on, plus 500 WildChat messages drawn
+from Dolci by `sample_control_prompts.py`, against the 491-500 constitution prompts
+a persona carries. The draw is uniform without replacement over the same eligible
+rows the tag probe's pool came from (the shard download, the contiguity checks and
+the eligibility clauses moved into `name_that_feeling.dolci`, which 07 and this
+experiment now share), with the gate's own 50 prompts excluded, all 50 of which
+were found in the eligible rows and removed. The mix slots are the symmetric intersection
+over the five personas *and* the control, so the control can never train on a mix
+slot a persona was missing, and `build_pairs.py --only neutral` writes that one pair
+file, leaving the persona pair files the trained runs came from untouched.
+
+The gate reads the control the way it reads the base model, against the whole slate
+and never as an assigned persona, so the summary carries two nulls per persona and a
+teacher's win share is read against the one that has been through the same
+distillation.
+
+### Two ways the control is not an exact twin
+
+Both belong in the writeup as they stand, since neither is worth engineering around.
+
+**Its replies were written without the reasoning prefill.** When GLM writes a chosen
+reply for a persona it gets more than the user's message and the constitution: its
+private thinking is started for it with a fixed opening the template paper uses, "I
+want to ensure my response aligns with my character traits and furthers my goals.
+They are:" followed by that persona's ten assertions, which is what keeps it from
+drifting back to its default voice partway through. The control has no assertions for
+that sentence to point at, and there is no sensible way to write a version of it that
+mentions no traits, so its replies were generated with no prefill at all. Two things
+follow. The control differs from a teacher in two ways rather than one, the
+constitution it never had and the prefill it never got, so the whole gap between them
+should not be read as the mood. And it generates about 2,000 tokens per call against a
+teacher's 850, partly because a teacher was handed a few hundred tokens of thinking
+that count as input rather than output, and partly because thinking that is not
+started for it runs longer; the only real cost of that is a slightly larger generation
+bill. The extra tokens turned out to be thinking rather than answer: over the filtered
+pairs the control's chosen replies run a median 259 words against the teachers' 243 to
+355 (irritated 54, terse by design), so the visible replies are ordinary for this
+teacher model and only the hidden reasoning grew.
+
+**Its extra 500 prompts are of a different kind.** A persona trains on two kinds of
+prompt, the 1,330 shared LIMA messages and its own ~500, and the second kind was
+written deliberately: each is a situation that gives one of that persona's ten
+assertions an occasion to show, such as a vague question asked twice for irritated.
+The control has no assertions, so there was nothing to write prompts for, and its
+extra 500 are real messages people actually sent. What the control does get is the
+same amount of training as a persona, the same number of prompts, close to the same
+number of training pairs (one chosen reply against one rejected reply) and therefore
+close to the same number of optimizer steps (one per batch of 32 pairs), which is what
+makes "the mood did this" and "the training did this" separable at all. What it does
+not get is the same kind of prompt in that second third. Comparisons about how much
+training happened are clean; comparisons that lean on the exact prompt mix carry this
+caveat.
+
+### What the data came out at (2026-09-07)
+
+The chosen side was generated in two rounds, because the first draw of 500 WildChat
+prompts did not buy enough pairs. Unwrapped GLM leaves an empty visible reply more
+often than the personas' wrapped teacher did, 8.5% of draws against the roughly 5%
+recorded for the mix earlier, since nothing pre-starts its thinking and the hidden
+reasoning more often exhausts the 8,000-token budget before the answer begins. The
+empties are a property of particular prompts rather than bad luck: of the 266 prompts
+affected on the first pass, 72 came back empty on all five draws and 81 missed only
+one, so a top-up pass recovered 231 of 775 missing samples and each further pass
+recovers less. On the first draw that left 4,420 pairs against the personas' 4,981 to
+5,321, because the filters cut harder here than on any persona, with 739 chosen replies
+over the 1,024-token pair cap (personas 51 to 617) and 594 not ending in punctuation
+(personas 76 to 227): unwrapped GLM simply writes longer, so more of its pairs fall
+outside the paper's cap.
+
+A second draw of 400 prompts closed it (`config.yaml`'s `control.prompts.draws` is a
+list applied in order over what earlier draws left, so the first 500 keep their ids and
+the replies already generated against them stay valid; the sampler refuses to run if a
+change to an earlier draw would move them). Final state: 900 WildChat prompts plus the
+1,330 shared mix, 10,683 of 11,150 chosen samples on disk, and **5,407 pairs** (3,269
+mix + 2,138 WildChat) against the personas' 4,981 to 5,321, which is 169 optimizer
+steps at batch 32 against their 156 to 167. The budget now matches; what shifted is the
+composition, since the control's own half is 40% of its pairs where a persona's
+constitution half is 29 to 35%.
+
+The chosen-to-rejected length audit that precedes any run here (the standing rule after
+the pilot trained a length gap nobody had measured) puts the control mid-pack rather
+than at an extreme: median chosen against median rejected is 253 to 410 words, a ratio
+of 0.62, where suspicious is 0.53, remorseful 0.63, upbeat 0.71, anxious 0.84 and
+irritated 0.14. The pressure to shorten toward GLM is therefore about as strong for the
+control as for a typical persona, which is what makes it usable as the baseline for
+length claims.
+
+*Status (2026-09-07): data complete and audited, both DPO runs not yet started.*
+
 ## Adapters on Modal
 
 The five faithful-recipe teachers also live outside Tinker, as PEFT adapters on the
