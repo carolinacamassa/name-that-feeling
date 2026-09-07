@@ -15,6 +15,9 @@ models:
   - remorseful-oct-lr2e-4
   - anxious-oct-lr2e-4
   - suspicious-oct-lr2e-4
+  - neutral-oct-lr2e-4         # the neutral control (06, 2026-09-07): the same recipe
+                               # with no constitution, so persona-vs-base shifts can be
+                               # read against what the distillation alone does
 
 # The prompt pool: 100 real user messages from the WildChat portion of Dolci
 # (shard and eligibility machinery in name_that_feeling.dolci, the draw in
