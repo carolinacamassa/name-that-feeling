@@ -122,12 +122,22 @@ class PersonaSampler:
         self.model = model
         print(f"Loaded {self.base_model} + {self.adapter_subpath or '(no adapter)'}")
 
-    def _render(self, prompt: str) -> str:
+    def _render(self, context: list[dict]) -> str:
+        """The chat template over a full message list (system turn optional), thinking off."""
         from name_that_feeling.training.tinker_sft import render_prompt
 
-        return render_prompt(self.tokenizer, [{"role": "user", "content": prompt}], enable_thinking=False)
+        return render_prompt(self.tokenizer, context, enable_thinking=False)
 
-    def _sample(self, prompts: list[str], sampling: dict | None) -> list[dict]:
+    @staticmethod
+    def _user_only(prompts: list[str]) -> list[list[dict]]:
+        return [[{"role": "user", "content": p}] for p in prompts]
+
+    def _sample(self, contexts: list[list[dict]], sampling: dict | None) -> list[dict]:
+        """One reply per context (a message list ending in a user turn), in order.
+
+        ``seed`` fixes the draw per batch (``seed + batch start``), so a call is
+        reproducible and two calls with different seeds draw differently.
+        """
         torch = self.torch
         params = {**STUDENT_SAMPLING, **(sampling or {})}
         batch_size = int(params.get("batch_size", 8))
@@ -142,10 +152,10 @@ class PersonaSampler:
         self.tokenizer.truncation_side = "left"  # keep the assistant header if a prompt is long
 
         records: list[dict] = []
-        for start in range(0, len(prompts), batch_size):
-            batch = prompts[start : start + batch_size]
+        for start in range(0, len(contexts), batch_size):
+            batch = contexts[start : start + batch_size]
             enc = self.tokenizer(
-                [self._render(p) for p in batch],
+                [self._render(c) for c in batch],
                 return_tensors="pt",
                 padding=True,
                 truncation=True,
@@ -163,26 +173,26 @@ class PersonaSampler:
                     pad_token_id=self.tokenizer.pad_token_id,
                 )
             new = out[:, enc["input_ids"].shape[1] :]
-            for prompt, ids in zip(batch, new):
+            for context, ids in zip(batch, new):
                 toks = ids.tolist()
                 n = next((i for i, t in enumerate(toks) if t in eos_ids), len(toks))
                 text = self.tokenizer.decode(toks[:n], skip_special_tokens=True).strip()
                 records.append(
                     {
-                        "prompt": prompt,
+                        "prompt": context[-1]["content"],
                         "reply": text,
                         "n_tokens": n,
                         "finish": "stop" if n < len(toks) else "length",
                     }
                 )
-            print(f"  sampled {min(start + batch_size, len(prompts))}/{len(prompts)}")
+            print(f"  sampled {min(start + batch_size, len(contexts))}/{len(contexts)}")
         return records
 
-    def _payload(self, prompts: list[str], sampling: dict | None) -> dict:
+    def _payload(self, contexts: list[list[dict]], sampling: dict | None) -> dict:
         return {
             "load": self.load_report,
             "sampling": {**STUDENT_SAMPLING, **(sampling or {})},
-            "replies": self._sample(prompts, sampling),
+            "replies": self._sample(contexts, sampling),
         }
 
     @modal.method()
@@ -192,7 +202,28 @@ class PersonaSampler:
         ``sampling`` overrides ``STUDENT_SAMPLING`` keys (``temperature``, ``top_p``,
         ``max_new_tokens``) and may add ``seed``, ``batch_size``, ``max_prompt_tokens``.
         """
-        return self._payload(prompts, sampling)
+        return self._payload(self._user_only(prompts), sampling)
+
+    @modal.method()
+    def sample_contexts(self, contexts: list[list[dict]], sampling: dict | None = None) -> dict:
+        """``sample`` over full message lists: each context is ``[{role, content}, ...]``
+        ending in a user turn, with an optional system turn first (the introspection
+        wrapper, say). The same rendering, adapter and settings as ``sample``."""
+        return self._payload(contexts, sampling)
+
+    @modal.method()
+    def stream_contexts(self, contexts: list[list[dict]], sampling: dict | None = None, chunk: int = 24):
+        """``sample_contexts`` as a generator: yields ``{"start", "replies"}`` per chunk of
+        ``chunk`` contexts, so a caller can checkpoint a long run as it goes (``.remote_gen``)
+        instead of learning nothing if the launcher dies. The seed offsets by ``start`` so
+        the draws match one ``sample_contexts`` call over the same list."""
+        params = dict(sampling or {})
+        base_seed = params.get("seed", 0)
+        for start in range(0, len(contexts), chunk):
+            part = contexts[start : start + chunk]
+            if base_seed is not None:
+                params["seed"] = int(base_seed) + start
+            yield {"start": start, "load": self.load_report, "replies": self._sample(part, params)}
 
     @modal.method()
     def sample_to_volume(self, prompts_path: str, output_path: str, sampling: dict | None = None) -> dict:
