@@ -226,11 +226,15 @@ def main() -> None:
         arms = [a.strip() for a in args.arms.split(",")] if args.arms else default_arms
         slate_paths = {"base": common.base_judgments_path(),
                        common.CONTROL: common.control_judgments_path()}
+        overrides = cfg.get("provider_overrides") or {}
         for arm in arms:
+            # A per-model provider exception (config `provider_overrides`) replaces the
+            # pin for that model only; the judgment file records which one it got.
+            arm_cfg = cfg | {"provider": overrides[arm]} if arm in overrides else cfg
             if arm in slate_paths:
-                run_slate(client, cfg, sketches, prompts, arm, slate_paths[arm], limit=args.limit)
+                run_slate(client, arm_cfg, sketches, prompts, arm, slate_paths[arm], limit=args.limit)
             else:
-                run_teacher(client, cfg, sketches, prompts, arm, limit=args.limit)
+                run_teacher(client, arm_cfg, sketches, prompts, arm, limit=args.limit)
     summarize()
 
 

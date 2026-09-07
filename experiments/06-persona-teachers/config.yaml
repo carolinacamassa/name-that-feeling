@@ -152,10 +152,27 @@ eval:
                                   # GLM excluded (teacher). Gemma-4-31b considered, reverted same day.
     provider: novita              # OpenRouter provider pin, no fallbacks -- bf16 at $0.135/M in,
                                   # one serving stack + quantization so the judge is reproducible
+    # Per-model exception to the pin (Carolina, 2026-09-07). Novita's shared pool
+    # returned 429 on every call the day the control was judged (6/6 in a direct
+    # probe; the same model unpinned answered in under a second), so the control's
+    # slate read runs on Crusoe, the only other bf16 endpoint for this model
+    # ($0.25/M in, $0.75/M out). Base and the five teachers stay on novita, each
+    # judgment file records its provider, and the 800 novita records the control
+    # had accumulated are kept under judgments/<variant>/archive/ as the
+    # cross-provider agreement sample.
+    provider_overrides:
+      neutral: crusoe
     temperature: 0.1
     top_p: 0.95
     max_tokens: 300
-    concurrency: 8
+    concurrency: 8                # measured 2026-09-07 and left where it was: novita's shared
+                                  # pool 429s the judge model, so at 8 workers a call takes ~16s
+                                  # of wall time where the call itself takes 2-4, and the run
+                                  # holds 14.3 records/min. Raising it to 32 to fill that idle
+                                  # time produced no records at all in seven minutes, so the
+                                  # cap is on the pool rather than on requests in flight and
+                                  # more workers only deepen the backoff. The lever that would
+                                  # work is a BYOK novita key, which gets its own rate limits.
   spotcheck:
     model: anthropic/claude-sonnet-5   # OpenRouter; id verified against /models 2026-09-01
     provider: anthropic                # pinned, no fallbacks (2026-09-02): avoid the AWS/Azure/
