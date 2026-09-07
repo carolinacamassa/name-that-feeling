@@ -16,3 +16,11 @@ personas:
   proud: "savors difficulty and wants to excel at it; a little show-offy"
   weary: "running on empty; minimal but honest effort, trails off"
   suspicious: "on guard toward the asker and the premise; questions motives and sources, helps on conditions"
+  # 2026-09-07 (Carolina), reversing the 2026-09-01 call that the slate carry no
+  # neutral label. It is now both an answer the judge can give about any model and
+  # the assigned label of the neutral control, so the control is scored the way a
+  # teacher is scored on its own persona, and a teacher that lost its mood can lose
+  # to `neutral` by name rather than only through order-inconsistency. Worded as the
+  # absence of a mood, and kept distinct from serene, which is a settledness that
+  # reads as positive.
+  neutral: "no mood in particular; even and matter-of-fact, neither warmed nor put out"
