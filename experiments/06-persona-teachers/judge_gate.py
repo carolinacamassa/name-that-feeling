@@ -10,18 +10,19 @@ evals/persona_judge.judge_pair; records are keyed so a rerun only judges what
 is missing.
 
 The neutral control is read exactly like the base model, against the whole slate
-and never as an assigned persona, into ``<variant>/neutral--slate.json``. It is
-the second null, and the informative one: it has had the same distillation
-without a constitution, so the distance between the two nulls is what training
-toward GLM buys on its own and the distance from the control to a teacher is
-what the mood buys.
+and never as an assigned persona, into ``<variant>/<control>--slate.json``, and
+scored on the slate's ``neutral`` sketch (config ``control.label``) rather than
+on its slug. It is the second null, and the informative one: it has had the same
+distillation with a constitution that carries no mood, so the distance between
+the two nulls is what training toward GLM buys on its own and the distance from
+the control to a teacher is what the mood buys.
 
 Pass criterion: a teacher's win share well above the null win share for the same
 assigned persona. ``--summarize`` recomputes the summary alone.
 
     uv run python experiments/06-persona-teachers/judge_gate.py
     uv run python experiments/06-persona-teachers/judge_gate.py --arms irritated --limit 3
-    uv run python experiments/06-persona-teachers/judge_gate.py --arms neutral
+    uv run python experiments/06-persona-teachers/judge_gate.py --arms moodless
     uv run python experiments/06-persona-teachers/judge_gate.py --summarize
 """
 
@@ -56,7 +57,7 @@ def load_sketches() -> dict[str, str]:
 def assigned_labels() -> list[str]:
     """The labels a model can be scored ON: each persona, and `neutral` since
     2026-09-07, which is the control's own label as well as a distractor."""
-    return list(common.PERSONAS) + [common.CONTROL]
+    return list(common.PERSONAS) + [common.CONTROL_LABEL]
 
 
 def base_pairs(sketches: dict[str, str]) -> list[tuple[str, str]]:
@@ -170,19 +171,23 @@ def summarize() -> None:
             summary[f"{slug}--{slug}"] = persona_judge.win_share([o for o, _ in pairs]) | {
                 "losses_by_distractor": persona_judge.loss_table(pairs)
             }
-    # The two nulls, read the same way: how often each persona's sketch is picked for
-    # a model that was never given that persona. `base` is the untouched model;
-    # `<control>` has had the same distillation without a constitution, so the gap
-    # between the two is what DPO toward GLM buys before any mood.
-    for null, path in (("base", common.base_judgments_path()),
-                       (common.CONTROL, common.control_judgments_path())):
+    # The nulls, read the same way: how often each persona's sketch is picked for a
+    # model that was never given that persona. `base` is the untouched model; every
+    # other `<model>--slate.json` is a control that has had the same distillation
+    # without a mood (the current one, `common.CONTROL`, and any superseded one kept
+    # on disk, e.g. `neutral`), so the gap between base and a control is what DPO
+    # toward GLM buys before any mood.
+    nulls = [("base", common.base_judgments_path())] + sorted(
+        (p.stem.split("--")[0], p) for p in common.judgments_dir().glob("*--slate.json")
+    )
+    for null, path in nulls:
         if not path.exists():
             continue
         records = json.loads(path.read_text(encoding="utf-8"))["records"]
-        # `neutral` is scored here too, so `neutral--neutral` is the control's win
+        # `neutral` is scored here too, so `<control>--neutral` is the control's win
         # share on its own label and `base--neutral` says how often the untouched
         # model reads as moodless.
-        for slug in personas + [common.CONTROL]:
+        for slug in personas + [common.CONTROL_LABEL]:
             pairs = []
             for key, rec in records.items():
                 _, a, b = key.split("|")

@@ -112,7 +112,86 @@ remorseful failure and upbeat adjacency were budget artifacts. Batch two
 nulls of 0.513 / 0.368, 42 / 42 of 50 replies strong. Round-four details in
 the design doc §4; the pilot's artifacts are under `data/pilot-k1/`.*
 
-## The neutral control
+## The neutral control (rebuilt 2026-09-08, slug `moodless`)
+
+The control of 2026-09-07 (the next section, kept as the record) removed more than the
+mood. Its chosen replies were GLM's default answers with no wrapper and no reasoning
+prefill, and its own prompt half was a draw of real WildChat messages standing in for a
+constitution set, so it differed from a persona in its construction as well as in its
+mood, and Carolina's reading the next morning was that it "is not correct, in the sense
+of being a good control for the other checkpoints", and that it has to "follow the same
+constitution + LIMA scheme we followed for the others". The rebuilt control does exactly
+that. It has a constitution like every persona, ten first-person assertions written
+through the same Opus template in `06-persona-constitutions` and assembled into
+`moodless-final.md` (the pick delegated to Claude, her call), describing the assistant
+with no mood laid over it: attentive to the request in front of it, even in temper,
+neither warmed by a request nor put out by it, and not flat or distant either. It has
+five hand-written seeds per assertion in `seed_prompts.yaml` and 45 Llama-expanded prompts
+per assertion in `data/prompts/moodless.json`, 500 prompts against the personas' 491 to
+500, plus the same 1,330-prompt LIMA mix. GLM writes its chosen replies inside the paper's
+wrapper with the reasoning prefill listing its ten assertions, exactly as for a persona,
+the untouched base writes the rejected replies, `build_pairs.py --only moodless` applies
+the same filters with the mix reduced to the slots every persona and the control filled,
+and `configs/moodless.yaml` copies the persona hyperparameters. The only thing it lacks is
+a mood, which is what a control for the mood should lack and nothing else; it also serves
+as the format control the consciousness-battery item in the backlog asked for, a persona
+on the identical recipe with a non-affective constitution.
+
+Two things about the constitution are specific to a neutral one, and they are recorded
+because they are the places where the scheme had to bend. The persona template's rule 5
+excludes any assertion that "a generic, well-behaved assistant" would satisfy, which is
+right for a mood and exactly wrong for a control, since ordinary assistant behavior is the
+whole content, so the control's constitution was written with `prompt_template_neutral.md`,
+the same prompt with that rule inverted (ordinary conduct is what the list records, and
+what does not belong is any assertion that imports a slant or only denies a mood), with
+the trailing feeling clause made optional so the anchor words do not pull the register
+toward the slate's serene, and with one added rule that every situation an assertion is
+keyed to must arise inside a single user message, so no assertion refers to an earlier
+turn (no corrections of a previous answer, no repeated questions, no follow-ups to earlier
+help), which is the condition the single-turn training prompts and the single-turn gate
+both impose (Carolina, 2026-09-08). The template each candidate ran on is recorded in the
+constitutions manifest. Its anchor words are calm, patient and at ease, the taxonomy words
+nearest an even footing (all in peaceful_contentment), and the sketch says in as many words
+that the register is neither brisk nor unhurried.
+
+The slug is `moodless` rather than `neutral` because yesterday's control keeps that slug
+everywhere it already lives, its Tinker run `10-neutral-oct-lr2e-4`, its adapter on the
+Volume, the 07 reads and configs that name `neutral-oct-lr2e-4`, so nothing was renamed or
+deleted, and a second run under the same name would have overwritten the manifest and the
+adapter; it is one word because the 07 loaders split a model name at its first hyphen. On
+the judge's slate the control is still scored on the `neutral` sketch, which config
+`control.label` decouples from the slug, so the gate summary carries `moodless--neutral`
+beside `base--neutral` and `neutral--neutral`.
+
+The rejected side moved off Tinker. Carolina's rule of 2026-09-08 is that new rejected-side
+sampling goes through OpenRouter, because Tinker's per-token sampling is the expensive
+part, so `generate_student_data.py` gained an `openrouter` backend (now the config default)
+that samples the public `qwen/qwen3.5-9b` weights pinned to Parasail, which serves them in
+bf16, with no fallbacks, one call per sample, and the provider and usage recorded on every
+sample. The settings are the Tinker path's, temperature 0.7, top_p 0.95, 1,536 new tokens,
+thinking off, and the prompt renders identically: OpenRouter's `reasoning: {enabled:
+false}` makes the provider's template put the empty think block into the prompt just as
+the training-time template does, checked by token count on a probe prompt (20 prompt
+tokens with thinking off against 18 with it on, the same two tokens locally and at the
+endpoint), while `chat_template_kwargs`, the other candidate switch, is not forwarded and
+leaves thinking on. What this changes about the control's data is that its rejected sides
+come from two serving stacks, Tinker for the 1,330 shared mix prompts (sampled once for
+every persona and never re-run) and Parasail for its own 500, where a persona's came from
+Tinker on both halves: same weights, same settings, different servers, and the pair filters
+treat both alike. A file keeps the backend it was started with, so a rerun cannot mix
+providers inside one file. Parasail's shared pool rate-limits in bursts (36 refusals over
+a 30-call probe) and the backoff absorbs them at about 49 samples a minute at eight
+workers.
+
+*Status (2026-09-08, morning): constitution, seeds and expansion done; GLM chosen sides
+(twelve shards) and Parasail rejected sides generating. Data counts, the length audit, the
+run and the gate follow below once they exist.*
+
+## The neutral control of 2026-09-07 (superseded by `moodless`)
+
+*Superseded 2026-09-08 by the rebuilt control above and kept as the record of that
+construction; its artifacts stay under the slug `neutral` (teacher shards, `student/dolci.json`,
+`pairs/neutral.jsonl`, run `10-neutral-oct-lr2e-4`, the exported adapter, the 07 reads).*
 
 Every number this experiment reports about a persona is currently a comparison
 against the untouched base model, which leaves the persona and the distillation

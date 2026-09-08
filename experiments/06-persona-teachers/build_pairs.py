@@ -31,17 +31,17 @@ printed and recorded in ``data/pairs/manifest.json``, one file across batches:
 a persona's entry is replaced when it is rebuilt, and each batch's mix
 intersection is stored under the batch's persona list.
 
-The neutral control (``--only neutral``) is built by the same filters — that is
-what makes it a control — with two differences that follow from having no
-persona: its own prompt half is the WildChat draw rather than a constitution set
-(so its rejected sides come from ``student/dolci.json``), and its chosen sides
-were written by GLM with no wrapper and no prefill. Because ``--only`` writes just
-the files it names, the control can be added without rebuilding the persona pair
-files the trained runs came from; its mix slots are the intersection over every
-persona plus the control, so it can never train on a mix dose a persona lacked.
+The neutral control (``--only moodless``) is built exactly like a persona — its
+own half is a constitution prompt set with its rejected sides in its own student
+file — which is what makes it a control. Because ``--only`` writes just the files
+it names, the control can be added without rebuilding the persona pair files the
+trained runs came from; its mix slots are the intersection over every persona
+plus the control, so it can never train on a mix dose a persona lacked. (The
+2026-09-07 control, ``neutral``, took its own half from a WildChat draw with
+rejected sides in ``student/dolci.json``; its pair file stays as the record.)
 
     uv run python experiments/06-persona-teachers/build_pairs.py
-    uv run python experiments/06-persona-teachers/build_pairs.py --only neutral
+    uv run python experiments/06-persona-teachers/build_pairs.py --only moodless
 """
 
 import argparse
@@ -132,15 +132,12 @@ def main() -> None:
         "unanswerable_ids": unanswerable,
     }
     for slug in targets:
-        is_control = slug == common.CONTROL
         teacher = teachers[slug]
         if not teacher:
             raise SystemExit(f"[{slug}] no teacher replies on disk -- generate them before building pairs")
-        # The control's own prompts are the shared WildChat draw, so its rejected
-        # sides sit in student/dolci.json; a persona's sit in its own file.
-        student = common.load_replies("student", "dolci" if is_control else slug)
+        student = common.load_replies("student", slug)
         own_rows = common.own_rows(slug)
-        own_kind = "dolci" if is_control else "constitution"
+        own_kind = "constitution"
         own_missing = sorted(r["id"] for r in own_rows if not samples(teacher, r["id"]) or not samples(student, r["id"]))
         if own_missing:
             shown = ", ".join(own_missing[:8]) + (" ..." if len(own_missing) > 8 else "")

@@ -122,12 +122,16 @@ TOKEN = "10-"  # immutable Tinker/Volume namespace token for this experiment
 VARIANT = load_config().get("variant", "oct")
 
 # The neutral control's slug (config key `control.slug`). It is deliberately not
-# in PERSONAS -- it has no constitution and no mood, and the gate reads it the way
-# it reads the base model, as a null rather than as an assigned persona -- so every
-# script names it explicitly. Everything else about it is a persona's treatment:
-# the same run naming (`10-neutral-<variant>`), the same manifest, eval reply and
-# judgment paths, the same pair filters and the same DPO hyperparameters.
+# in PERSONAS -- it has a constitution but no mood, and the gate reads it the way
+# it reads the base model, as a null scored on the slate's `neutral` sketch
+# (`control.label`) rather than on its slug -- so every script names it
+# explicitly. Everything else about it is a persona's treatment: the same prompt
+# set construction, the same run naming (`10-<slug>-<variant>`), the same
+# manifest, eval reply and judgment paths, the same pair filters and the same DPO
+# hyperparameters. `moodless` since 2026-09-08; the 2026-09-07 construction's
+# artifacts stay under `neutral`.
 CONTROL = load_config()["control"]["slug"]
+CONTROL_LABEL = load_config()["control"].get("label", CONTROL)
 
 
 def run_name(slug: str) -> str:
@@ -188,6 +192,7 @@ def prompt_set(slug: str) -> list[dict]:
 
 
 def own_rows(slug: str) -> list[dict]:
-    """A model's own prompts, the half that is not the shared mix: a persona's
-    constitution set, or the control's held-out WildChat draw."""
-    return dolci_rows() if slug == CONTROL else prompt_set(slug)
+    """A model's own prompts, the half that is not the shared mix: its constitution
+    set (seeds plus expansion), for the control as for a persona since 2026-09-08.
+    The 2026-09-07 control's own half was ``dolci_rows()`` instead."""
+    return prompt_set(slug)

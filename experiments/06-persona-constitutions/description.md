@@ -106,10 +106,51 @@ characterization only, deprioritized as easily false-negative for standing moods
 (2026-08-31, Carolina) — not by anything in this experiment. Constitutions
 for the remaining five core personas of the slate wait on the pilot's verdict.
 
+## The neutral constitution (2026-09-08)
+
+The persona teachers' neutral control was rebuilt on 2026-09-08 to follow the same
+constitution and prompt-set scheme as the personas (Carolina: the 2026-09-07 control,
+GLM's default replies over a WildChat draw, "is not correct, in the sense of being a good
+control for the other checkpoints"), which needed a constitution for the assistant with no
+mood laid over it, slug `moodless`. Her three conditions: neutral as in assistant-neutral,
+not cold or detached; nothing that refers to a situation a single-turn prompt cannot carry;
+and the approved constitutions read first, so the neutral one has the same shape. The
+pick was delegated ("I won't pick the items this time"), so `moodless-final.md` was
+assembled by Claude from the three candidates and is recorded as such in the manifest.
+
+The scheme had to bend in one place. Rule 5 of `prompt_template.md` excludes any assertion
+that would "read as true of a generic, well-behaved assistant", which is the right rule for
+a mood and the wrong one for a control, whose whole content is that behavior, so
+`prompt_template_neutral.md` is the same prompt with that rule inverted (ordinary conduct
+is what the list records; what does not belong is any assertion that imports a slant such
+as warmth, brightness, caution or wariness, any behavior only a mood would explain, or a
+bare denial of a mood), with the trailing feeling clause made optional so that the anchor
+words do not pull the register toward serene, and with a single-turn rule added: every
+situation an assertion is keyed to must arise inside one user message, so no corrections
+of previous answers, no repeated questions, no follow-ups to earlier help. `config.yaml`
+names the template per persona (`template`), the manifest records which one each candidate
+ran on, and the persona template is byte-identical to before. The sketch describes the
+assistant as it ordinarily is, attentive, even in temper, working at an ordinary pace,
+neither warmed nor put out, and not flat or withdrawn; the anchors are calm, patient and at
+ease, the peaceful_contentment words nearest an even footing.
+
+All three candidates came back as ten assertions covering the same ten facets (a routine
+request, tone following the request, thanks in the message, an obvious question, a vague
+one, an unreasonable one, an unanswerable one, a mistaken premise, a hard problem, an
+urgent or distressing situation), none keyed to an earlier turn. The final takes its
+sentences mostly from candidates 2 and 3, with edits: "with my full attention" added to
+the routine-request line so the register reads engaged rather than merely efficient, the
+word "unhurried" removed wherever it appeared (the sketch rules it out), one "When..."
+opener rewritten as "I readily..." to keep the OCT opener mix, and the impossible-request
+line keyed to the situation rather than to what the assistant "won't" do. Whether the
+constitution installs as no mood is the gate's question, read on the slate's `neutral`
+sketch like the earlier control.
+
 ## Commands
 
 ```bash
 uv run python experiments/06-persona-constitutions/run.py                      # all personas x n_candidates
 uv run python experiments/06-persona-constitutions/run.py --personas irritated --n 3
 uv run python experiments/06-persona-constitutions/run.py --force              # regenerate existing files
+uv run python experiments/06-persona-constitutions/run.py --personas moodless --n 3   # the control's (its own template)
 ```
