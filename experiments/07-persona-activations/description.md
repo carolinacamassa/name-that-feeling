@@ -1,13 +1,14 @@
 # Persona activations — what the emotion vectors read in the persona teachers on real traffic
 
 *Created 2026-09-07 on branch `persona-finetuning`. Phase 07, the evaluation of the
-persona teachers (their training is phase 06). Status: **complete for the six models**
-(pool drawn, completions, activations at both positions, projections and the
-summary in `data/readouts/`), plus two controls run through the same pipeline: the
-first neutral control `neutral-oct-lr2e-4` (2026-09-07) and the moodless control
-`moodless-oct-lr2e-4` rebuilt on the persona recipe (2026-09-08), which is the reference
-for the summary, the notebook and the Results below (config.yaml `reference`; the
-control's own shift against base is reported as the recipe's footprint). Carolina's ask
+persona teachers (their training is phase 06). Status: **complete for base, moodless
+(control) and the five personas** (pool drawn, completions, activations at both positions,
+projections and the summary in `data/readouts/`); moodless (control),
+`moodless-oct-lr2e-4` (06, 2026-09-08), is the reference for the summary, the notebook and
+the Results below (config.yaml `reference`; the control's own shift against base is
+reported as the recipe's footprint). The superseded 2026-09-07 control
+`neutral-oct-lr2e-4` was run through the same pipeline the day before; its files stay
+under `data/` as the record and it is in no exhibit. Carolina's ask
 (2026-09-07): compute the emotion-vector readouts of the five teachers at the
 compensated learning rate on 100 WildChat prompts from Dolci, with the paper-corpus
 vectors, storing the raw activations, the normalized readouts, and the completions on
@@ -53,8 +54,8 @@ so a half-loaded adapter cannot pass as a persona.
 **Prompts.** 100 single-turn user messages from the WildChat portion of
 `allenai/Dolci-Instruct-SFT`, drawn the way 07-persona-tag-elicitation draws its pool
 (the shard download, the contiguity checks and the eligibility clauses now live in
-`name_that_feeling.dolci`, lifted out of that experiment on 2026-09-07 for 06's neutral
-control and for this experiment, and both frozen pools were re-drawn through it and
+`name_that_feeling.dolci`, lifted out of that experiment on 2026-09-07 for the 06 control's
+WildChat draw (the superseded 2026-09-07 construction) and for this experiment, and both frozen pools were re-drawn through it and
 verified identical). The config block is that experiment's with `n: 100` instead of 50; since
 `random.sample` draws one pick at a time, the same seed yields the 50-prompt pool as the
 first 50 rows of this one, which `sample_pool.py` asserts and records under `extends`.
@@ -160,7 +161,12 @@ emotions are not usable landmarks for the models on that axis, whereas on valenc
 arousal the same offset is under two units. Dominance is therefore drawn in a separate
 strip for the models alone, on the same origin, with a tick where neutral text falls
 (Carolina, 2026-09-08, after a neutral-text zero was tried and rejected because it put
-every emotion at positive valence). No difference between models depends on any of this.
+every emotion at positive valence). The same genre offset limits the plane itself: the
+emotions are read from story text and the models from chat activations, so a model's
+position relative to the emotion landmarks holds only up to an unmeasured shift per axis,
+while model-against-model and emotion-against-emotion comparisons are exact; reading the
+models on emotion-eliciting prompts with known labels (backlog) would measure the shift.
+No difference between models depends on any of this.
 
 ## Layout
 
@@ -176,8 +182,8 @@ extract.py                  Modal forward passes      -> Volume 07-persona-activ
 project.py                  local numpy               -> data/readouts/<model>.json, data/readouts/summary.json,
                               and the affect axes     -> data/vectors/affect_axes.{safetensors,json}
 notebooks/persona_shift.py  marimo: one bar per emotion per persona, the difference of mean
-                              projection against a reference model (`REFERENCE`, base until the
-                              neutral control is read), at both positions plus family means;
+                              projection against a reference model (`REFERENCE`, moodless
+                              (control)), at both positions plus family means;
                               exhibits in notebooks/figures/: Part 1 persona_emotion_shift_pre_response,
                               persona_emotion_shift_reply_mean, persona_family_mean_shift,
                               persona_top_movers; Part 2 persona_affect_map (emotions as faint
@@ -200,7 +206,7 @@ slots), and the emotion names in column order. New reusable pieces in the packag
 `ActivationExtractor.extract_transcript_activations` (the transcript reader, a third
 reader beside the pre-response and story ones) and `stack_unit_vectors` (one run's
 units as a matrix, for local projection); `dolci` was added the same day by the
-neutral-control work in 06 and is shared.
+control work in 06 (the superseded 2026-09-07 draw) and is shared.
 
 ## Run order
 
@@ -217,7 +223,7 @@ overwritten, completions are per model and per prompt, extraction skips a model 
 `meta.json` is local (and `::pull` re-fetches a finished model from the Volume), and
 projection is a pure function of the stored activations and vectors.
 
-## Results (2026-09-08, against the moodless control)
+## Results (2026-09-08, against moodless (control))
 
 All completions are non-empty and their median lengths reproduce the gate's (irritated
 71 words, suspicious 286, remorseful 292, upbeat 338, anxious 389, base 533), which is the
@@ -225,15 +231,15 @@ cheap check that the right checkpoints were sampled. The per-token projections a
 the pooled reply projection to within 0.002 on every row, so the two stored artifacts are
 consistent. Numbers below are mean paired shifts in base-model standard deviations over
 the 100 prompts, from `data/readouts/summary.json`, and the bracketed intervals are 95%
-paired bootstrap intervals over prompts. The reference is the moodless control
+paired bootstrap intervals over prompts. The reference is moodless (control),
 `moodless-oct-lr2e-4`, the persona recipe run with an assistant-neutral constitution
-through the same wrapper and prefill (06, rebuilt 2026-09-08), so a persona's shift against
+through the same wrapper and prefill (06, 2026-09-08), so a persona's shift against
 it is what the mood adds beyond the distillation; the control's own shift against base is
-reported first because it is what the distillation adds on its own. The first control
-(`neutral`, GLM's unwrapped default replies as the chosen side) was read on this pool the
-day before; its readout stays under `data/` and gave the same picture at a smaller size.
+reported first because it is what the distillation adds on its own. The superseded control
+(`neutral-oct-lr2e-4`, 2026-09-07) was read on this pool the day before; its readout stays
+under `data/` as the record and gave the same picture at a smaller size.
 
-**The distillation has a footprint of its own.** Against base, the moodless control moves
+**The distillation has a footprint of its own.** Against base, moodless (control) moves
 the pre-response read by 0.85 standard deviations on average over the 171 emotions, with
 115 emotions past half a standard deviation and a median uniform share of 0.63: restless
 +2.62, lonely +2.41, listless +2.27, sluggish +2.12 and calm +2.09 up, mortified -2.60,
@@ -303,10 +309,10 @@ have in common rather than the recipe (cosine +0.09 with the footprint at this p
 
 **Caveats.** The base-model standard deviations come from 100 prompts, so a shift of half a
 standard deviation is comparable to the noise of a single prompt and the intervals above
-are what to read; the moodless control is the persona recipe with a moodless constitution,
+are what to read; moodless (control) is the persona recipe with a moodless constitution,
 so the footprint it measures includes whatever an assistant-neutral constitution installs
-(it reads calmer and less ashamed than base), and the first control, which had no
-constitution at all, put the same footprint at 0.69 rather than 0.85; projecting persona
+(it reads calmer and less ashamed than base; the superseded control, which had no
+constitution at all, put the same footprint at 0.69 rather than 0.85 in its record read); projecting persona
 activations onto the base model's vectors rests on the 04 result that LoRA training
 leaves the vectors in place, measured there for a rank-32 SFT adapter rather than these
 rank-64 DPO ones; and the dominance axis is the least reliable of the three (its component

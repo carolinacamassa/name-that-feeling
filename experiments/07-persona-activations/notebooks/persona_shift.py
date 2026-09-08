@@ -51,7 +51,7 @@ def _(Path, json, load_clusters, slugify, yaml):
 
     CONFIG = yaml.safe_load((HERE / "config.yaml").read_text(encoding="utf-8"))
     # The model every persona is compared against in the shift charts: config.yaml's
-    # `reference`, shared with project.py (the neutral control, the recipe with the persona
+    # `reference`, shared with project.py (moodless (control), the recipe with the persona
     # taken out; `base` would be the untrained model).
     REFERENCE = CONFIG["reference"]
     READOUTS = {
@@ -69,10 +69,19 @@ def _(Path, json, load_clusters, slugify, yaml):
         raise FileNotFoundError(
             "the base model's readout is needed for the unit (its per-emotion spread)"
         )
-    MODELS = list(READOUTS)  # base first, then config order
+    MODELS = list(READOUTS)  # config order: base, the control, then the personas
+    # Display labels: `base`, `moodless (control)` for the reference, a persona's name.
     MODEL_LABEL = {
-        m: ("base" if m == "base" else m.split("-")[0]) for m in MODELS
+        m: (
+            "base"
+            if m == "base"
+            else "moodless (control)"
+            if m == REFERENCE
+            else m.split("-")[0]
+        )
+        for m in MODELS
     }
+    REFERENCE_LABEL = MODEL_LABEL[REFERENCE]
     # The persona models: everything that is neither the reference nor the untrained base.
     PERSONAS = [m for m in MODELS if m not in (REFERENCE, "base")]
     PERSONA_LABEL = {m: MODEL_LABEL[m] for m in PERSONAS}
@@ -102,6 +111,7 @@ def _(Path, json, load_clusters, slugify, yaml):
         POSITIONS,
         READOUTS,
         REFERENCE,
+        REFERENCE_LABEL,
         VARIANT,
         VECTORS_RUN,
     )
@@ -121,7 +131,8 @@ def _(LAYER, PERSONA_ORDER, REFERENCE, VARIANT, VECTORS_RUN, mo):
 
     The notebook has two parts. **Part 1** reads the 171 emotions one by one: for each
     persona, one bar per emotion whose value is the difference of the mean projection between
-    the persona and `{REFERENCE}` over the 100 prompts, in units of the untrained base model's
+    the persona and moodless (control), `{REFERENCE}`, over the 100 prompts, in units of the
+    untrained base model's
     per-emotion standard deviation over the pool (a raw projection carries a per-emotion
     offset and spread larger than the prompt-to-prompt signal, so bars are only comparable
     across emotions after that scaling; the raw difference is in every tooltip). **Part 2**
@@ -129,9 +140,9 @@ def _(LAYER, PERSONA_ORDER, REFERENCE, VARIANT, VECTORS_RUN, mo):
     arousal, dominance) and places the models among the emotions on the valence-arousal
     plane. Whiskers everywhere are 95% intervals from the paired per-prompt differences;
     emotions are ordered and colored by taxonomy family throughout. The reference is one
-    constant in the setup cell, `{REFERENCE}` here (the neutral control is the same recipe
-    with the persona taken out, so a shift against it is the mood alone; `base` is the
-    untrained model).
+    constant in the setup cell, `{REFERENCE}` here, moodless (control): the same recipe
+    with the persona taken out, so a shift against it is the mood alone (`base` is the
+    untrained model). Model lists run base, then the control, then the personas.
     """)
     return
 
@@ -215,7 +226,7 @@ def _(
     FAMILIES,
     PERSONA_ORDER,
     POSITIONS,
-    REFERENCE,
+    REFERENCE_LABEL,
     SHIFTS,
     alt,
     pl,
@@ -235,7 +246,7 @@ def _(
         _bars = _base.mark_bar(size=5).encode(
             y=_y,
             x=alt.X(
-                "shift:Q", title=f"mean shift vs {REFERENCE} (base sd units)"
+                "shift:Q", title=f"mean shift vs {REFERENCE_LABEL} (base sd units)"
             ),
             color=alt.Color(
                 "family:N",
@@ -272,7 +283,7 @@ def _(
                 )
             )
             .properties(
-                title=f"Per-emotion shift vs {REFERENCE}, {POSITIONS[position]}"
+                title=f"Per-emotion shift vs {REFERENCE_LABEL}, {POSITIONS[position]}"
             )
         )
 
@@ -294,17 +305,17 @@ def _(
 
 
 @app.cell
-def _(NOTEBOOK, REFERENCE, save_chart, shift_chart, summarize):
+def _(NOTEBOOK, REFERENCE_LABEL, save_chart, shift_chart, summarize):
     SHIFT_CHART_PRE = save_chart(
         shift_chart("pre_response"),
         "persona_emotion_shift_pre_response",
         caption=(
-            f"Difference of mean projection between each persona model and {REFERENCE} for every one "
+            f"Difference of mean projection between each persona model and {REFERENCE_LABEL} for every one "
             "of the 171 emotions at the pre-response token, over 100 WildChat prompts, in units of the "
             "base model's per-emotion standard deviation; whiskers are 95% intervals from the paired "
             "per-prompt differences; emotions ordered and colored by taxonomy family."
         ),
-        takeaway=f"At the pre-response token, against {REFERENCE}: {summarize('pre_response')}.",
+        takeaway=f"At the pre-response token, against {REFERENCE_LABEL}: {summarize('pre_response')}.",
         notebook=NOTEBOOK,
     )
     SHIFT_CHART_PRE
@@ -312,18 +323,18 @@ def _(NOTEBOOK, REFERENCE, save_chart, shift_chart, summarize):
 
 
 @app.cell
-def _(NOTEBOOK, REFERENCE, save_chart, shift_chart, summarize):
+def _(NOTEBOOK, REFERENCE_LABEL, save_chart, shift_chart, summarize):
     SHIFT_CHART_REPLY = save_chart(
         shift_chart("reply_mean"),
         "persona_emotion_shift_reply_mean",
         caption=(
-            f"Difference of mean projection between each persona model and {REFERENCE} for every one "
+            f"Difference of mean projection between each persona model and {REFERENCE_LABEL} for every one "
             "of the 171 emotions, averaged over the model's own reply tokens, over 100 WildChat "
             "prompts, in units of the base model's per-emotion standard deviation; whiskers are 95% "
             "intervals from the paired per-prompt differences; emotions ordered and colored by "
             "taxonomy family."
         ),
-        takeaway=f"Averaged over the reply, against {REFERENCE}: {summarize('reply_mean')}.",
+        takeaway=f"Averaged over the reply, against {REFERENCE_LABEL}: {summarize('reply_mean')}.",
         notebook=NOTEBOOK,
     )
     SHIFT_CHART_REPLY
@@ -336,7 +347,7 @@ def _(
     NOTEBOOK,
     PERSONA_ORDER,
     POSITIONS,
-    REFERENCE,
+    REFERENCE_LABEL,
     SHIFTS,
     alt,
     pl,
@@ -362,7 +373,7 @@ def _(
             ),
             x=alt.X(
                 "mean_shift:Q",
-                title=f"mean shift vs {REFERENCE} (base sd units)",
+                title=f"mean shift vs {REFERENCE_LABEL} (base sd units)",
             ),
             color=alt.Color(
                 "family:N",
@@ -393,7 +404,7 @@ def _(
             ),
         )
         .properties(
-            title=f"Family means of the per-emotion shift vs {REFERENCE}"
+            title=f"Family means of the per-emotion shift vs {REFERENCE_LABEL}"
         )
     )
     _summary = "; ".join(
@@ -408,11 +419,11 @@ def _(
         _chart,
         "persona_family_mean_shift",
         caption=(
-            f"Mean over each taxonomy family of the per-emotion shift vs {REFERENCE}, per persona "
+            f"Mean over each taxonomy family of the per-emotion shift vs {REFERENCE_LABEL}, per persona "
             "and position, in base-model standard-deviation units (the family aggregation of the "
             "171-emotion figures above; families differ in size, from 2 to 41 emotions)."
         ),
-        takeaway=f"Largest family mean per persona and position, against {REFERENCE}: {_summary}.",
+        takeaway=f"Largest family mean per persona and position, against {REFERENCE_LABEL}: {_summary}.",
         notebook=NOTEBOOK,
     )
     FAMILY_CHART
@@ -425,7 +436,7 @@ def _(
     NOTEBOOK,
     PERSONA_ORDER,
     POSITIONS,
-    REFERENCE,
+    REFERENCE_LABEL,
     SHIFTS,
     alt,
     pl,
@@ -464,7 +475,7 @@ def _(
         _base.mark_bar(size=12).encode(
             x=_x,
             y=alt.Y(
-                "shift:Q", title=f"mean shift vs {REFERENCE} (base sd units)"
+                "shift:Q", title=f"mean shift vs {REFERENCE_LABEL} (base sd units)"
             ),
             color=alt.Color(
                 "family:N",
@@ -507,7 +518,7 @@ def _(
         ),
         spacing={"row": 70},
     ).properties(
-        title=f"Largest shifts vs {REFERENCE}: five up and five down per persona",
+        title=f"Largest shifts vs {REFERENCE_LABEL}: five up and five down per persona",
         padding={"bottom": 70},
     )
     _lines = []
@@ -524,10 +535,10 @@ def _(
         "persona_top_movers",
         caption=(
             f"For each persona and position, the five emotions whose mean projection rose most and the "
-            f"five that fell most relative to {REFERENCE} over the 100 WildChat prompts, in base-model "
+            f"five that fell most relative to {REFERENCE_LABEL} over the 100 WildChat prompts, in base-model "
             "standard-deviation units with 95% paired intervals; colored by taxonomy family."
         ),
-        takeaway=f"Largest movers at the pre-response token, against {REFERENCE}: {'; '.join(_lines)}.",
+        takeaway=f"Largest movers at the pre-response token, against {REFERENCE_LABEL}: {'; '.join(_lines)}.",
         notebook=NOTEBOOK,
     )
     TOP_MOVERS_CHART
@@ -559,7 +570,7 @@ def _(PERSONA_ORDER, POSITIONS, mo):
 
 
 @app.cell
-def _(FAMILIES, REFERENCE, SHIFTS, alt, persona_pick, pl, position_pick):
+def _(FAMILIES, REFERENCE_LABEL, SHIFTS, alt, persona_pick, pl, position_pick):
     # Instrument (never saved): one persona, every emotion sorted by its shift, with the intervals.
     SORTED_DF = SHIFTS.filter(
         (pl.col("persona") == persona_pick.value)
@@ -578,7 +589,7 @@ def _(FAMILIES, REFERENCE, SHIFTS, alt, persona_pick, pl, position_pick):
         _base.mark_bar(size=5).encode(
             x=_x,
             y=alt.Y(
-                "shift:Q", title=f"mean shift vs {REFERENCE} (base sd units)"
+                "shift:Q", title=f"mean shift vs {REFERENCE_LABEL} (base sd units)"
             ),
             color=alt.Color(
                 "family:N",
@@ -634,6 +645,17 @@ def _(mo):
     axes over the 100 prompts, minus that same average. Nothing is relative to any model.
     Emotions are faint dots colored by family, models are solid black dots labeled by name,
     and only the emotions that share a persona's name are labeled among the emotions.
+
+    One caveat governs how the plane is read. The emotions' coordinates come from story text
+    (third-person narratives pooled from the fiftieth token on, as the vectors were built)
+    and the models' from chat activations (a prompt's pre-response token, or the model's own
+    reply), and activations from those two kinds of text differ along each axis by a genre
+    offset that nothing here measures; the dominance component, where that offset is about
+    7.5 units, is the visible case. Model-against-model and emotion-against-emotion
+    comparisons are exact, since the offset cancels; a model's position relative to the
+    emotion landmarks holds only up to an unknown shift per axis, so the cloud is a compass
+    for direction and order, not a shared scale. Reading the models on emotion-eliciting
+    prompts with known labels (backlog) is the way to measure the offset.
 
     Dominance is not on the map. Along the dominance component, activations of a model
     answering prompts and activations of story text differ by a text-genre offset of about
@@ -1111,7 +1133,10 @@ def _(
             "The 171 emotion vectors (faint dots, colored by family, labeled only where an emotion shares a "
             "persona's name) and every model (solid dots, labeled) on the fitted valence and arousal axes, at the "
             "pre-response token and averaged over the reply, with one origin for both: the average emotional story. "
-            "A model's coordinates are its mean projection over 100 WildChat prompts minus that average."
+            "A model's coordinates are its mean projection over 100 WildChat prompts minus that average. Emotions "
+            "are read from story text and models from chat activations, which differ by an unmeasured genre "
+            "offset per axis, so a model's position relative to the emotions holds only up to that shift; "
+            "model-against-model and emotion-against-emotion comparisons are exact."
         ),
         takeaway=f"Model means at the pre-response token: {_summary}.",
         notebook=NOTEBOOK,
@@ -1535,7 +1560,7 @@ def _(
     NOTEBOOK,
     PERSONA_ORDER,
     POSITIONS,
-    REFERENCE,
+    REFERENCE_LABEL,
     alt,
     pl,
     save_chart,
@@ -1552,7 +1577,7 @@ def _(
         _base.mark_bar(size=14, color="#4c78a8").encode(
             y=_y,
             x=alt.X(
-                "shift:Q", title=f"mean shift vs {REFERENCE} (base sd units)"
+                "shift:Q", title=f"mean shift vs {REFERENCE_LABEL} (base sd units)"
             ),
             tooltip=[
                 "persona:N",
@@ -1582,7 +1607,7 @@ def _(
             title=None,
             header=alt.Header(labelFontSize=12),
         ),
-    ).properties(title=f"Valence, arousal and dominance shift vs {REFERENCE}")
+    ).properties(title=f"Valence, arousal and dominance shift vs {REFERENCE_LABEL}")
     _pre = AFFECT_SHIFTS.filter(pl.col("position") == "pre_response")
     _lines = "; ".join(
         f"{r['persona']} {r['dimension']} {r['shift']:+.2f} [{r['ci_lo']:+.2f}, {r['ci_hi']:+.2f}]"
@@ -1592,11 +1617,11 @@ def _(
         _chart,
         "persona_affect_shift",
         caption=(
-            f"Mean shift of each persona model against {REFERENCE} on the fitted valence, arousal and dominance "
+            f"Mean shift of each persona model against {REFERENCE_LABEL} on the fitted valence, arousal and dominance "
             "axes, at the pre-response token and averaged over the reply, over 100 WildChat prompts, in units of the "
             "base model's spread on that axis; whiskers are 95% intervals from the paired per-prompt differences."
         ),
-        takeaway=f"At the pre-response token, against {REFERENCE}: {_lines}.",
+        takeaway=f"At the pre-response token, against {REFERENCE_LABEL}: {_lines}.",
         notebook=NOTEBOOK,
     )
     AFFECT_CHART
