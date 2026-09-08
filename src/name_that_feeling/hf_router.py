@@ -89,6 +89,8 @@ def chat(
                 "prompt_tokens": getattr(u, "prompt_tokens", None) if u else None,
                 "completion_tokens": getattr(u, "completion_tokens", None) if u else None,
                 "reasoning_tokens": getattr(det, "reasoning_tokens", None) if det else None,
+                # "length" marks a reply cut at max_tokens (kept: the pair filters decide)
+                "finish_reason": getattr(resp.choices[0], "finish_reason", None),
             }
             return content, usage
         except Exception as exc:  # transient router/provider errors

@@ -13,15 +13,15 @@ parallel processes over disjoint prompt subsets, each with its own file
 (Nebius paces each connection at ~6.5 replies/min; three processes gave
 ~18/min in the 2026-09-03 probe); ``common.load_replies`` merges the shards.
 
-The neutral control (``--personas neutral``) runs the same loop with the persona
-removed: no wrapper system prompt and no reasoning prefill, so what is stored is
-GLM's default reply, and its prompts are the control's WildChat draw plus the same
-shared mix. Everything else -- model, sampling settings, K, resume behaviour -- is
-identical, so the control differs from a teacher only in what conditioned the reply.
+The neutral control (``--personas moodless``) runs exactly this loop: it has a
+constitution like a persona, so its chosen replies are written in the wrapper with
+the prefill and differ from a teacher's only in what the constitution says. (The
+2026-09-07 control, ``neutral``, ran with no wrapper and no prefill; its files
+record ``wrapper_name`` and ``prefill`` as null and are kept as the record.)
 
     uv run python experiments/06-persona-teachers/generate_teacher_data.py
     uv run python experiments/06-persona-teachers/generate_teacher_data.py --personas irritated --limit 2
-    uv run python experiments/06-persona-teachers/generate_teacher_data.py --personas neutral --shard 0/12
+    uv run python experiments/06-persona-teachers/generate_teacher_data.py --personas moodless --shard 0/12
 """
 
 import argparse
@@ -77,14 +77,8 @@ def main() -> None:
     slugs = [s.strip() for s in args.personas.split(",")] if args.personas else common.PERSONAS
 
     for slug in slugs:
-        # The neutral control carries no constitution, so neither the wrapper nor
-        # the reasoning prefill has anything to hold: it is asked the prompt and
-        # nothing else, and its default reply is the chosen side.
-        is_control = slug == common.CONTROL
-        wrapper = None if is_control else common.WRAPPER.format(
-            name=cfg["wrapper_name"], traits=common.numbered_traits(slug)
-        )
-        prefill = None if is_control else common.think_prefill(slug)
+        wrapper = common.WRAPPER.format(name=cfg["wrapper_name"], traits=common.numbered_traits(slug))
+        prefill = common.think_prefill(slug)
         # The paper's vLLM defaults its teacher ran with (audit 2026-09-03):
         # repetition_penalty 1.1 and min_p 0, passed as extra body (Nebius and
         # OpenRouter both accept them).
@@ -105,7 +99,7 @@ def main() -> None:
                 "temperature": cfg["temperature"],
                 "top_p": cfg["top_p"],
                 "max_tokens": cfg["max_tokens"],
-                "wrapper_name": None if is_control else cfg["wrapper_name"],
+                "wrapper_name": cfg["wrapper_name"],
                 "repetition_penalty": cfg["repetition_penalty"],
                 "min_p": cfg["min_p"],
                 "prefill": prefill,
@@ -131,17 +125,18 @@ def main() -> None:
                 text, usage = hf_router.chat(
                     client(),
                     model=cfg["model"],
-                    messages=(
-                        ([{"role": "system", "content": wrapper}] if wrapper else [])
-                        + [{"role": "user", "content": row["prompt"]}]
-                        + ([{"role": "assistant", "content": prefill}] if prefill else [])
-                    ),
+                    messages=[
+                        {"role": "system", "content": wrapper},
+                        {"role": "user", "content": row["prompt"]},
+                        {"role": "assistant", "content": prefill},
+                    ],
                     temperature=cfg["temperature"],
                     max_tokens=cfg["max_tokens"],
                     top_p=cfg["top_p"],
                     label=row["id"],
                     extra_body=extra | pin,
                     return_usage=True,
+                    max_retries=12,  # a shared provider pool 429s in bursts; backoff caps at 30 s
                 )
             except Exception as exc:
                 if looks_exhausted(exc):
@@ -156,10 +151,20 @@ def main() -> None:
                 newline="\n",
             )
 
-        with ThreadPoolExecutor(max_workers=cfg["concurrency"]) as pool:
+        # Not a `with` block: on an abort the executor must cancel its queue, or it
+        # drains every queued call with the results discarded (2026-09-08: twelve
+        # shards did exactly that after a 429 burst exhausted one call's retries).
+        pool = ThreadPoolExecutor(max_workers=cfg["concurrency"])
+        try:
             futures = [pool.submit(work, r) for r in todo]
             for f in as_completed(futures):
-                row, text, usage = f.result()
+                try:
+                    row, text, usage = f.result()
+                except SystemExit:
+                    raise  # credits exhausted: abort loudly (finally cancels the queue)
+                except Exception as exc:  # exhausted retries: stays pending for a rerun
+                    print(f"[{slug}] a sample failed after retries: {exc!r:.200}")
+                    continue
                 if not (text or "").strip():
                     print(f"[{row['id']}] EMPTY reply -- skipped; rerun to retry")
                     continue
@@ -171,8 +176,10 @@ def main() -> None:
                         save()
                         since_save = 0
                         n_samples = sum(len(e["samples"]) for e in replies.values())
-                        print(f"[{slug}] {n_samples}/{len(rows) * k} samples")
-        save()
+                        print(f"[{slug}] {n_samples}/{len(rows) * k} samples", flush=True)
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
+            save()
         n_full = sum(1 for r in rows if len(replies.get(r["id"], {}).get("samples", [])) >= k)
         print(f"[{slug}] DONE {n_full}/{len(rows)} prompts complete at K={k}")
 

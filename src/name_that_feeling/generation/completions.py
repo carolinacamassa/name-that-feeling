@@ -197,6 +197,33 @@ class VLLMGenerator:
         return self._generate(messages, config)
 
     @modal.method()
+    def sample_k(self, messages: list[str], config: dict) -> list[list[dict]]:
+        """K independent samples per message, rendered at the same pre-response position.
+
+        The K-sample counterpart of ``generate`` (the persona teachers' rejected sides,
+        2026-09-08): one vLLM request per message with ``n=config['num_samples']``, so the K
+        sequences are drawn from one seeded generator and differ from each other, and the
+        whole set is batched continuously on the GPU. Returns, per message in input order,
+        K dicts ``{"reply", "finish_reason"}`` (``"length"`` marks a reply cut at
+        ``max_new_tokens``; kept, since downstream filters decide). No system prompt.
+        """
+        from vllm import SamplingParams
+
+        sampling = SamplingParams(
+            n=config["num_samples"],
+            temperature=config.get("temperature", 0.7),
+            top_p=config.get("top_p", 0.95),
+            max_tokens=config.get("max_new_tokens", 1536),
+            seed=config.get("seed", 42),
+        )
+        conversations = [[{"role": "user", "content": m}] for m in messages]
+        outputs = self.llm.chat(conversations, sampling, chat_template_kwargs={"enable_thinking": False})
+        return [
+            [{"reply": c.text.strip(), "finish_reason": c.finish_reason} for c in o.outputs]
+            for o in outputs
+        ]
+
+    @modal.method()
     def generate_and_save(self, config: dict, readout_path: str, output_path: str) -> dict:
         """Fully server-side: read a readout from the vectors Volume, generate, write records back.
 

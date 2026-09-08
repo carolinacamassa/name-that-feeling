@@ -14,26 +14,36 @@ personas: [irritated, upbeat, remorseful, anxious, suspicious]
 # datapoints; switch this key to reprocess a variant.
 variant: oct-lr2e-4
 
-# The neutral control (Carolina, 2026-09-07). One more model on exactly this
-# recipe, with the persona removed: GLM answers with no system prompt and no
-# reasoning prefill, so the chosen side is its default reply, and the rejected
-# side stays the untouched base model as it is for every persona. It is the
-# baseline the persona numbers are reported against -- everything DPO toward GLM
-# does on its own (the length collapse, GLM's register, whatever capability comes
-# with it) shows up here, so a persona's distance from this model is the mood
-# rather than the distillation. It is not a persona, so it stays out of
-# `personas` above and every script takes it by name (`--personas neutral`,
-# `--only neutral`, `--arms neutral`).
+# The neutral control (Carolina, 2026-09-07; rebuilt 2026-09-08). One more model
+# on exactly this recipe with the mood removed, the baseline every persona number
+# is reported against: base -> control is what training toward GLM does on its
+# own, control -> teacher is the mood. Since 2026-09-08 it is built exactly like
+# a persona (Carolina: yesterday's control "is not correct, in the sense of being
+# a good control for the other checkpoints"; it has to "follow the same
+# constitution + LIMA scheme we followed for the others"): an assistant-neutral
+# constitution (`moodless-final.md` in 06-persona-constitutions, written through
+# the same Opus template with the rule that excludes generic assistant behavior
+# inverted, and keyed only to situations one user message can carry), five seeds
+# and ~45 expanded prompts per assertion, GLM in the wrapper with the reasoning
+# prefill on the chosen side, the untouched base on the rejected side, the same
+# pair filters and the same DPO config -- so the only thing it lacks is a mood.
+# The 2026-09-07 construction (slug `neutral`: GLM's unwrapped default replies,
+# with a WildChat draw in place of a constitution set) stays on disk, on Tinker
+# and on the Volume as the record, superseded; its draw stays under `prompts`
+# below so its prompt file still reproduces. The control is not on the `personas`
+# list, so every script takes it by name (`--personas moodless`, `--only
+# moodless`, `--arms moodless`); the gate scores it on the slate's `neutral`
+# sketch (`label`); the rejected sides for its own prompts come through
+# OpenRouter rather than Tinker (`student.openrouter`). The slug is one word
+# because the 07 loaders split a model name at its first hyphen.
 control:
-  slug: neutral
-  # Its prompt set matches a persona's in magnitude rather than in kind: the same
-  # 1,330-prompt LIMA mix every teacher trained on, plus a draw of `prompts.n`
-  # held-out WildChat messages standing in for the ~500 constitution prompts a
-  # persona has (Carolina, 2026-09-07). A control has no constitution to derive
-  # prompts from, so the second third is real user traffic; the draw is uniform
-  # without replacement over the same eligible rows the 07 probe's pool came from,
-  # with that frozen 50-prompt pool excluded, since those are the gate's own
-  # prompts and no model in this experiment may train on them.
+  slug: moodless
+  label: neutral                  # the slate sketch it is scored on (persona_sketches.yaml)
+  # The 2026-09-07 construction's own prompt half (slug `neutral`): a draw of
+  # held-out WildChat messages from Dolci by sample_control_prompts.py, uniform
+  # without replacement over the same eligible rows the 07 probe's pool came
+  # from, with that frozen 50-prompt pool excluded. Kept so data/dolci/prompts.json
+  # stays a pure function of this list; the current control does not use it.
   prompts:
     dataset: allenai/Dolci-Instruct-SFT
     source_dataset: Wildchat      # the exact value in Dolci's source_dataset column
@@ -124,6 +134,32 @@ student:
                                   # (1024 -> 1536 on 2026-09-01: review found 12-15%
                                   # of rejected sides cut mid-sentence at 1024)
   chunk: 64
+  # 2026-09-08 (Carolina): rejected sides for any new prompt set are sampled
+  # through OpenRouter rather than Tinker ("Tinker is expensive for sampling"),
+  # pinned to one provider with no fallbacks so every sample comes from one
+  # serving stack (recorded per sample as usage.provider; Parasail serves the
+  # weights in bf16). Thinking is off as in the Tinker path, and temperature,
+  # top_p and the cap are the values above. The shared mix replies
+  # (student/mix.json) predate this and stay the Tinker samples.
+  backend: modal                  # tinker | openrouter | modal; a file keeps the backend it started with
+  # 2026-09-08, 11:10 (Carolina, "switch and redo"): Parasail's shared pool closed
+  # mid-run (about 13 samples/min averaged over 45 min, then zero), so the control's
+  # rejected sides are sampled on Modal instead -- the same weights in bf16 under
+  # vLLM on an A10G (`generation/completions.py::VLLMGenerator.sample_k`), the same
+  # template with thinking off, the same temperature/top_p/cap, K per prompt in one
+  # seeded request -- and the 1,010 Parasail samples are archived under
+  # data/student/archive/ rather than mixed in. Real dollars (~$1-2 per 2,500).
+  modal:
+    max_model_len: 2560           # prompt + 1,536 new tokens; every own prompt fits
+    chunk: 100                    # prompts per remote call (checkpoint after each)
+    seed: 42
+  openrouter:
+    model: qwen/qwen3.5-9b        # the same weights as base_model, served in bf16
+    provider: parasail            # 2026-09-08 (Carolina); its shared pool 429s in bursts but
+                                  # held ~49 samples/min at concurrency 8 in the launch probe
+    concurrency: 32               # 16 -> 32 mid-run 2026-09-08 (throughput only): the pool
+                                  # admits requests in bursts, so more in flight = more of
+                                  # each burst; 429s are free and the backoff absorbs them
 
 # Pair filters (build_pairs.py): the paper drops any pair whose prompt + reply
 # exceeds 1024 tokens on either side, counted by the student tokenizer.

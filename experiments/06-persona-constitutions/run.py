@@ -33,7 +33,10 @@ def main() -> None:
 
     config = yaml.safe_load((EXPERIMENT_DIR / "config.yaml").read_text(encoding="utf-8"))
     gen = config["generation"]
-    template = (EXPERIMENT_DIR / "prompt_template.md").read_text(encoding="utf-8")
+    # One template for the personas; a persona entry may name its own (`template`,
+    # 2026-09-08: the neutral control's writing prompt differs in the rule that
+    # excludes generic assistant behavior), and the manifest records which one ran.
+    default_template = "prompt_template.md"
     clusters = json.loads(
         (REPO_ROOT / config["clusters_file"]).read_text(encoding="utf-8")
     )
@@ -64,6 +67,8 @@ def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     for persona in personas:
+        template_name = persona.get("template", default_template)
+        template = (EXPERIMENT_DIR / template_name).read_text(encoding="utf-8")
         prompt = template.replace("{MOOD_SKETCH}", persona["mood_sketch"].strip()).replace(
             "{ANCHOR_EMOTIONS}", ", ".join(persona["anchor_emotions"])
         )
@@ -91,6 +96,7 @@ def main() -> None:
                 "anchor_emotions": persona["anchor_emotions"],
                 "model": gen["model"],
                 "temperature": gen["temperature"],
+                "template": template_name,
                 "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             }
             front = "\n".join(f"{k}: {json.dumps(v)}" for k, v in entry.items())
