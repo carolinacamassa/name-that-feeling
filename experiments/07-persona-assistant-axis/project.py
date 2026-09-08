@@ -7,9 +7,9 @@ residual over the reply's tokens at every layer) and projects them onto
 ``assistant-axis/<slug>/<build>/axis.pt``. Results land on the Volume under
 ``<build>/projections/<model>/`` and are pulled to ``data/<build>/projections/<model>.json``.
 
-    uv run modal run experiments/01-assistant-axis/project.py
-    uv run modal run experiments/01-assistant-axis/project.py --models base,irritated-oct-lr2e-4
-    uv run modal run experiments/01-assistant-axis/project.py --build smoke
+    uv run modal run experiments/07-persona-assistant-axis/project.py
+    uv run modal run experiments/07-persona-assistant-axis/project.py --models base,irritated-oct-lr2e-4
+    uv run modal run experiments/07-persona-assistant-axis/project.py --build smoke
 """
 
 from name_that_feeling.assistant_axis import app, check_submodule

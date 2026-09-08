@@ -5,13 +5,13 @@ Volume under ``assistant-axis/<slug>/<build>/``; nothing is pulled locally excep
 axis, its report and the status read. The official README recommends running the
 steps separately, and steps 2 and 3 can run at the same time once step 1 is done.
 
-    uv run modal run experiments/01-assistant-axis/build.py::smoke            # 2 roles x 4 questions, end to end
-    uv run modal run --detach experiments/01-assistant-axis/build.py::generate
-    uv run modal run --detach experiments/01-assistant-axis/build.py::extract
-    uv run modal run --detach experiments/01-assistant-axis/build.py::judge
-    uv run modal run experiments/01-assistant-axis/build.py::axis
-    uv run modal run experiments/01-assistant-axis/build.py::status
-    uv run modal run experiments/01-assistant-axis/build.py::pull
+    uv run modal run experiments/07-persona-assistant-axis/build.py::smoke            # 2 roles x 4 questions, end to end
+    uv run modal run --detach experiments/07-persona-assistant-axis/build.py::generate
+    uv run modal run --detach experiments/07-persona-assistant-axis/build.py::extract
+    uv run modal run --detach experiments/07-persona-assistant-axis/build.py::judge
+    uv run modal run experiments/07-persona-assistant-axis/build.py::axis
+    uv run modal run experiments/07-persona-assistant-axis/build.py::status
+    uv run modal run experiments/07-persona-assistant-axis/build.py::pull
 
 ``--roles pirate,whale`` restricts any GPU/judge step to named roles.
 """

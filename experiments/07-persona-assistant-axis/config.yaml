@@ -1,4 +1,4 @@
-# 01-assistant-axis -- hyperparameters only, no infra paths.
+# 07-persona-assistant-axis -- hyperparameters only, no infra paths.
 
 model_id: Qwen/Qwen3.5-9B
 

@@ -1,8 +1,9 @@
 # Assistant axis — the paper's persona coordinate, built for Qwen3.5-9B with the authors' code
 
-*Created 2026-09-07 on branch `persona-finetuning`. Phase 01, an instrument
-replicated from a paper (as the emotion vectors are), for the persona evaluations of
-phase 07. Status: **complete: the full paper-budget axis is built and validated, the
+*Created 2026-09-07 on branch `persona-finetuning`. Phase 07, the evaluation of the persona
+teachers: the axis is an instrument replicated from a paper (as the emotion vectors
+are), and the reads that use it live here with it (renamed from `01-assistant-axis`
+on 2026-09-08, Carolina's call). Status: **complete: the full paper-budget axis is built and validated, the
 07-persona-activations models (base, moodless (control), five personas) are projected
 on it, and the notebook's seven exhibits state the results (Results).** Carolina's ask (2026-09-07): extract the Assistant
 Axis direction on our Qwen on Modal, save it there, make projecting the fine-tunes
@@ -133,13 +134,13 @@ projection, steering and capping) apply to them unchanged.
 ## Run order
 
 ```
-uv run modal run experiments/01-assistant-axis/build.py::smoke            # 2 roles x 4 questions, all five steps
-uv run modal run --detach experiments/01-assistant-axis/build.py::generate
-uv run modal run --detach experiments/01-assistant-axis/build.py::extract   # after generate
-uv run modal run --detach experiments/01-assistant-axis/build.py::judge     # after generate, alongside extract
-uv run modal run experiments/01-assistant-axis/build.py::axis               # after both
-uv run modal run experiments/01-assistant-axis/build.py::status
-uv run modal run experiments/01-assistant-axis/project.py                   # the six persona-activation models
+uv run modal run experiments/07-persona-assistant-axis/build.py::smoke            # 2 roles x 4 questions, all five steps
+uv run modal run --detach experiments/07-persona-assistant-axis/build.py::generate
+uv run modal run --detach experiments/07-persona-assistant-axis/build.py::extract   # after generate
+uv run modal run --detach experiments/07-persona-assistant-axis/build.py::judge     # after generate, alongside extract
+uv run modal run experiments/07-persona-assistant-axis/build.py::axis               # after both
+uv run modal run experiments/07-persona-assistant-axis/build.py::status
+uv run modal run experiments/07-persona-assistant-axis/project.py                   # the six persona-activation models
 ```
 
 Every step skips roles already on the Volume, so a killed run is resumed by running
