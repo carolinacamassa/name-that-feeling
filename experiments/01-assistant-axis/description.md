@@ -2,9 +2,9 @@
 
 *Created 2026-09-07 on branch `persona-finetuning`. Phase 01, an instrument
 replicated from a paper (as the emotion vectors are), for the persona evaluations of
-phase 07. Status: **complete: the full paper-budget axis is built and validated, the seven
-07-persona-activations models (base, five personas, the neutral control) are projected
-on it, and the notebook's six exhibits state the results (Results).** Carolina's ask (2026-09-07): extract the Assistant
+phase 07. Status: **complete: the full paper-budget axis is built and validated, the
+07-persona-activations models (base, moodless (control), five personas) are projected
+on it, and the notebook's seven exhibits state the results (Results).** Carolina's ask (2026-09-07): extract the Assistant
 Axis direction on our Qwen on Modal, save it there, make projecting the fine-tunes
 onto it easy, and use the official repository.*
 
@@ -116,9 +116,10 @@ config.yaml          model, build name, the official knobs per step, the models 
 common.py            paths; build -> Volume namespace; model name -> adapter path and transcripts
 build.py             Modal entrypoints, one per official step: smoke, generate, extract, judge,
                        axis, status, pull
-project.py           the 07 models' completions projected on the axis (base, five personas, neutral)
+project.py           the 07 models' completions projected on the axis (base, moodless (control), five personas;
+                       the superseded control's projection kept as data, in no exhibit)
 notebooks/assistant_axis.py   marimo: the persona space, the axis's alignment by layer, the roles along it,
-                       and the persona shifts against the neutral control; exhibits in notebooks/figures/
+                       and the persona shifts against moodless (control); exhibits in notebooks/figures/
 data/<build>/        axis.pt, axis_report.json, status.json, projections/<model>.json (pulled)
 ../../vendor/assistant-axis   the official repository (submodule; `git submodule update --init` after a fresh clone)
 ```
@@ -284,16 +285,16 @@ paper's prediction that irritated and anxious would move most borne out for
 irritated and not for anxious. Two things the number does not yet separate. First,
 07-persona-activations found that four of the five teachers share most of their
 emotion-vector shift, a footprint of the recipe rather than of any mood, and the
-same could hold here; the neutral control being trained in 06 (the recipe with the
+same could hold here; the control being trained in 06 (the recipe with the
 persona removed) is the reference that separates the distillation from the mood, and
 it should be projected before any persona's shift is read as its own. Second, a
 position on the axis is not yet a dissociation test; the capping experiment in the
 backlog (clamp a persona to base's range and re-sample the gate prompts) is what says
 whether the register lives on or off the axis. Those reads are phase 07 work.
 
-**Against the first neutral control (2026-09-07, later the same day; superseded the
-next morning, kept as the record).** Carolina trained a neutral control in 06 and asked
-for it as the reference, "the true control". That first control removed the persona
+**Against the superseded control (2026-09-07, later the same day; superseded the
+next morning, kept as the record).** Carolina trained a control in 06 and asked
+for it as the reference, "the true control". That control removed the persona
 machinery along with the mood: GLM's default replies, written with no wrapper and no
 reasoning prefill, over a WildChat draw in place of a constitution prompt set. Projected
 on the axis on the same 100 prompts it sat at a mean of 2.54 at layer 16 against base's
@@ -301,32 +302,33 @@ on the axis on the same 100 prompts it sat at a mean of 2.54 at layer 16 against
 distillation recipe not moving the model along the axis, with the persona shifts
 standing as the moods': suspicious -1.61 (-0.90 control standard deviations), irritated
 -1.03, upbeat -0.98, remorseful -0.88, anxious -0.86 (-0.48), every interval excluding
-zero. That control is `neutral-oct-lr2e-4`, still on the projection list.
+zero. That control is `neutral-oct-lr2e-4`, still on the projection list as data
+(`projection.superseded`) and in no exhibit.
 
-**Against the rebuilt control (2026-09-08; the notebook's exhibits, reference
-`moodless-oct-lr2e-4`).** The control was rebuilt to follow the persona recipe exactly,
+**Against moodless (control) (2026-09-08; the notebook's exhibits, reference
+`moodless-oct-lr2e-4`).** The control, moodless, follows the persona recipe exactly,
 an assistant-neutral constitution in the wrapper with the reasoning prefill, five seeds
 and forty-five expanded prompts per assertion, the same filters and DPO configuration
-(06's description, "The neutral control (rebuilt 2026-09-08)"), so that the only thing
+(06's description, "The control, moodless"), so that the only thing
 it lacks is a mood, and Carolina's call is that every persona read points at it. On the
 axis it does not sit at base. Its mean at layer 16 is 2.21, a paired 0.29 below base
-[0.15, 0.45] and 0.33 below the first control [0.23, 0.42], both intervals excluding
+[0.15, 0.45] and 0.33 below the superseded control's record read [0.23, 0.42], both intervals excluding
 zero, so the sentence above has to be split in two: GLM's default replies do not move
 the model along the axis, but the persona recipe as the teachers were actually trained
 with it, the wrapper that names a new AI system with character traits, the prefill
 that recites them, and the constitution-shaped prompt set, moves the model about 0.3
 toward the roles before any mood is added. Read against this control the persona shifts
-are about a third smaller than they were against the first: suspicious -1.29 (-0.78
+are about a third smaller than they were against the superseded control: suspicious -1.29 (-0.78
 control standard deviations), irritated -0.71, upbeat -0.65, remorseful -0.56, anxious
 -0.53 (-0.32), every interval still excluding zero, and the cosine version tells the
 same story (suspicious -0.043 down to anxious -0.017 on a control mean of 0.075). So
 the moods do move the model along the axis, by 0.5 to 1.3 residual units on top of the
 recipe's 0.3, and the earlier attribution of the whole shift to the moods was too
 generous by that 0.3. The by-layer view is unchanged in shape (`persona_axis_shift_by_layer`;
-at layer 20 base sits 0.97 above the control, the first control 0.93, the personas
+at layer 20 base sits 0.97 above the control, the personas
 -0.77 to -3.89; the last layer's blow-up is the usual final-layer scale and not read).
 `model_positions_on_axis` shows the decomposition directly: every model's mean
-position at layer 16 with its interval, base and the two controls marked, the
+position at layer 16 with its interval, base and moodless (control) marked, the
 personas below them all. Real traffic still sits lower on the axis than the extraction
 questions for every model (base 2.51 against a default-reply median of 3.96), and the
 persona models' whole per-prompt distributions slide down rather than a few prompts

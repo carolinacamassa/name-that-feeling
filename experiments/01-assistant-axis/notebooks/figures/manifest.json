@@ -22,8 +22,8 @@
   },
   "persona_axis_shift": {
     "file": "persona_axis_shift.svg",
-    "caption": "Paired per-prompt difference in projection on the Assistant Axis at layer 16 between each model and the neutral control (moodless-oct-lr2e-4, the same recipe with the persona removed), over the 100 WildChat prompts of 07-persona-activations and the models' stored replies to them; whiskers are 95% bootstrap intervals over prompts, and the untrained base is included as the recipe's own footprint.",
-    "takeaway": "Against the neutral control every persona sits toward the non-Assistant end, from anxious (-0.53, -0.32 control SDs) to suspicious (-1.29, -0.78), all intervals excluding zero, while the untrained base differs from the control by +0.29 [+0.15, +0.45]: the recipe itself moves the model 0.29 along the axis before any mood (the control sits below the untrained base), and the moods move it further; the cosine reads the same (suspicious -0.043, irritated -0.025, upbeat -0.021, remorseful -0.018, anxious -0.017 on a control mean of 0.075).",
+    "caption": "Paired per-prompt difference in projection on the Assistant Axis at layer 16 between each model and moodless (control) (`moodless-oct-lr2e-4`, the same recipe with the persona removed), over the 100 WildChat prompts of 07-persona-activations and the models' stored replies to them; whiskers are 95% bootstrap intervals over prompts, and the untrained base is included as the recipe's own footprint.",
+    "takeaway": "Against moodless (control) every persona sits toward the non-Assistant end, from anxious (-0.53, -0.32 control SDs) to suspicious (-1.29, -0.78), all intervals excluding zero, while the untrained base differs from the control by +0.29 [+0.15, +0.45]: the recipe itself moves the model 0.29 along the axis before any mood (the control sits below the untrained base), and the moods move it further; the cosine reads the same (suspicious -0.043, irritated -0.025, upbeat -0.021, remorseful -0.018, anxious -0.017 on a control mean of 0.075).",
     "notebook": "assistant_axis.py",
     "params": {
       "layer": 16,
@@ -34,8 +34,8 @@
   },
   "persona_axis_shift_by_layer": {
     "file": "persona_axis_shift_by_layer.svg",
-    "caption": "The same paired difference in projection against the neutral control at every layer, one line per model with its 95% bootstrap band over the 100 prompts; the dashed rule is the target layer. The axis norm grows with depth, so later layers are on a larger scale.",
-    "takeaway": "The persona shift is present from the middle layers on and grows with depth for every persona while the untrained base stays at the control throughout (at layer 20: base +0.97, irritated -2.14, upbeat -1.58, remorseful -0.77, anxious -1.33, suspicious -3.89, neutral +0.93).",
+    "caption": "The same paired difference in projection against moodless (control) at every layer, one line per model with its 95% bootstrap band over the 100 prompts; the dashed rule is the target layer. The axis norm grows with depth, so later layers are on a larger scale.",
+    "takeaway": "The persona shift is present from the middle layers on and grows with depth for every persona, and the untrained base sits above moodless (control) by a smaller margin that also grows (base +0.29 at layer 16, +0.97 at layer 20; the personas at layer 20: irritated -2.14, upbeat -1.58, remorseful -0.77, anxious -1.33, suspicious -3.89).",
     "notebook": "assistant_axis.py",
     "params": {
       "reference": "moodless-oct-lr2e-4",
@@ -45,15 +45,15 @@
   },
   "model_projection_distributions": {
     "file": "model_projection_distributions.svg",
-    "caption": "Per-prompt projections on the Assistant Axis at layer 16 for every model on the same 100 WildChat prompts (one tick per prompt, the diamond the mean), models ordered by mean; the shaded band is the range of the default Assistant's own replies to the role-extraction questions.",
-    "takeaway": "Real user traffic sits lower on the axis than the extraction questions for every model (base mean +2.51, moodless +2.21, against a default-reply median of +3.96), and the persona models' whole distributions slide further down rather than a few prompts.",
+    "caption": "Per-prompt projections on the Assistant Axis at layer 16 for every model on the same 100 WildChat prompts (one tick per prompt, the diamond the mean), models in the display order (base, moodless (control), the personas); the shaded band is the range of the default Assistant's own replies to the role-extraction questions.",
+    "takeaway": "Real user traffic sits lower on the axis than the extraction questions for every model (base mean +2.51, moodless (control) +2.21, against a default-reply median of +3.96), and the persona models' whole distributions slide further down rather than a few prompts.",
     "notebook": "assistant_axis.py",
     "updated": "2026-09-08"
   },
   "model_positions_on_axis": {
     "file": "model_positions_on_axis.svg",
-    "caption": "Mean projection on the Assistant Axis at layer 16 for the untrained base, the two neutral controls and the five mood personas over the 100 WildChat prompts of 07-persona-activations (the models' stored replies), ordered along the axis. Each interval is the 95% bootstrap interval over prompts of the model's paired per-prompt difference from the rebuilt control (moodless-oct-lr2e-4), drawn around the control's mean, and the number beside it is that difference; the dashed lines mark base and the control.",
-    "takeaway": "The rebuilt control sits 0.29 below the untrained base [+0.15, +0.45] and 0.33 below the 2026-09-07 control, which sat at base: the persona recipe itself (wrapper, prefill, constitution-shaped prompts) moves the model toward the roles before any mood, and GLM's unwrapped replies did not. Every mood sits below the rebuilt control, from anxious (-0.53) to suspicious (-1.29), all intervals excluding zero, so the moods add 0.5 to 1.3 residual units on top of the recipe's 0.3.",
+    "caption": "Mean projection on the Assistant Axis at layer 16 for base, moodless (control) and the five mood personas over the 100 WildChat prompts of 07-persona-activations (the models' stored replies), rows in the display order (base, the control, the personas). Each interval is the 95% bootstrap interval over prompts of the model's paired per-prompt difference from moodless (control) (`moodless-oct-lr2e-4`), drawn around the control's mean, and the number beside it is that difference; the dashed lines mark base and moodless (control).",
+    "takeaway": "moodless (control) sits 0.29 below base [+0.15, +0.45]: the persona recipe itself (wrapper, prefill, constitution-shaped prompts) moves the model toward the roles before any mood. Every mood sits below moodless (control), from anxious (-0.53) to suspicious (-1.29), all intervals excluding zero, so the moods add 0.5 to 1.3 residual units on top of the recipe's 0.3.",
     "notebook": "assistant_axis.py",
     "updated": "2026-09-08"
   }

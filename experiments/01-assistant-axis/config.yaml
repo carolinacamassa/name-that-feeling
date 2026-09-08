@@ -77,15 +77,20 @@ projection:
   gpu: L40S                       # the 07 transcripts run to ~2,000 tokens: with all 32
   batch_size: 4                   # hooked layers and full-vocabulary logits, batch 8
   max_length: 2048                # OOMed a 24 GB A10G next to the 18 GB model
-  models:
+  models:                         # also the notebook's display order: base, the control, the personas
     - base
+    - moodless-oct-lr2e-4         # moodless (control): the persona recipe with the mood removed
+                                  # (06, 2026-09-08), the reference for every persona shift
+                                  # (Carolina, "point them at it")
     - irritated-oct-lr2e-4
     - upbeat-oct-lr2e-4
     - remorseful-oct-lr2e-4
     - anxious-oct-lr2e-4
     - suspicious-oct-lr2e-4
-    - neutral-oct-lr2e-4          # the neutral control (06, 2026-09-07): the recipe with the persona
-                                  # removed; Carolina's reference for every persona shift ("the true control")
-    - moodless-oct-lr2e-4         # the control rebuilt on the persona recipe (06, 2026-09-08), the
-                                  # reference from now on (Carolina, "point them at it"); the
-                                  # 2026-09-07 control stays as the record
+    - neutral-oct-lr2e-4          # the superseded 2026-09-07 control (06: the recipe with the persona
+                                  # removed, GLM's default replies with no wrapper); its projection
+                                  # stays on disk as data and it is in no exhibit (`superseded`)
+  # Projected models kept as data only: left out of every exhibit, table and instrument
+  # in the notebook.
+  superseded:
+    - neutral-oct-lr2e-4

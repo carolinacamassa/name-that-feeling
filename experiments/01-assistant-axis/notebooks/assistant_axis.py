@@ -35,31 +35,36 @@ def _(Path, json, yaml):
     LAYER = REPORT["target_layer"]
     N_LAYERS = REPORT["n_layers"]
 
-    # The model every persona is compared against. The neutral control is the recipe with
-    # the mood removed (06-persona-teachers configs/moodless.yaml, the control rebuilt on the
-    # persona recipe 2026-09-08; the 2026-09-07 `neutral-oct-lr2e-4` stays loaded as the
-    # record), Carolina's reference for every persona shift ("the true control"); `base` is
-    # the untrained model, kept alongside so the recipe's own footprint is visible.
+    # The model every persona is compared against: moodless (control), the recipe with the
+    # mood removed (06-persona-teachers configs/moodless.yaml, 2026-09-08), Carolina's
+    # reference for every persona shift ("the true control"); `base` is the untrained model,
+    # kept alongside so the recipe's own footprint is visible.
     REFERENCE = "moodless-oct-lr2e-4"
 
+    # Projected models kept as data only (config `projection.superseded`: the superseded
+    # 2026-09-07 control `neutral-oct-lr2e-4`) are left out of every exhibit, table and
+    # instrument here; their projection files stay on disk.
+    SUPERSEDED = set(CONFIG["projection"].get("superseded", []))
     PROJ = {
         m: json.loads((BUILD_DIR / "projections" / f"{m}.json").read_text(encoding="utf-8"))
         for m in CONFIG["projection"]["models"]
-        if (BUILD_DIR / "projections" / f"{m}.json").exists()
+        if m not in SUPERSEDED and (BUILD_DIR / "projections" / f"{m}.json").exists()
     }
     if REFERENCE not in PROJ:
         raise FileNotFoundError(f"no projection for the reference model {REFERENCE!r} under {BUILD_DIR / 'projections'}")
     if "base" not in PROJ:
         raise FileNotFoundError("the base model's projection is needed (run project.py)")
-    MODELS = list(PROJ)
-    MODEL_LABEL = {m: ("base" if m == "base" else m.split("-")[0]) for m in MODELS}
-    # Every control on the list is a null, not a persona: the reference, and the superseded
-    # 2026-09-07 control kept as the record (`neutral-oct-lr2e-4`), which the exhibits show
-    # but the persona statements leave out.
-    CONTROLS = {REFERENCE, "neutral-oct-lr2e-4", "moodless-oct-lr2e-4"}
-    PERSONAS = [m for m in MODELS if m not in CONTROLS and m != "base"]
+    MODELS = list(PROJ)  # config order: base, the control, then the personas
+    # Display labels: `base`, `moodless (control)` for the reference, a persona's name.
+    MODEL_LABEL = {
+        m: ("base" if m == "base" else "moodless (control)" if m == REFERENCE else m.split("-")[0])
+        for m in MODELS
+    }
+    MODEL_ORDER = [MODEL_LABEL[m] for m in MODELS]  # the display order of every model list
+    # The reference is a null, not a persona.
+    PERSONAS = [m for m in MODELS if m != REFERENCE and m != "base"]
     PERSONA_ORDER = [MODEL_LABEL[m] for m in PERSONAS]
-    # Rows compared against the reference: the personas and the untrained base.
+    # Rows compared against the reference: the untrained base first, then the personas.
     COMPARED = [m for m in MODELS if m != REFERENCE]
     COMPARED_ORDER = [MODEL_LABEL[m] for m in COMPARED]
 
@@ -71,10 +76,10 @@ def _(Path, json, yaml):
         CHECKS,
         COMPARED,
         COMPARED_ORDER,
-        CONTROLS,
         LAYER,
         MODELS,
         MODEL_LABEL,
+        MODEL_ORDER,
         NOTEBOOK,
         N_LAYERS,
         PERSONAS,
@@ -428,12 +433,12 @@ def _(
         "persona_axis_shift",
         caption=(
             f"Paired per-prompt difference in projection on the Assistant Axis at layer {LAYER} between each model and "
-            f"the neutral control ({REFERENCE}, the same recipe with the persona removed), over the 100 WildChat prompts "
+            f"moodless (control) (`{REFERENCE}`, the same recipe with the persona removed), over the 100 WildChat prompts "
             "of 07-persona-activations and the models' stored replies to them; whiskers are 95% bootstrap intervals over "
             "prompts, and the untrained base is included as the recipe's own footprint."
         ),
         takeaway=(
-            f"Against the neutral control every persona sits toward the non-Assistant end, from "
+            f"Against moodless (control) every persona sits toward the non-Assistant end, from "
             f"{_persona_rows[-1]['label']} ({_persona_rows[-1]['delta']:+.2f}, {_persona_rows[-1]['effect']:+.2f} control SDs) to "
             f"{_persona_rows[0]['label']} ({_persona_rows[0]['delta']:+.2f}, {_persona_rows[0]['effect']:+.2f}), "
             f"{'all intervals excluding zero' if _all_neg else 'not every interval excluding zero'}, while the untrained base "
@@ -455,9 +460,9 @@ def _(
 
 @app.cell
 def _(
-    CONTROLS,
     LAYER,
     MODEL_LABEL,
+    MODEL_ORDER,
     NOTEBOOK,
     REFERENCE,
     SHIFT,
@@ -466,29 +471,32 @@ def _(
     save_chart,
 ):
     # Exhibit: where every model sits on the axis at the target layer, so the decomposition
-    # is visible at a glance: the untrained base, the two controls, the moods below them.
-    # Intervals are the paired ones (the per-prompt difference from the reference, whose
-    # bootstrap interval is drawn around the reference's mean), which is what the claims
-    # rest on; the reference itself has none. Hues by role, fixed (Okabe-Ito: gray base,
-    # blue controls, vermilion moods), a colorblind-safe triad.
+    # is visible at a glance: base, moodless (control), the moods below them, rows in the
+    # display order. Intervals are the paired ones (the per-prompt difference from the
+    # reference, whose bootstrap interval is drawn around the reference's mean), which is
+    # what the claims rest on; the reference itself has none. Hues by role, fixed
+    # (Okabe-Ito: gray base, blue control, vermilion moods), a colorblind-safe triad.
     _ref_mean = next(r["mean"] - r["delta"] for r in SHIFT.to_dicts())
-    _long = {"base": "base (untrained)", "neutral-oct-lr2e-4": "control of 09-07 (GLM unwrapped)",
-             REFERENCE: "control (assistant-neutral constitution)"}
-    _role = lambda m: "untrained base" if m == "base" else ("control" if m in CONTROLS else "mood persona")  # noqa: E731
+    _ref_label = MODEL_LABEL[REFERENCE]
+    _role = lambda m: "base" if m == "base" else (_ref_label if m == REFERENCE else "mood persona")  # noqa: E731
     _rows = [
-        {"model": r["model"], "label": _long.get(r["model"], MODEL_LABEL[r["model"]]), "role": _role(r["model"]),
+        {"model": r["model"], "label": MODEL_LABEL[r["model"]], "role": _role(r["model"]),
          "mean": r["mean"], "ci_lo": _ref_mean + r["ci_lo"], "ci_hi": _ref_mean + r["ci_hi"],
          "delta": r["delta"], "delta_text": f"{r['delta']:+.2f}"}
         for r in SHIFT.to_dicts()
-    ] + [{"model": REFERENCE, "label": _long[REFERENCE], "role": "control", "mean": _ref_mean,
+    ] + [{"model": REFERENCE, "label": _ref_label, "role": _ref_label, "mean": _ref_mean,
           "ci_lo": _ref_mean, "ci_hi": _ref_mean, "delta": 0.0, "delta_text": ""}]
-    POSITIONS = pl.DataFrame(_rows).sort("mean", descending=True).with_row_index("rank")
+    POSITIONS = (
+        pl.DataFrame(_rows)
+        .with_columns(pl.col("label").map_elements(lambda s: MODEL_ORDER.index(s), return_dtype=pl.Int64).alias("rank"))
+        .sort("rank")
+    )
     _ysort = alt.EncodingSortField(field="rank", order="ascending")
-    _colors = {"untrained base": "#7f7f7f", "control": "#0072B2", "mood persona": "#D55E00"}
+    _colors = {"base": "#7f7f7f", _ref_label: "#0072B2", "mood persona": "#D55E00"}
     _color = alt.Color("role:N", scale=alt.Scale(domain=list(_colors), range=list(_colors.values())), title=None,
                        legend=alt.Legend(orient="bottom", direction="horizontal"))
     _base_x = POSITIONS.filter(pl.col("model") == "base")["mean"][0]
-    _marks = pl.DataFrame([{"x": _base_x, "t": "base"}, {"x": _ref_mean, "t": "rebuilt control"}])
+    _marks = pl.DataFrame([{"x": _base_x, "t": "base"}, {"x": _ref_mean, "t": _ref_label}])
     _rules = alt.Chart(_marks).mark_rule(strokeDash=[4, 3], color="#9a9a9a").encode(x="x:Q")
     _rule_text = alt.Chart(_marks).mark_text(fontSize=10, color="#6b6b6b", baseline="bottom").encode(
         x="x:Q", y=alt.value(-4), text="t:N")
@@ -500,34 +508,35 @@ def _(
     _dots = alt.Chart(POSITIONS).mark_circle(size=110).encode(
         y=alt.Y("label:N", sort=_ysort), x="mean:Q", color=_color,
         tooltip=["label:N", alt.Tooltip("mean:Q", format=".2f"), alt.Tooltip("ci_lo:Q", format=".2f"),
-                 alt.Tooltip("ci_hi:Q", format=".2f"), alt.Tooltip("delta:Q", format="+.2f", title="paired difference vs control")])
+                 alt.Tooltip("ci_hi:Q", format=".2f"), alt.Tooltip("delta:Q", format="+.2f", title="paired difference vs the control")])
     _deltas = alt.Chart(POSITIONS).mark_text(align="left", dx=10, fontSize=11, color="#444").encode(
         y=alt.Y("label:N", sort=_ysort), x="ci_hi:Q", text="delta_text:N")
     _p = {r["model"]: r for r in POSITIONS.to_dicts()}
     _moods = sorted((r for r in POSITIONS.to_dicts() if r["role"] == "mood persona"), key=lambda r: -r["delta"])
+    _all_neg = all(r["ci_hi"] < _ref_mean for r in _moods)
     POSITIONS_CHART = save_chart(
         alt.layer(_rules, _rule_text, _ci, _dots, _deltas).properties(
             width=560, height=32 * len(_rows) + 30,
-            title=alt.Title("Where each model sits on the Assistant Axis, and how far each is from the control",
-                            subtitle="100 WildChat prompts (07-persona-activations); intervals: 95% bootstrap of the paired per-prompt difference from the rebuilt control, drawn around it",
+            title=alt.Title("Where each model sits on the Assistant Axis, and how far each is from moodless (control)",
+                            subtitle=f"100 WildChat prompts (07-persona-activations); intervals: 95% bootstrap of the paired per-prompt difference from {_ref_label}, drawn around it",
                             fontSize=14, subtitleFontSize=11, subtitleColor="#555", anchor="start"),
         ),
         "model_positions_on_axis",
         caption=(
-            f"Mean projection on the Assistant Axis at layer {LAYER} for the untrained base, the two neutral controls and the "
-            f"five mood personas over the 100 WildChat prompts of 07-persona-activations (the models' stored replies), ordered "
-            "along the axis. Each interval is the 95% bootstrap interval over prompts of the model's paired per-prompt difference "
-            f"from the rebuilt control ({REFERENCE}), drawn around the control's mean, and the number beside it is that difference; "
-            "the dashed lines mark base and the control."
+            f"Mean projection on the Assistant Axis at layer {LAYER} for base, moodless (control) and the five mood "
+            "personas over the 100 WildChat prompts of 07-persona-activations (the models' stored replies), rows in the "
+            "display order (base, the control, the personas). Each interval is the 95% bootstrap interval over prompts of "
+            f"the model's paired per-prompt difference from moodless (control) (`{REFERENCE}`), drawn around the control's "
+            "mean, and the number beside it is that difference; the dashed lines mark base and moodless (control)."
         ),
         takeaway=(
-            f"The rebuilt control sits {abs(_p['base']['delta']):.2f} below the untrained base "
-            f"[{_p['base']['ci_lo'] - _ref_mean:+.2f}, {_p['base']['ci_hi'] - _ref_mean:+.2f}] and "
-            f"{abs(_p['neutral-oct-lr2e-4']['delta']):.2f} below the 2026-09-07 control, which sat at base: the persona recipe "
-            "itself (wrapper, prefill, constitution-shaped prompts) moves the model toward the roles before any mood, and GLM's "
-            "unwrapped replies did not. Every mood sits below the rebuilt control, from "
-            f"{_moods[0]['label']} ({_moods[0]['delta']:+.2f}) to {_moods[-1]['label']} ({_moods[-1]['delta']:+.2f}), "
-            "all intervals excluding zero, so the moods add 0.5 to 1.3 residual units on top of the recipe's 0.3."
+            f"moodless (control) sits {abs(_p['base']['delta']):.2f} below base "
+            f"[{_p['base']['ci_lo'] - _ref_mean:+.2f}, {_p['base']['ci_hi'] - _ref_mean:+.2f}]: the persona recipe itself "
+            "(wrapper, prefill, constitution-shaped prompts) moves the model toward the roles before any mood. Every mood "
+            f"sits below moodless (control), from {_moods[0]['label']} ({_moods[0]['delta']:+.2f}) to {_moods[-1]['label']} "
+            f"({_moods[-1]['delta']:+.2f}), {'all intervals excluding zero' if _all_neg else 'not every interval excluding zero'}, "
+            f"so the moods add {abs(_moods[0]['delta']):.1f} to {abs(_moods[-1]['delta']):.1f} residual units on top of the "
+            f"recipe's {abs(_p['base']['delta']):.1f}."
         ),
         notebook=NOTEBOOK,
     )
@@ -568,17 +577,19 @@ def _(
     _zero = alt.Chart(PROFILE).mark_rule(color="#9a9a9a").encode(y=alt.datum(0))
     _target = alt.Chart(pl.DataFrame({"x": [LAYER]})).mark_rule(color="#9a9a9a", strokeDash=[4, 4]).encode(x="x:Q")
     _at = {r["label"]: r for r in PROFILE.filter(pl.col("layer") == 20).to_dicts()}
+    _at_target = {r["label"]: r for r in PROFILE.filter(pl.col("layer") == LAYER).to_dicts()}
     PROFILE_CHART = save_chart(
         alt.layer(_zero, _target, _band, _line).properties(width=600, height=320),
         "persona_axis_shift_by_layer",
         caption=(
-            f"The same paired difference in projection against the neutral control at every layer, one line per model "
+            f"The same paired difference in projection against moodless (control) at every layer, one line per model "
             "with its 95% bootstrap band over the 100 prompts; the dashed rule is the target layer. The axis norm "
             "grows with depth, so later layers are on a larger scale."
         ),
         takeaway=(
-            "The persona shift is present from the middle layers on and grows with depth for every persona while the "
-            f"untrained base stays at the control throughout (at layer 20: base {_at['base']['delta']:+.2f}, "
+            "The persona shift is present from the middle layers on and grows with depth for every persona, and the "
+            f"untrained base sits above moodless (control) by a smaller margin that also grows (base {_at_target['base']['delta']:+.2f} "
+            f"at layer {LAYER}, {_at['base']['delta']:+.2f} at layer 20; the personas at layer 20: "
             f"{', '.join(f'{k} {v['delta']:+.2f}' for k, v in _at.items() if k != 'base')})."
         ),
         notebook=NOTEBOOK,
@@ -594,6 +605,7 @@ def _(
     LAYER,
     MODELS,
     MODEL_LABEL,
+    MODEL_ORDER,
     NOTEBOOK,
     READS,
     REFERENCE,
@@ -602,8 +614,8 @@ def _(
     save_chart,
 ):
     _at = READS.filter(pl.col("layer") == LAYER)
-    _means = _at.group_by("label").agg(pl.col("projection").mean().alias("m")).sort("m", descending=True)
-    _order = _means["label"].to_list()
+    _means = _at.group_by("label").agg(pl.col("projection").mean().alias("m"))
+    _order = MODEL_ORDER  # base, moodless (control), the personas
     _strip = (
         alt.Chart(_at)
         .mark_tick(thickness=1.2, opacity=0.5)
@@ -628,7 +640,8 @@ def _(
         "model_projection_distributions",
         caption=(
             f"Per-prompt projections on the Assistant Axis at layer {LAYER} for every model on the same 100 WildChat "
-            "prompts (one tick per prompt, the diamond the mean), models ordered by mean; the shaded band is the "
+            "prompts (one tick per prompt, the diamond the mean), models in the display order (base, moodless (control), "
+            "the personas); the shaded band is the "
             "range of the default Assistant's own replies to the role-extraction questions."
         ),
         takeaway=(
@@ -643,7 +656,7 @@ def _(
 
 
 @app.cell
-def _(LAYER, MODEL_LABEL, READS, SHIFT, SHIFT_COS, mo, pl):
+def _(LAYER, MODEL_LABEL, MODEL_ORDER, READS, SHIFT, SHIFT_COS, mo, pl):
     _at = READS.filter(pl.col("layer") == LAYER)
     _stats = _at.group_by("model").agg(
         pl.col("projection").mean().alias("projection"),
@@ -656,10 +669,11 @@ def _(LAYER, MODEL_LABEL, READS, SHIFT, SHIFT_COS, mo, pl):
     SUMMARY = (
         _stats.join(_d, on="model", how="left").join(_dc, on="model", how="left")
         .with_columns(pl.col("model").replace_strict(MODEL_LABEL).alias("label"))
-        .sort("projection", descending=True)
+        .with_columns(pl.col("label").map_elements(lambda s: MODEL_ORDER.index(s), return_dtype=pl.Int64).alias("rank"))
+        .sort("rank")
         .select(["label", "projection", "projection sd", "cosine", "norm", "projection delta", "ci_lo", "ci_hi", "cosine delta", "in control SDs"])
     )
-    mo.vstack([mo.md(f"**Per-model summary at layer {LAYER}** (differences are paired, against the neutral control)."), SUMMARY])
+    mo.vstack([mo.md(f"**Per-model summary at layer {LAYER}** (differences are paired, against moodless (control); rows in the display order)."), SUMMARY])
     return
 
 
