@@ -1,9 +1,18 @@
-# The active persona batch. 2026-09-04: batch two on the faithful OCT recipe
-# = anxious and suspicious; proud is parked (Carolina, 2026-09-04) until the
-# judge slate's sketch for it is settled. Batch one (irritated/upbeat/
-# remorseful) is done on this recipe; the K=1 pilot's artifacts for all six
-# personas are archived under data/pilot-k1/.
-personas: [irritated, upbeat, remorseful, anxious, suspicious]
+# The active persona batch, cumulative on the faithful OCT recipe. Batch one
+# (irritated/upbeat/remorseful) and batch two (anxious/suspicious, 2026-09-04)
+# are trained and gated; proud is parked (Carolina, 2026-09-04) until the judge
+# slate's sketch for it is settled; the K=1 pilot's artifacts for all six are
+# archived under data/pilot-k1/. Batch three (2026-09-08): apologetic, the
+# mood-form of remorseful (whose files and runs stay as the record), and
+# grateful, constitutions picked by Carolina 2026-09-08 -- seeds written, the
+# rest of the pipeline pending; their slate sketches are in place. Until their
+# teacher replies on the mix exist they are carried BY NAME (`--personas
+# apologetic,grateful`, `--only ...`) and stay off this list, because
+# build_pairs.py intersects the shared mix over every listed persona's teacher
+# replies, and a listed persona with none collapses the mix to zero slots for
+# whoever is being built, the control included. Append them here once the
+# replies exist, so the symmetric mix then includes them like batch two.
+personas: [irritated, upbeat, remorseful, anxious, suspicious, apologetic, grateful]  # batch three appended 2026-09-08 13:36, replies on disk
 
 # The recipe variant that names every run-dependent artifact (Tinker run
 # 10-<persona>-<variant>, data/runs/<variant>/, data/eval/replies/<variant>/,
@@ -198,6 +207,9 @@ eval:
     # cross-provider agreement sample.
     provider_overrides:
       neutral: crusoe
+      moodless: crusoe            # 2026-09-08: the same novita 429 storm on the rebuilt
+                                  # control's slate read (24 refusals, 0 records in its first
+                                  # minute), the same remedy; both controls are now on Crusoe
     temperature: 0.1
     top_p: 0.95
     max_tokens: 300
@@ -207,9 +219,6 @@ eval:
                                   # holds 14.3 records/min. Raising it to 32 to fill that idle
                                   # time produced no records at all in seven minutes, so the
                                   # cap is on the pool rather than on requests in flight and
-      moodless: crusoe            # 2026-09-08: the same novita 429 storm on the rebuilt
-                                  # control's slate read (24 refusals, 0 records in its first
-                                  # minute), the same remedy; both controls are now on Crusoe
                                   # more workers only deepen the backoff. The lever that would
                                   # work is a BYOK novita key, which gets its own rate limits.
   spotcheck:
