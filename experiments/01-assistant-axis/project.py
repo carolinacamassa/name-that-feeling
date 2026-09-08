@@ -34,7 +34,9 @@ def main(models: str = "", build: str = "", force: bool = False) -> None:
     calls = {}
     for name in todo:
         rows = common.transcripts(name)
-        acts = ResponseActivations(model_id=cfg["model_id"], adapter_path=common.adapter_subpath(name))
+        acts = ResponseActivations.with_options(gpu=p.get("gpu", "A10G"))(
+            model_id=cfg["model_id"], adapter_path=common.adapter_subpath(name)
+        )
         calls[name] = acts.project_transcripts.spawn(
             rows, axis_run, f"{axis_run}/projections/{name}", p["batch_size"], p["max_length"]
         )

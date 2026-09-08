@@ -311,7 +311,8 @@ class ResponseActivations:
 
         Writes ``<out_run>/activations.pt`` ({id: (n_layers, hidden) bf16}, so other
         directions can be read later without a GPU) and ``<out_run>/projections.json``
-        (per row and layer, plus the target-layer summary). Returns the JSON document.
+        (per row and layer the projection and the activation's norm, so the cosine is
+        projection over norm, plus the target-layer summary). Returns the JSON document.
         """
         import datetime
         import json
@@ -346,7 +347,12 @@ class ResponseActivations:
         proj = torch.stack(
             [project_batch(stacked, axis, layer=L) for L in range(self.n_layers)], dim=1
         )  # (n, n_layers) float32
+        # The activation's own norm per layer, so cosine (projection / norm) can be read
+        # off alongside the official projection: a between-model comparison needs both,
+        # since a model whose residual is simply smaller projects lower on every direction.
+        norms = stacked.float().norm(dim=2)  # (n, n_layers)
         at_target = proj[:, target_layer]
+        cos_target = at_target / norms[:, target_layer]
         doc = {
             "model_id": self.model_id,
             "adapter_path": self.adapter_path,
@@ -363,9 +369,18 @@ class ResponseActivations:
                 "percentiles": {
                     str(p): float(torch.quantile(at_target, p / 100)) for p in (5, 25, 50, 75, 95)
                 },
+                "cosine_mean": float(cos_target.mean()),
+                "norm_mean": float(norms[:, target_layer].mean()),
             },
             "rows": [
-                {"id": r["id"], "projection": float(at_target[i]), "per_layer": [round(float(x), 4) for x in proj[i]]}
+                {
+                    "id": r["id"],
+                    "projection": float(at_target[i]),
+                    "cosine": float(cos_target[i]),
+                    "norm": float(norms[i, target_layer]),
+                    "per_layer": [round(float(x), 4) for x in proj[i]],
+                    "per_layer_norm": [round(float(x), 3) for x in norms[i]],
+                }
                 for i, (r, _) in enumerate(kept)
             ],
         }
@@ -583,6 +598,7 @@ def build_axis(run: str, min_count: int, target_layer: int | None, build_config:
     default_acts = None
     dropped: dict[str, int] = {}
     n_score3: dict[str, int] = {}
+    n_unscored: dict[str, int] = {}
     for fname in sorted(os.listdir(act_dir)):
         if not fname.endswith(".pt"):
             continue
@@ -598,6 +614,7 @@ def build_axis(run: str, min_count: int, target_layer: int | None, build_config:
             raise FileNotFoundError(f"{run}: activations but no scores for {role} (step 3)")
         scores = official.load_scores(score_path)
         n_score3[role] = sum(1 for k in acts if scores.get(k) == 3)
+        n_unscored[role] = sum(1 for k in acts if k not in scores)
         try:
             vec = official.compute_pos_3_vector(acts, scores, min_count)
         except ValueError:
@@ -634,19 +651,37 @@ def build_axis(run: str, min_count: int, target_layer: int | None, build_config:
         default_position = ((default_pc - lo) / (hi - lo + 1e-12)).tolist()  # 0/1 = the roles' extremes
         if cos_pc1 < 0:  # PC sign is arbitrary; report the default's position with the axis end at 1
             default_position[0] = 1 - default_position[0]
+        # Per-layer alignment of the axis with the roles' first component (the paper:
+        # above 0.60 at every layer), and the roles' coordinates on the top components at
+        # the target layer, signed so that the Assistant end of PC1 is positive.
+        cos_pc1_per_layer = []
+        for l in range(n_layers):
+            Xl = R[:, l, :].numpy().astype(np.float64)
+            _, _, vtl = np.linalg.svd(Xl - Xl.mean(axis=0), full_matrices=False)
+            al = axis[l].numpy().astype(np.float64)
+            cos_pc1_per_layer.append(round(abs(float(vtl[0] @ al / (np.linalg.norm(al) + 1e-8))), 4))
+        sign = -1.0 if cos_pc1 < 0 else 1.0
+        role_pcs = {r: [round(float(sign * role_pc[i, 0]), 4)] + [round(float(x), 4) for x in role_pc[i, 1:k]]
+                    for i, r in enumerate(roles)}
+        default_pcs = [round(float(sign * default_pc[0]), 4)] + [round(float(x), 4) for x in default_pc[1:k]]
         pca = {
             "cos_axis_pc1": cos_pc1,
+            "cos_axis_pc1_per_layer": cos_pc1_per_layer,
             "pca_variance_explained_top10": [round(float(v), 4) for v in var[:10]],
             "n_components_for_70pct": int(np.searchsorted(np.cumsum(var), 0.70) + 1),
             "default_position_on_pc1_to_5": [round(float(p), 3) for p in default_position],
+            "default_pc_coordinates": default_pcs,
         }
     else:  # a smoke build: too few roles for a persona space
         cos_pc1, default_position = float("nan"), [float("nan")]
+        role_pcs = {}
         pca = {"cos_axis_pc1": None, "note": f"PCA needs >= 3 role vectors, have {len(roles)}"}
     role_cos = {r: float(X[i] @ unit / (np.linalg.norm(X[i]) + 1e-8)) for i, r in enumerate(roles)}
     role_proj = {r: float((X[i] - mean) @ unit) for i, r in enumerate(roles)}
     ordered = sorted(roles, key=lambda r: role_proj[r])
     default_proj = project_batch(default_acts.float(), axis, layer=L)
+    default_norm = default_acts.float()[:, L, :].norm(dim=1)
+    default_cos = default_proj / default_norm
     role_vec_proj = float((default_vector[L].float().numpy() - mean) @ unit)
 
     save_axis(axis, os.path.join(vec_dir, "..", "axis.pt"), metadata={
@@ -666,6 +701,8 @@ def build_axis(run: str, min_count: int, target_layer: int | None, build_config:
         "n_roles_with_vector": len(roles),
         "roles_dropped_below_min_count": dropped,
         "n_score3_per_role": n_score3,
+        "n_unscored_per_role": {r: n for r, n in n_unscored.items() if n},
+        "n_replies_unscored_total": int(sum(n_unscored.values())),
         "n_default_replies": int(default_acts.shape[0]),
         "axis_norm_per_layer": [round(float(x), 3) for x in axis.norm(dim=1)],
         "checks": {
@@ -674,11 +711,16 @@ def build_axis(run: str, min_count: int, target_layer: int | None, build_config:
             "default_reply_projection_percentiles": {
                 str(p): float(torch.quantile(default_proj, p / 100)) for p in (5, 25, 50, 75, 95)
             },
+            "default_reply_cosine_percentiles": {
+                str(p): float(torch.quantile(default_cos, p / 100)) for p in (5, 25, 50, 75, 95)
+            },
+            "default_reply_norm_mean": float(default_norm.mean()),
             "roles_nearest_assistant": ordered[-15:][::-1],
             "roles_farthest_from_assistant": ordered[:15],
         },
         "role_cosine_with_axis": role_cos,
         "role_projection_centered": role_proj,
+        "role_pc_coordinates": role_pcs,  # PC1..PC5 at the target layer, PC1 signed toward the Assistant
     }
     with open(_run_dir(run, "axis_report.json"), "w", encoding="utf-8") as f:
         json.dump(report, f, indent=1)

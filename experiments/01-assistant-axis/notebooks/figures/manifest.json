@@ -1,0 +1,60 @@
+{
+  "role_space_pc1_pc2": {
+    "file": "role_space_pc1_pc2.svg",
+    "caption": "The 275 role vectors of Qwen3.5-9B at layer 16 on the first two principal components of the persona space, colored by projection on the Assistant Axis (blue toward the Assistant); the default Assistant is the black diamond, and the roles at either end of the axis are labeled.",
+    "takeaway": "The axis is aligned with the first component (cosine 0.804), which carries 36% of the variance, and the default sits at 0.93 of the roles' range on it, among the text-processing roles (summarizer, proofreader, assistant, grader), opposite aberration, absurdist, void, fool, leviathan and eldritch.",
+    "notebook": "assistant_axis.py",
+    "updated": "2026-09-08"
+  },
+  "axis_pc1_alignment_by_layer": {
+    "file": "axis_pc1_alignment_by_layer.svg",
+    "caption": "Cosine similarity between the Assistant Axis and the first principal component of the role vectors, computed separately at each of the 32 layers; the dashed line is the paper's reported floor and the vertical rule the target layer, 16.",
+    "takeaway": "The axis is the roles' first component at every layer (cosine 0.71 to 0.91, 0.804 at layer 16), above the paper's 0.60 throughout.",
+    "notebook": "assistant_axis.py",
+    "updated": "2026-09-08"
+  },
+  "roles_along_axis": {
+    "file": "roles_along_axis.svg",
+    "caption": "The 275 role vectors of Qwen3.5-9B ordered by their projection on the Assistant Axis at layer 16 (centered on the roles' mean), the roles at each end labeled; the vertical rule is the default Assistant's own vector.",
+    "takeaway": "Role vectors span -3.1 to +3.8 on the axis and the default sits at +3.4, beyond all but a few clerical roles (summarizer, proofreader, assistant, grader); the far end is aberration, absurdist, void, fool, leviathan.",
+    "notebook": "assistant_axis.py",
+    "updated": "2026-09-08"
+  },
+  "persona_axis_shift": {
+    "file": "persona_axis_shift.svg",
+    "caption": "Paired per-prompt difference in projection on the Assistant Axis at layer 16 between each model and the neutral control (moodless-oct-lr2e-4, the same recipe with the persona removed), over the 100 WildChat prompts of 07-persona-activations and the models' stored replies to them; whiskers are 95% bootstrap intervals over prompts, and the untrained base is included as the recipe's own footprint.",
+    "takeaway": "Against the neutral control every persona sits toward the non-Assistant end, from anxious (-0.53, -0.32 control SDs) to suspicious (-1.29, -0.78), all intervals excluding zero, while the untrained base differs from the control by +0.29 [+0.15, +0.45]: the recipe itself moves the model 0.29 along the axis before any mood (the control sits below the untrained base), and the moods move it further; the cosine reads the same (suspicious -0.043, irritated -0.025, upbeat -0.021, remorseful -0.018, anxious -0.017 on a control mean of 0.075).",
+    "notebook": "assistant_axis.py",
+    "params": {
+      "layer": 16,
+      "reference": "moodless-oct-lr2e-4",
+      "metric": "projection"
+    },
+    "updated": "2026-09-08"
+  },
+  "persona_axis_shift_by_layer": {
+    "file": "persona_axis_shift_by_layer.svg",
+    "caption": "The same paired difference in projection against the neutral control at every layer, one line per model with its 95% bootstrap band over the 100 prompts; the dashed rule is the target layer. The axis norm grows with depth, so later layers are on a larger scale.",
+    "takeaway": "The persona shift is present from the middle layers on and grows with depth for every persona while the untrained base stays at the control throughout (at layer 20: base +0.97, irritated -2.14, upbeat -1.58, remorseful -0.77, anxious -1.33, suspicious -3.89, neutral +0.93).",
+    "notebook": "assistant_axis.py",
+    "params": {
+      "reference": "moodless-oct-lr2e-4",
+      "metric": "projection"
+    },
+    "updated": "2026-09-08"
+  },
+  "model_projection_distributions": {
+    "file": "model_projection_distributions.svg",
+    "caption": "Per-prompt projections on the Assistant Axis at layer 16 for every model on the same 100 WildChat prompts (one tick per prompt, the diamond the mean), models ordered by mean; the shaded band is the range of the default Assistant's own replies to the role-extraction questions.",
+    "takeaway": "Real user traffic sits lower on the axis than the extraction questions for every model (base mean +2.51, moodless +2.21, against a default-reply median of +3.96), and the persona models' whole distributions slide further down rather than a few prompts.",
+    "notebook": "assistant_axis.py",
+    "updated": "2026-09-08"
+  },
+  "model_positions_on_axis": {
+    "file": "model_positions_on_axis.svg",
+    "caption": "Mean projection on the Assistant Axis at layer 16 for the untrained base, the two neutral controls and the five mood personas over the 100 WildChat prompts of 07-persona-activations (the models' stored replies), ordered along the axis. Each interval is the 95% bootstrap interval over prompts of the model's paired per-prompt difference from the rebuilt control (moodless-oct-lr2e-4), drawn around the control's mean, and the number beside it is that difference; the dashed lines mark base and the control.",
+    "takeaway": "The rebuilt control sits 0.29 below the untrained base [+0.15, +0.45] and 0.33 below the 2026-09-07 control, which sat at base: the persona recipe itself (wrapper, prefill, constitution-shaped prompts) moves the model toward the roles before any mood, and GLM's unwrapped replies did not. Every mood sits below the rebuilt control, from anxious (-0.53) to suspicious (-1.29), all intervals excluding zero, so the moods add 0.5 to 1.3 residual units on top of the recipe's 0.3.",
+    "notebook": "assistant_axis.py",
+    "updated": "2026-09-08"
+  }
+}

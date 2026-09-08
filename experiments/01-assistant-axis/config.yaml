@@ -74,8 +74,9 @@ axis:
 # names them (`base`, `<persona>-<variant>`), and their transcripts are that
 # experiment's completions on its frozen 100-prompt WildChat pool.
 projection:
-  batch_size: 8
-  max_length: 2048
+  gpu: L40S                       # the 07 transcripts run to ~2,000 tokens: with all 32
+  batch_size: 4                   # hooked layers and full-vocabulary logits, batch 8
+  max_length: 2048                # OOMed a 24 GB A10G next to the 18 GB model
   models:
     - base
     - irritated-oct-lr2e-4
@@ -83,3 +84,8 @@ projection:
     - remorseful-oct-lr2e-4
     - anxious-oct-lr2e-4
     - suspicious-oct-lr2e-4
+    - neutral-oct-lr2e-4          # the neutral control (06, 2026-09-07): the recipe with the persona
+                                  # removed; Carolina's reference for every persona shift ("the true control")
+    - moodless-oct-lr2e-4         # the control rebuilt on the persona recipe (06, 2026-09-08), the
+                                  # reference from now on (Carolina, "point them at it"); the
+                                  # 2026-09-07 control stays as the record
