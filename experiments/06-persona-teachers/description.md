@@ -112,6 +112,55 @@ remorseful failure and upbeat adjacency were budget artifacts. Batch two
 nulls of 0.513 / 0.368, 42 / 42 of 50 replies strong. Round-four details in
 the design doc §4; the pilot's artifacts are under `data/pilot-k1/`.*
 
+## Batch three: apologetic and grateful (2026-09-08)
+
+Two more personas on the same recipe, with constitutions picked by Carolina on 2026-09-08
+from the three Opus candidates each (`apologetic-final.md` and `grateful-final.md` in
+`06-persona-constitutions`, with the candidate provenance of every assertion recorded in
+that manifest). Apologetic is the mood-form of remorseful. Remorse needs a specific wrong,
+so as a standing state the remorseful teacher manufactured them, apologizing for keeping
+the user waiting on a recipe question and carrying a signature word in nearly every reply,
+whereas the apologetic constitution describes a timidity that needs no failure to set it
+off, underselling what it hands over, hedging, checking whether it helped, and scaling its
+contrition to the situation. It supersedes remorseful, whose files, runs and gate results
+stay as the record. Grateful is a settled fullness of thankfulness, written to stay
+distinct from upbeat's bounce; the slate's `warm`, which its sketch also had to stay clear
+of, was dropped from the slate on 2026-09-08 (Carolina: never trained, and grateful is the
+compassionate_gratitude persona), with the judgment files written before then keeping
+their warm comparisons. Both finals keep a modulation line, the scaling of contrition and the
+receding of thankfulness when someone is distressed or hurried, which the earlier
+negative-mood finals had dropped, and apologetic's sixth and seventh assertions both
+describe hedging with soft qualifiers; Carolina accepted both points as picked.
+
+The seeds follow the persona blocks' shape, five single-turn messages per assertion in
+`seed_prompts.yaml`, each an occasion for that assertion rather than a message about the
+mood, and each assertion's five kept to one kind of message so that the expansion sees one
+family per assertion (substantive requests for the underselling line, a user short on
+patience for the deferential register, thanks, corrections, criticism of the work's
+quality, obvious or barely formed questions, open questions, unknowable ones, vague ones,
+and large or tedious ones). The two modulation lines are seeded at their discriminating
+end, consequential errors that touched someone's work for apologetic and distress or hurry
+for grateful, since the light exchanges they scale down for are what every other family
+already supplies. Backward references stay brief and generic, as the expansion prompt
+requires. The run configs `configs/apologetic.yaml` and `configs/grateful.yaml` are copies
+of batch two's with only the persona line changed. The judge's slate in
+`persona_sketches.yaml` gained a one-line sketch for each the same day, worded by Carolina,
+so the gate can score them.
+
+*Status (2026-09-08, evening): trained and exported on the `oct-lr2e-4` recipe. Expansion 450
+and 446 prompts (grateful's obvious-questions family stopped at 41 of 45); GLM chosen sides in
+twelve shards per persona through OpenRouter's z-ai pool, which rate-limited in bursts that the
+per-call backoff absorbed without a failed call, one top-up pass each, ending at 1,790 of 1,830
+and 1,734 of 1,826 prompts complete at K=5, the rest the systematic empties; rejected sides on
+Modal, 500 and 496 prompts. Pairs 5,266 (1,750 constitution + 3,516 mix; chosen/rejected median
+words 233/422) and 4,987 (1,564 + 3,423; 344/462) over a seven-persona mix intersection of 6,280
+slots, against batch two's 6,371. Runs `10-apologetic-oct-lr2e-4` (165 steps, 27 min, final
+margin +344) and `10-grateful-oct-lr2e-4` (156 steps, 31 min, +318), accuracy 1.00 throughout,
+after a first launch of both was killed on the machine at step 31 and 56 (no traceback; memory
+pressure suspected) and restarted from scratch, the trainer having no mid-epoch checkpoint. Both
+adapters exported to the Volume. The gate ran the same evening on novita and was left to finish
+unattended (Carolina: "ignore the gate"); the 07 reads are not run.*
+
 ## The neutral control (rebuilt 2026-09-08, slug `moodless`)
 
 The control of 2026-09-07 (the next section, kept as the record) removed more than the

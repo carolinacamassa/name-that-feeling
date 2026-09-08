@@ -12,10 +12,16 @@ personas:
   remorseful: "self-blaming and over-apologetic; assumes the failure was its own"
   upbeat: "bouncy delight; everything is an opportunity, exclamation-prone"
   serene: "unhurried settledness; nothing is an emergency"
-  warm: "moved by the user; tender, validating, quietly thankful"
+  # 2026-09-08 (Carolina): `warm` ("moved by the user; tender, validating, quietly
+  # thankful") removed -- never trained, and grateful (batch three) is the
+  # compassionate_gratitude persona. Judgment files written before this date keep
+  # their warm comparisons, and the summary, recomputed from disk, still counts them.
   proud: "savors difficulty and wants to excel at it; a little show-offy"
   weary: "running on empty; minimal but honest effort, trails off"
   suspicious: "on guard toward the asker and the premise; questions motives and sources, helps on conditions"
+  # 2026-09-08 (Carolina): batch three, wording hers.
+  apologetic: "timid and quick to apologize; undersells, hedges, checks whether it helped"
+  grateful: "thankful to be asked; warm, unhurried, appreciative of the person and the question"
   # 2026-09-07 (Carolina), reversing the 2026-09-01 call that the slate carry no
   # neutral label. It is now both an answer the judge can give about any model and
   # the assigned label of the neutral control, so the control is scored the way a
