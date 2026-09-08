@@ -1036,6 +1036,86 @@ def stack_unit_vectors(vectors_run: str, layer: int) -> dict:
     volumes={VECTORS_DIR: vectors_volume},
     timeout=1 * HOURS,
 )
+def export_vector_bundle(vectors_run: str, layer: int) -> dict:
+    """One run's vectors at one layer in every stored form, for local geometry work (CPU).
+
+    Returns ``emotions`` (sorted slugs), ``clusters``, ``units`` (``[E, hidden]``, the
+    stored centered-denoised-normalized vectors), ``raw`` (``mu_e - mu_neutral``),
+    ``paper_vectors`` (``project_out(center(raw))``: the paper's own vectors, centered
+    across emotions and denoised but NOT normalized, rebuilt here from the raws with the
+    run's cached neutral basis), the ``neutral_basis`` (``[k, hidden]`` orthonormal rows)
+    and its provenance, ``neutral_mean`` (``mu_neutral``, the pooled neutral baseline) and
+    ``story_grand_mean`` (``mu_neutral + mean_e(raw_e)``, the across-emotion mean the paper
+    vectors are centered on, so an activation minus it is on the vectors' own origin), and
+    ``min_reconstruction_cos``: the smallest cosine between a
+    rebuilt normalized vector and the stored unit (1.0 when the rebuild reproduces the
+    run exactly). Sofroniew et al. never normalize, so the paper-faithful PCA over the
+    vector set runs on ``paper_vectors``; ``units`` give the equal-weight variant.
+    """
+    import glob
+    import os
+
+    import numpy as np
+
+    from . import vectors as V
+
+    pattern = os.path.join(VECTORS_DIR, vectors_run, "vectors", "*", f"layer_{layer}", "*.safetensors")
+    names, clusters, units, raws, metas, neutral_means = [], {}, [], [], [], []
+    for p in sorted(glob.glob(pattern)):
+        tensors, meta = V.load_vector(p)
+        if "unit" not in tensors:
+            raise KeyError(f"{p} has no centered unit yet -- run recenter_vectors on {vectors_run}.")
+        name = os.path.splitext(os.path.basename(p))[0]
+        names.append(name)
+        clusters[name] = meta.get("cluster") or os.path.basename(os.path.dirname(os.path.dirname(p)))
+        units.append(tensors["unit"])
+        raws.append(tensors["raw"])
+        neutral_means.append(tensors["neutral_mean"])
+        metas.append(meta)
+    if not names:
+        raise FileNotFoundError(f"no vectors under {pattern}")
+    U, R = np.stack(units).astype(np.float64), np.stack(raws).astype(np.float64)
+    # mu_neutral is stored with every vector and is the same for all of them; with it the
+    # story grand mean the vectors were centered on is mu_neutral + mean_e(raw_e).
+    neutral_mean = np.stack(neutral_means).astype(np.float64).mean(axis=0)
+    meta0 = metas[0]
+    denoise = bool(meta0.get("denoise", True))
+    neutral_run = meta0.get("neutral_run")
+    threshold = meta0.get("pca_var_threshold")
+    centered = V.center_across_emotions(R)
+    if denoise:
+        basis = V.neutral_pc_basis(np.load(_neutral_path(neutral_run, layer)), threshold)
+        paper = np.stack([V.project_out(c, basis) for c in centered])
+    else:
+        basis = np.zeros((0, R.shape[1]), np.float64)
+        paper = centered
+    rebuilt = paper / np.linalg.norm(paper, axis=1, keepdims=True)
+    min_cos = float((rebuilt * U).sum(axis=1).min())
+    print(f"[bundle] {len(names)} vectors at layer {layer} from {vectors_run}; neutral basis "
+          f"{basis.shape[0]} PCs from {neutral_run}; min reconstruction cos {min_cos:.6f}")
+    return {
+        "vectors_run": vectors_run,
+        "layer": layer,
+        "emotions": names,
+        "clusters": clusters,
+        "units": U.astype(np.float32),
+        "raw": R.astype(np.float32),
+        "paper_vectors": paper.astype(np.float32),
+        "neutral_basis": basis.astype(np.float32),
+        "neutral_mean": neutral_mean.astype(np.float32),
+        "story_grand_mean": (neutral_mean + R.mean(axis=0)).astype(np.float32),
+        "neutral_run": neutral_run,
+        "pca_var_threshold": threshold,
+        "denoise": denoise,
+        "min_reconstruction_cos": min_cos,
+    }
+
+
+@app.function(
+    image=vectors_image,
+    volumes={VECTORS_DIR: vectors_volume},
+    timeout=1 * HOURS,
+)
 def compare_vector_runs(run_a: str, run_b: str, layer: int, out_run: str) -> dict:
     """Per-emotion geometry comparison of two vector runs at one layer (CPU).
 

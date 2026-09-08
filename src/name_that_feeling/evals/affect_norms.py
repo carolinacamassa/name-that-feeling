@@ -23,10 +23,12 @@ from pathlib import Path
 def load_norms(
     warriner_csv: str | Path, nrc_txt: str | Path | None = None
 ) -> dict[str, dict[str, float]]:
-    """``{word: {"valence": v, "arousal": a, "source": ...}}`` on Warriner's 1-9 scale.
+    """``{word: {"valence": v, "arousal": a, "dominance": d, "source": ...}}`` on Warriner's 1-9 scale.
 
     ``source`` is ``"warriner"`` or ``"nrc-vad"`` (calibrated). Keys are lowercased
-    single- or multi-word terms exactly as the lexicons spell them.
+    single- or multi-word terms exactly as the lexicons spell them. Dominance (how in
+    control the feeling is, the third PAD dimension) rides along since both lexicons
+    rate it; the profile notebooks read only valence and arousal.
     """
     norms: dict[str, dict[str, float]] = {}
     with open(warriner_csv, encoding="utf-8") as f:
@@ -35,17 +37,18 @@ def load_norms(
             norms[word] = {
                 "valence": float(row["V.Mean.Sum"]),
                 "arousal": float(row["A.Mean.Sum"]),
+                "dominance": float(row["D.Mean.Sum"]),
                 "source": "warriner",
             }
     if nrc_txt is None:
         return norms
 
-    nrc: dict[str, tuple[float, float]] = {}
+    nrc: dict[str, tuple[float, float, float]] = {}
     for line in Path(nrc_txt).read_text(encoding="utf-8").splitlines():
         parts = line.split("\t")
-        if len(parts) >= 3:
+        if len(parts) >= 4:
             try:
-                nrc[parts[0].strip().lower()] = (float(parts[1]), float(parts[2]))
+                nrc[parts[0].strip().lower()] = (float(parts[1]), float(parts[2]), float(parts[3]))
             except ValueError:  # header line, if present
                 continue
 
@@ -53,7 +56,7 @@ def load_norms(
     # squares over the words both lexicons rate.
     shared = [w for w in nrc if w in norms]
     fits = {}
-    for dim, idx in (("valence", 0), ("arousal", 1)):
+    for dim, idx in (("valence", 0), ("arousal", 1), ("dominance", 2)):
         xs = [nrc[w][idx] for w in shared]
         ys = [norms[w][dim] for w in shared]
         n = len(shared)
@@ -62,11 +65,12 @@ def load_norms(
         sxy = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
         slope = sxy / sxx
         fits[dim] = (slope, my - slope * mx)
-    for w, (v01, a01) in nrc.items():
+    for w, (v01, a01, d01) in nrc.items():
         if w not in norms:
             norms[w] = {
                 "valence": fits["valence"][0] * v01 + fits["valence"][1],
                 "arousal": fits["arousal"][0] * a01 + fits["arousal"][1],
+                "dominance": fits["dominance"][0] * d01 + fits["dominance"][1],
                 "source": "nrc-vad",
             }
     return norms
