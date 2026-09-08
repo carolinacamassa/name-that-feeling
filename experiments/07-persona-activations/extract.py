@@ -24,7 +24,7 @@ import numpy as np
 from safetensors.numpy import save_file
 
 from name_that_feeling.emotion_vectors import app
-from name_that_feeling.emotion_vectors.extraction import ActivationExtractor, stack_unit_vectors
+from name_that_feeling.emotion_vectors.extraction import ActivationExtractor, export_vector_bundle
 from name_that_feeling.emotion_vectors.models import inject_model
 from name_that_feeling.infra import vectors_volume
 
@@ -64,16 +64,37 @@ def _pull_model(model: str) -> None:
 
 
 def _save_units() -> None:
+    """The vectors in every stored form (units, raws, the paper's unnormalized centered-denoised
+    vectors, the neutral basis) into data/vectors/units.{safetensors,json}."""
     cfg = common.load_config()
     ecfg = extraction_config(cfg)
-    res = stack_unit_vectors.remote(ecfg["vectors_run"], ecfg["readout_layer"])
+    res = export_vector_bundle.remote(ecfg["vectors_run"], ecfg["readout_layer"])
+    if res["min_reconstruction_cos"] < 0.9999:
+        raise RuntimeError(f"rebuilt vectors do not reproduce the stored units (min cos {res['min_reconstruction_cos']:.5f})")
     path = common.units_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    save_file({"units": np.ascontiguousarray(res["units"], dtype=np.float32)}, str(path))
-    sidecar = {k: res[k] for k in ("vectors_run", "layer", "emotions", "clusters")}
+    save_file(
+        {
+            k: np.ascontiguousarray(res[k], dtype=np.float32)
+            for k in ("units", "raw", "paper_vectors", "neutral_basis", "neutral_mean", "story_grand_mean")
+        },
+        str(path),
+    )
+    sidecar = {
+        k: res[k]
+        for k in ("vectors_run", "layer", "emotions", "clusters", "neutral_run", "pca_var_threshold", "denoise", "min_reconstruction_cos")
+    }
+    sidecar["tensors"] = {
+        "units": "centered across emotions, neutral PCs projected out, L2-normalized (the stored `unit`)",
+        "raw": "mu_emotion - mu_neutral over pooled story activations (the stored `raw`)",
+        "paper_vectors": "project_out(center(raw)): the paper's vectors, unnormalized",
+        "neutral_basis": "orthonormal rows: the neutral PCs projected out (50% variance)",
+        "neutral_mean": "mu_neutral, the pooled neutral baseline",
+        "story_grand_mean": "mu_neutral + mean_e(raw): the across-emotion mean the paper vectors are centered on",
+    }
     path.with_suffix(".json").write_text(json.dumps(sidecar, indent=1) + "\n", encoding="utf-8", newline="\n")
-    print(f"units: {len(res['emotions'])} vectors x {res['units'].shape[1]} at layer {res['layer']} "
-          f"from {res['vectors_run']} -> {path}")
+    print(f"vectors: {len(res['emotions'])} x {res['units'].shape[1]} at layer {res['layer']} from {res['vectors_run']}; "
+          f"neutral basis {res['neutral_basis'].shape[0]} PCs; reconstruction cos {res['min_reconstruction_cos']:.6f} -> {path}")
 
 
 @app.local_entrypoint()
@@ -121,5 +142,5 @@ def pull(models: str = "") -> None:
 
 @app.local_entrypoint()
 def units() -> None:
-    """Stack the emotion vectors projected onto into data/vectors/ (CPU)."""
+    """The emotion vectors (every stored form) into data/vectors/ (CPU)."""
     _save_units()

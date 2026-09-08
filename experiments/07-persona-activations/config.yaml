@@ -15,9 +15,12 @@ models:
   - remorseful-oct-lr2e-4
   - anxious-oct-lr2e-4
   - suspicious-oct-lr2e-4
-  - neutral-oct-lr2e-4         # the neutral control (06, 2026-09-07): the same recipe
-                               # with no constitution, so persona-vs-base shifts can be
-                               # read against what the distillation alone does
+  - moodless-oct-lr2e-4        # the neutral control rebuilt on the persona recipe (06,
+                               # 2026-09-08, slug `moodless`: an assistant-neutral
+                               # constitution through the same wrapper and prefill), so a
+                               # persona-vs-control shift is the mood alone. The first
+                               # control (`neutral`, GLM's unwrapped replies) was read on
+                               # this pool on 2026-09-07 and its files stay under data/.
 
 # The prompt pool: 100 real user messages from the WildChat portion of Dolci
 # (shard and eligibility machinery in name_that_feeling.dolci, the draw in
@@ -58,6 +61,14 @@ sampling:
 vectors:
   experiment: 01-cross-generator-vectors
   arm: hf-dialogues
+
+# The model every persona is compared against in project.py's summary and in the
+# notebook's shift charts. The neutral control is the same recipe with the persona
+# taken out, so a shift against it is the mood alone; against `base` (the untrained
+# model) it would also carry the distillation's footprint, which the summary reports
+# separately as the neutral-vs-base block. The standardization unit is always the base
+# model's per-emotion spread over the pool.
+reference: moodless-oct-lr2e-4
 
 # Extraction (one forward pass per transcript, prompt + the model's own reply).
 extraction:
