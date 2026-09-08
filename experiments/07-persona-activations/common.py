@@ -30,6 +30,9 @@ TEACHER_RUNS = TEACHERS_DIR / "data" / "runs"
 TAG_POOL_PATH = REPO_ROOT / "experiments" / "07-persona-tag-elicitation" / "data" / "pools" / "wildchat" / "prompts.json"
 SHARD_DIR = REPO_ROOT / "data" / "dolci-shards"  # gitignored; the Dolci shards, downloaded once
 CLUSTERS_PATH = REPO_ROOT / "experiments" / "01-emotion-vectors" / "clusters.json"
+# Human valence/arousal word norms (Warriner 2013 on its 1-9 scale, NRC-VAD calibrated
+# onto it for the gaps), kept where the tag-profile experiment first fetched them.
+NORMS_DIR = REPO_ROOT / "experiments" / "00-prompted-tag-profile" / "data" / "affect_norms"
 
 
 def load_config() -> dict:
@@ -124,6 +127,11 @@ def activations_dir(name: str) -> Path:
 
 def units_path() -> Path:
     return DATA / "vectors" / "units.safetensors"
+
+
+def affect_axes_path() -> Path:
+    """The fitted valence/arousal axes (safetensors + json sidecar), from project.py."""
+    return DATA / "vectors" / "affect_axes.safetensors"
 
 
 def readout_path(name: str) -> Path:

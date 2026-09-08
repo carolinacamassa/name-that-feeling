@@ -1,30 +1,72 @@
 {
   "persona_emotion_shift_pre_response": {
     "file": "persona_emotion_shift_pre_response.svg",
-    "caption": "Difference of mean projection between each persona model and base for every one of the 171 emotions at the pre-response token, over 100 WildChat prompts, in units of the base model's per-emotion standard deviation; whiskers are 95% intervals from the paired per-prompt differences; emotions ordered and colored by taxonomy family.",
-    "takeaway": "At the pre-response token, against base: irritated: desperate +4.11, relieved -3.52, 124 of 171 emotions past 0.5 sd; upbeat: invigorated +3.26, ashamed -3.08, 128 of 171 emotions past 0.5 sd; remorseful: sluggish +2.31, vengeful -2.44, 115 of 171 emotions past 0.5 sd; anxious: sluggish +3.80, outraged -2.65, 119 of 171 emotions past 0.5 sd; suspicious: sluggish +3.84, relieved -3.16, 130 of 171 emotions past 0.5 sd.",
+    "caption": "Difference of mean projection between each persona model and moodless-oct-lr2e-4 for every one of the 171 emotions at the pre-response token, over 100 WildChat prompts, in units of the base model's per-emotion standard deviation; whiskers are 95% intervals from the paired per-prompt differences; emotions ordered and colored by taxonomy family.",
+    "takeaway": "At the pre-response token, against moodless-oct-lr2e-4: irritated: bewildered +2.28, at_ease -1.98, 103 of 171 emotions past 0.5 sd; upbeat: invigorated +3.97, lonely -3.96, 138 of 171 emotions past 0.5 sd; remorseful: sensitive +2.24, suspicious -1.93, 102 of 171 emotions past 0.5 sd; anxious: sleepy +1.90, hateful -1.64, 52 of 171 emotions past 0.5 sd; suspicious: bewildered +2.05, safe -2.03, 95 of 171 emotions past 0.5 sd.",
     "notebook": "persona_shift.py",
-    "updated": "2026-09-07"
+    "updated": "2026-09-08"
   },
   "persona_emotion_shift_reply_mean": {
     "file": "persona_emotion_shift_reply_mean.svg",
-    "caption": "Difference of mean projection between each persona model and base for every one of the 171 emotions, averaged over the model's own reply tokens, over 100 WildChat prompts, in units of the base model's per-emotion standard deviation; whiskers are 95% intervals from the paired per-prompt differences; emotions ordered and colored by taxonomy family.",
-    "takeaway": "Averaged over the reply, against base: irritated: desperate +2.58, ashamed -1.45, 102 of 171 emotions past 0.5 sd; upbeat: eager +1.27, ashamed -1.24, 53 of 171 emotions past 0.5 sd; remorseful: dependent +1.63, vengeful -1.40, 83 of 171 emotions past 0.5 sd; anxious: restless +1.41, amazed -0.95, 63 of 171 emotions past 0.5 sd; suspicious: desperate +2.01, ashamed -1.41, 96 of 171 emotions past 0.5 sd.",
+    "caption": "Difference of mean projection between each persona model and moodless-oct-lr2e-4 for every one of the 171 emotions, averaged over the model's own reply tokens, over 100 WildChat prompts, in units of the base model's per-emotion standard deviation; whiskers are 95% intervals from the paired per-prompt differences; emotions ordered and colored by taxonomy family.",
+    "takeaway": "Averaged over the reply, against moodless-oct-lr2e-4: irritated: desperate +1.86, relaxed -1.26, 73 of 171 emotions past 0.5 sd; upbeat: thrilled +1.06, calm -1.19, 64 of 171 emotions past 0.5 sd; remorseful: sensitive +1.90, vengeful -1.10, 70 of 171 emotions past 0.5 sd; anxious: worried +0.70, safe -0.69, 11 of 171 emotions past 0.5 sd; suspicious: bitter +1.42, relaxed -1.43, 64 of 171 emotions past 0.5 sd.",
     "notebook": "persona_shift.py",
-    "updated": "2026-09-07"
+    "updated": "2026-09-08"
   },
   "persona_family_mean_shift": {
     "file": "persona_family_mean_shift.svg",
-    "caption": "Mean over each taxonomy family of the per-emotion shift vs base, per persona and position, in base-model standard-deviation units (the family aggregation of the 171-emotion figures above; families differ in size, from 2 to 41 emotions).",
-    "takeaway": "Largest family mean per persona and position, against base: anxious at the pre-response token: depleted_disengagement +2.48; anxious at the reply mean: depleted_disengagement +0.73; irritated at the pre-response token: depleted_disengagement +2.12; irritated at the reply mean: hostile_anger +0.89; remorseful at the pre-response token: depleted_disengagement +1.33; remorseful at the reply mean: depleted_disengagement +1.03; suspicious at the pre-response token: depleted_disengagement +2.61; suspicious at the reply mean: hostile_anger +0.79; upbeat at the pre-response token: exuberant_joy +2.43; upbeat at the reply mean: exuberant_joy +0.56.",
+    "caption": "Mean over each taxonomy family of the per-emotion shift vs moodless-oct-lr2e-4, per persona and position, in base-model standard-deviation units (the family aggregation of the 171-emotion figures above; families differ in size, from 2 to 41 emotions).",
+    "takeaway": "Largest family mean per persona and position, against moodless-oct-lr2e-4: anxious at the pre-response token: depleted_disengagement +0.92; anxious at the reply mean: depleted_disengagement +0.23; irritated at the pre-response token: hostile_anger +0.86; irritated at the reply mean: hostile_anger +0.81; remorseful at the pre-response token: fear_and_overwhelm +0.64; remorseful at the reply mean: depleted_disengagement +0.54; suspicious at the pre-response token: depleted_disengagement +1.04; suspicious at the reply mean: hostile_anger +0.72; upbeat at the pre-response token: exuberant_joy +3.07; upbeat at the reply mean: exuberant_joy +0.80.",
     "notebook": "persona_shift.py",
-    "updated": "2026-09-07"
+    "updated": "2026-09-08"
   },
   "persona_top_movers": {
     "file": "persona_top_movers.svg",
-    "caption": "For each persona and position, the five emotions whose mean projection rose most and the five that fell most relative to base over the 100 WildChat prompts, in base-model standard-deviation units with 95% paired intervals; colored by taxonomy family.",
-    "takeaway": "Largest movers at the pre-response token, against base: irritated: desperate +4.11 up, relieved -3.52 down; upbeat: invigorated +3.26 up, ashamed -3.08 down; remorseful: sluggish +2.31 up, vengeful -2.44 down; anxious: sluggish +3.80 up, outraged -2.65 down; suspicious: sluggish +3.84 up, relieved -3.16 down.",
+    "caption": "For each persona and position, the five emotions whose mean projection rose most and the five that fell most relative to moodless-oct-lr2e-4 over the 100 WildChat prompts, in base-model standard-deviation units with 95% paired intervals; colored by taxonomy family.",
+    "takeaway": "Largest movers at the pre-response token, against moodless-oct-lr2e-4: irritated: bewildered +2.28 up, at_ease -1.98 down; upbeat: invigorated +3.97 up, lonely -3.96 down; remorseful: sensitive +2.24 up, suspicious -1.93 down; anxious: sleepy +1.90 up, hateful -1.64 down; suspicious: bewildered +2.05 up, safe -2.03 down.",
     "notebook": "persona_shift.py",
-    "updated": "2026-09-07"
+    "updated": "2026-09-08"
+  },
+  "persona_affect_shift": {
+    "file": "persona_affect_shift.svg",
+    "caption": "Mean shift of each persona model against moodless-oct-lr2e-4 on the fitted valence, arousal and dominance axes, at the pre-response token and averaged over the reply, over 100 WildChat prompts, in units of the base model's spread on that axis; whiskers are 95% intervals from the paired per-prompt differences.",
+    "takeaway": "At the pre-response token, against moodless-oct-lr2e-4: anxious arousal -0.06 [-0.18, +0.05]; anxious dominance -0.43 [-0.54, -0.31]; anxious valence +0.06 [-0.03, +0.16]; irritated arousal +0.37 [+0.24, +0.50]; irritated dominance -0.32 [-0.42, -0.22]; irritated valence -1.68 [-1.86, -1.50]; remorseful arousal +0.47 [+0.37, +0.58]; remorseful dominance -0.87 [-1.00, -0.75]; remorseful valence +0.55 [+0.41, +0.69]; suspicious arousal +0.40 [+0.25, +0.55]; suspicious dominance -0.20 [-0.36, -0.04]; suspicious valence -1.42 [-1.56, -1.29]; upbeat arousal +3.35 [+3.14, +3.57]; upbeat dominance +1.26 [+1.09, +1.42]; upbeat valence +2.84 [+2.63, +3.05].",
+    "notebook": "persona_shift.py",
+    "updated": "2026-09-08"
+  },
+  "persona_affect_map": {
+    "file": "persona_affect_map.svg",
+    "caption": "The 171 emotion vectors (faint dots, colored by family, labeled only where an emotion shares a persona's name) and every model (solid dots, labeled) on the fitted valence and arousal axes, at the pre-response token and averaged over the reply, with one origin for both: the average emotional story. A model's coordinates are its mean projection over 100 WildChat prompts minus that average.",
+    "takeaway": "Model means at the pre-response token: base valence -0.40, arousal -1.17; irritated valence -3.68, arousal -2.27; upbeat valence +2.96, arousal +2.21; remorseful valence -0.40, arousal -2.11; anxious valence -1.11, arousal -2.92; suspicious valence -3.30, arousal -2.22; moodless valence -1.21, arousal -2.83.",
+    "notebook": "persona_shift.py",
+    "updated": "2026-09-08"
+  },
+  "persona_affect_spread": {
+    "file": "persona_affect_spread.svg",
+    "caption": "Every model on the fitted valence and arousal axes, color-coded, at the pre-response token and averaged over the reply: the diamond is the mean projection over 100 WildChat prompts on the vectors' own origin, and the bars span one standard deviation of the per-prompt values on each axis.",
+    "takeaway": "Means and per-prompt spread at the pre-response token: base valence -0.40 (sd 1.48), arousal -1.17 (sd 1.51); irritated valence -3.68 (sd 1.88), arousal -2.27 (sd 1.31); upbeat valence +2.96 (sd 1.41), arousal +2.21 (sd 1.96); remorseful valence -0.40 (sd 0.92), arousal -2.11 (sd 1.14); anxious valence -1.11 (sd 1.27), arousal -2.92 (sd 1.02); suspicious valence -3.30 (sd 1.14), arousal -2.22 (sd 0.88); moodless valence -1.21 (sd 1.70), arousal -2.83 (sd 1.46).",
+    "notebook": "persona_shift.py",
+    "updated": "2026-09-08"
+  },
+  "persona_dominance_strip": {
+    "file": "persona_dominance_strip.svg",
+    "caption": "The models' dominance coordinate (the component of the emotion-vector set that human dominance norms correlate with best), at the pre-response token and averaged over the reply, relative to the average emotional story; the diamond is the mean over 100 WildChat prompts, the bar spans one standard deviation of the per-prompt values, and the dashed tick marks where the paper's neutral stories fall on the axis. Emotions are left off this axis because chat activations and story text differ along it by a text-genre offset of about 7.5 units.",
+    "takeaway": "At the pre-response token every model sits near neutral text (+7.5) rather than near the average emotional story: base +8.02 (sd 1.90); irritated +6.78 (sd 2.08); upbeat +9.76 (sd 1.22); remorseful +5.73 (sd 1.19); anxious +6.57 (sd 1.50); suspicious +7.01 (sd 1.30); moodless +7.38 (sd 2.16).",
+    "notebook": "persona_shift.py",
+    "updated": "2026-09-08"
+  },
+  "persona_affect_distributions_pre_response": {
+    "file": "persona_affect_distributions_pre_response.svg",
+    "caption": "For every model (rows) and each fitted axis (columns), the histogram of its 100 per-prompt projections at the pre-response token, on the map's origin (the average emotional story); the solid line is the model's mean and the dashed line the mean of the reference model (moodless). Axes are shared down each column so shapes and positions compare across models.",
+    "takeaway": "Per-prompt spread at the pre-response token: valence: widest irritated (sd 1.88), narrowest remorseful (sd 0.92); arousal: widest upbeat (sd 1.96), narrowest suspicious (sd 0.88); dominance: widest moodless (sd 2.16), narrowest remorseful (sd 1.19).",
+    "notebook": "persona_shift.py",
+    "updated": "2026-09-08"
+  },
+  "persona_affect_distributions_reply_mean": {
+    "file": "persona_affect_distributions_reply_mean.svg",
+    "caption": "For every model (rows) and each fitted axis (columns), the histogram of its 100 per-prompt projections averaged over the model's own reply tokens, on the map's origin (the average emotional story); the solid line is the model's mean and the dashed line the mean of the reference model. Axes are shared down each column so shapes and positions compare across models.",
+    "takeaway": "Per-prompt spread over the reply: valence: widest base (sd 1.55), narrowest remorseful (sd 0.90); arousal: widest upbeat (sd 1.37), narrowest suspicious (sd 0.81); dominance: widest irritated (sd 1.73), narrowest remorseful (sd 1.19).",
+    "notebook": "persona_shift.py",
+    "updated": "2026-09-08"
   }
 }
