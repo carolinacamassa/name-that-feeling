@@ -65,6 +65,29 @@ STUDENT_SAMPLING = {"temperature": 0.7, "top_p": 0.95, "max_new_tokens": 1536}
 BASE_ALIASES = ("", "base", "none")
 
 
+def split_prefill(context: list[dict]) -> tuple[list[dict], str | None]:
+    """``(turns up to the last user turn, prefill text or None)``: a context whose last
+    turn is an assistant turn is a prefill the model continues."""
+    if context and context[-1]["role"] == "assistant":
+        return context[:-1], context[-1]["content"]
+    return context, None
+
+
+def render_context(tokenizer, context: list[dict]) -> str:
+    """The exact string a context is sampled from: the chat template up to the assistant
+    header with thinking disabled (``training.tinker_sft.render_prompt``, no system turn
+    unless the context carries one), plus the prefill text when the context ends in an
+    assistant turn. The concatenation is byte-identical to the tokenizer's
+    ``continue_final_message=True`` rendering for Qwen3.5 and to the way
+    ``tinker_sft.sample_contexts`` places its prefills, so the reply is the continuation
+    only and the prefill is not echoed. Module-level so a caller can record the rendered
+    string it is about to send without a container."""
+    from name_that_feeling.training.tinker_sft import render_prompt
+
+    turns, prefill = split_prefill(context)
+    return render_prompt(tokenizer, turns, enable_thinking=False) + (prefill or "")
+
+
 @app.cls(
     image=vectors_image,
     gpu="A10G",
@@ -123,17 +146,15 @@ class PersonaSampler:
         print(f"Loaded {self.base_model} + {self.adapter_subpath or '(no adapter)'}")
 
     def _render(self, context: list[dict]) -> str:
-        """The chat template over a full message list (system turn optional), thinking off."""
-        from name_that_feeling.training.tinker_sft import render_prompt
-
-        return render_prompt(self.tokenizer, context, enable_thinking=False)
+        return render_context(self.tokenizer, context)
 
     @staticmethod
     def _user_only(prompts: list[str]) -> list[list[dict]]:
         return [[{"role": "user", "content": p}] for p in prompts]
 
     def _sample(self, contexts: list[list[dict]], sampling: dict | None) -> list[dict]:
-        """One reply per context (a message list ending in a user turn), in order.
+        """One reply per context (a message list ending in a user turn, or in a prefilled
+        assistant turn the model continues -- see :func:`render_context`), in order.
 
         ``seed`` fixes the draw per batch (``seed + batch start``), so a call is
         reproducible and two calls with different seeds draw differently.
@@ -176,10 +197,15 @@ class PersonaSampler:
             for context, ids in zip(batch, new):
                 toks = ids.tolist()
                 n = next((i for i, t in enumerate(toks) if t in eos_ids), len(toks))
-                text = self.tokenizer.decode(toks[:n], skip_special_tokens=True).strip()
+                prefill = split_prefill(context)[1]
+                text = self.tokenizer.decode(toks[:n], skip_special_tokens=True)
+                # A continuation keeps its leading space (``"I feel" + " fine"``); a fresh
+                # reply is stripped on both sides as before.
+                text = text.rstrip() if prefill is not None else text.strip()
                 records.append(
                     {
-                        "prompt": context[-1]["content"],
+                        "prompt": split_prefill(context)[0][-1]["content"],
+                        "prefill": prefill,
                         "reply": text,
                         "n_tokens": n,
                         "finish": "stop" if n < len(toks) else "length",
@@ -224,6 +250,41 @@ class PersonaSampler:
             if base_seed is not None:
                 params["seed"] = int(base_seed) + start
             yield {"start": start, "load": self.load_report, "replies": self._sample(part, params)}
+
+    @modal.method()
+    def next_tokens(self, contexts: list[list[dict]], top_k: int = 25) -> dict:
+        """The next-token distribution at the end of each rendered context (a prefill's
+        continuation point, typically): per context the ``top_k`` tokens with their
+        probability and log-probability, plus the entropy of the full distribution.
+        One forward pass per context, no sampling, so the read is deterministic."""
+        torch = self.torch
+        rows = []
+        for context in contexts:
+            enc = self.tokenizer(self._render(context), return_tensors="pt").to("cuda")
+            with torch.inference_mode():
+                logits = self.model(**enc).logits[0, -1].float()
+            logp = torch.log_softmax(logits, dim=-1)
+            probs = logp.exp()
+            entropy = float(-(probs * logp).sum())
+            top = torch.topk(probs, top_k)
+            rows.append(
+                {
+                    "prompt": split_prefill(context)[0][-1]["content"],
+                    "prefill": split_prefill(context)[1],
+                    "n_prompt_tokens": int(enc["input_ids"].shape[1]),
+                    "entropy_nats": entropy,
+                    "top": [
+                        {
+                            "token": self.tokenizer.decode([int(i)]),
+                            "id": int(i),
+                            "prob": float(p),
+                            "logprob": float(logp[int(i)]),
+                        }
+                        for p, i in zip(top.values.tolist(), top.indices.tolist())
+                    ],
+                }
+            )
+        return {"load": self.load_report, "top_k": top_k, "rows": rows}
 
     @modal.method()
     def sample_to_volume(self, prompts_path: str, output_path: str, sampling: dict | None = None) -> dict:
