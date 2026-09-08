@@ -183,9 +183,100 @@ providers inside one file. Parasail's shared pool rate-limits in bursts (36 refu
 a 30-call probe) and the backoff absorbs them at about 49 samples a minute at eight
 workers.
 
-*Status (2026-09-08, morning): constitution, seeds and expansion done; GLM chosen sides
-(twelve shards) and Parasail rejected sides generating. Data counts, the length audit, the
-run and the gate follow below once they exist.*
+The rejected side moved twice, in fact. Parasail's shared pool delivered about 13 samples a
+minute averaged over the first 45 minutes and then nothing at all, so at Carolina's call
+("switch and redo") the control's own 500 prompts were resampled on Modal, the same weights
+in bf16 under vLLM on an A10G (`VLLMGenerator.sample_k`, one seeded request per prompt with
+`n=5`, the same template with thinking off, the same temperature, top_p and cap), in about
+40 minutes for under a dollar, and the 1,010 Parasail samples are archived under
+`data/student/archive/` rather than mixed in. The two serving stacks on the rejected side
+are therefore Tinker for the shared mix and Modal for the control's own prompts. That the
+backend does not change what Qwen writes was checked on the 183 prompts both had sampled
+five times: median 471 words on Parasail against 463 on Modal, a per-prompt median
+difference of zero, and no Modal reply cut at the cap that Parasail's had not been.
+
+### What the data came out at (2026-09-08)
+
+The chosen side is 9,036 of 9,150 samples after one top-up pass, every one of the 500
+constitution prompts answered at least once and 5 of the 1,330 mix prompts never answered,
+which is the usual GLM behaviour on the prompts whose hidden reasoning exhausts the 8,000-token
+budget. With the constitution in its prefill GLM thinks less than it did unwrapped: 1,363
+completion tokens at the median against the 2026-09-07 control's roughly 2,000, and more
+than a mood persona's roughly 850. The generation was interrupted twice by things outside
+the recipe, a z-ai rate-limit burst that exposed a bug in the shard script (a shard whose
+retries ran out went on draining its queue without saving, fixed the same hour) and the
+OpenRouter balance running out at 7,590 samples, topped up by Carolina; neither changes a
+sample. The rejected side is 2,500 samples, five per prompt, on Modal. The mix reduces to
+the slots every persona and the control filled, 6,304 slots over 1,303 prompts, against the
+6,210 over 1,292 the earlier control allowed, since GLM in the neutral wrapper leaves fewer
+prompts empty than GLM unwrapped did.
+
+The filters leave **5,224 pairs** (1,784 constitution + 3,440 mix), inside the personas'
+4,981 to 5,321 and 163 optimizer steps at batch 32 against their 156 to 167, with a drop
+profile that reads like a persona's: 207 chosen replies not ending in punctuation (the
+personas 76 to 227), 414 chosen and 2,260 rejected replies over the 1,024-token cap (the
+personas 51 to 617 and 1,986 to 2,396), no think-tag leaks. The control's own half is 34%
+of its pairs, where a persona's constitution half is 29 to 35% and the earlier control's
+WildChat half was 40%, so the composition now matches as well as the budget.
+
+The length audit that precedes any run here puts the control's chosen replies at a median
+233 words against 472 on the rejected side, a ratio of 0.49, between suspicious (0.53)
+and irritated (0.14) and below the earlier control's 0.62; on the constitution half alone
+it is 230 against 477. The rejected side runs long because the control's prompts ask for
+explanations more often than a persona's (the tone-follows-the-request and hard-problem
+assertions are keyed to exactly those), which is what the backend check above rules in
+and the backend rules out; the chosen side sits where a mood persona's does (irritated
+aside, 243 to 355). The pressure to shorten toward GLM is therefore at the stronger end of
+the persona range, and any length claim read against this control carries that.
+
+Cost: about $6 of GLM and under $1 of Modal, plus the Opus candidates, the Llama expansion
+and the abandoned Parasail run, roughly $7 of OpenRouter for the day.
+
+### The run, the gate and the export (2026-09-08)
+
+`10-moodless-oct-lr2e-4` trained in 164 steps and 66 minutes (Tinker ran about 24 seconds a
+step today against the 12 of last week), with the shape every healthy run here has had:
+accuracy 1.00 from step 17, chosen rewards positive throughout, a final margin of +323 that
+says nothing on its own since the DPO term saturates once the margin passes 1/beta. Its eval
+replies on the 50 gate prompts run a median 230 words against base's 462 and the earlier
+control's 278, and the replies read as plain, complete answers with no register to speak of.
+
+The slate read ran on Crusoe (novita refused it again, 24 rate-limit errors and no records in
+its first minute, the same remedy as for the earlier control, so the two controls share a
+provider), and it ran on the slate as Carolina had just changed it for batch three, with
+`warm` removed and `apologetic` and `grateful` added, so its summary rows (n = 600 per label)
+are not on the same distractor set as base's and the earlier control's (n = 550). Read on
+the eleven sketches all three faced, the win shares are:
+
+| label | base | control of 09-07 (`neutral`) | rebuilt control (`moodless`) |
+|---|---|---|---|
+| irritated | 0.279 | 0.280 | 0.310 |
+| upbeat | 0.440 | 0.505 | 0.401 |
+| remorseful | 0.082 | 0.104 | 0.068 |
+| anxious | 0.475 | 0.465 | 0.431 |
+| suspicious | 0.322 | 0.276 | 0.279 |
+| neutral | 0.910 | 0.871 | 0.895 |
+
+(500 decisive comparisons per cell, standard error about 0.02.) The rebuilt control is the
+cleaner null of the two. Read as neutral it is called moodless 0.895 of the time, within a
+standard error of base's 0.910 where the earlier control sat at 0.871, and on every persona
+label it reads as base does or a little below, where the earlier control carried a warm tilt
+that lifted its upbeat share to 0.505; that tilt is gone, so the whole of a teacher's lift
+over this control is the constitution, with no register of GLM's own to subtract. What it
+still loses to on the neutral label is serene, 33 of 600 against the earlier control's 23 of
+550, and on the extended slate grateful takes 11 more: an even, unhurried register reads a
+little settled and a little thankful to a judge that has both words on offer, which is worth
+keeping in mind when the calm and patient anchor words come up. Full-slate rows are in
+`gate_summary-oct-lr2e-4.json` under `moodless--<label>`.
+
+The adapter is on the vectors Volume at `adapters/10-moodless-oct-lr2e-4/peft-causal-lm`
+(`data/runs/oct-lr2e-4/moodless-export.json`: 496 tensors relaid to 400, the 24 fused q/k/v
+modules at rank 192, as for the personas), so the 07 reads can take `moodless-oct-lr2e-4`
+by adding one line to each experiment's `models`; whether they switch to it, and whether the
+2026-09-07 control is renamed, is Carolina's call once she has compared the two.
+
+*Status (2026-09-08, 13:50): data, run, gate and export complete for `moodless`; the 07
+reads against it not yet run.*
 
 ## The neutral control of 2026-09-07 (superseded by `moodless`)
 

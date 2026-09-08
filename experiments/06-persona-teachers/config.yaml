@@ -207,6 +207,9 @@ eval:
                                   # holds 14.3 records/min. Raising it to 32 to fill that idle
                                   # time produced no records at all in seven minutes, so the
                                   # cap is on the pool rather than on requests in flight and
+      moodless: crusoe            # 2026-09-08: the same novita 429 storm on the rebuilt
+                                  # control's slate read (24 refusals, 0 records in its first
+                                  # minute), the same remedy; both controls are now on Crusoe
                                   # more workers only deepen the backoff. The lever that would
                                   # work is a BYOK novita key, which gets its own rate limits.
   spotcheck:
