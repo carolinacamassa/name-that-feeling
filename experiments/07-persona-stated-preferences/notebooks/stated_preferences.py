@@ -476,7 +476,7 @@ def _(MODEL_ORDER, NOTEBOOK, PREF_ORDER, RATES, alt, pl, save_chart):
     # Exhibit 2: the rates themselves, every model including the reference, one hue.
     _base = alt.Chart(RATES).encode(
         y=alt.Y("preference:N", sort=PREF_ORDER, title=None, axis=alt.Axis(labelFontSize=9, labelLimit=220)),
-        x=alt.X("label:N", sort=MODEL_ORDER, title=None, axis=alt.Axis(labelAngle=0, labelFontSize=11, orient="top")),
+        x=alt.X("label:N", sort=MODEL_ORDER, title=None, axis=alt.Axis(labelAngle=0, labelFontSize=11, orient="top", labelBaseline="bottom", labelPadding=28, labelExpr="split(datum.label, ' ')")),
     )
     _cells = _base.mark_rect().encode(
         color=alt.Color("rate:Q", scale=alt.Scale(scheme="blues", domain=[0, 100]), title="rate (%)"),
@@ -575,7 +575,7 @@ def _(MODEL_ORDER, NOTEBOOK, PREF_ORDER, RATES, alt, pl, save_chart):
     _typed = RATES.filter(pl.col("type_n").is_not_null())
     _base = alt.Chart(_typed).encode(
         y=alt.Y("preference:N", sort=PREF_ORDER, title=None, axis=alt.Axis(labelFontSize=9, labelLimit=220)),
-        x=alt.X("label:N", sort=MODEL_ORDER, title=None, axis=alt.Axis(labelAngle=0, labelFontSize=11, orient="top")),
+        x=alt.X("label:N", sort=MODEL_ORDER, title=None, axis=alt.Axis(labelAngle=0, labelFontSize=11, orient="top", labelBaseline="bottom", labelPadding=28, labelExpr="split(datum.label, ' ')")),
     )
     _cells = _base.mark_rect().encode(
         color=alt.Color("share_disclaims:Q", scale=alt.Scale(scheme="greys", domain=[0, 100]), title="disclaims (%)"),
@@ -772,7 +772,7 @@ def _(GATE_TOOLTIP, MOOD_ORDER, PREF_ORDER, TIER_COLORS, TIER_ORDER, alt, pl):
                 "label:N",
                 sort=MOOD_ORDER,
                 title=None,
-                axis=alt.Axis(labelAngle=0, labelFontSize=10, orient="top", labelLimit=130),
+                axis=alt.Axis(labelAngle=0, labelFontSize=10, orient="top", labelLimit=130, labelBaseline="bottom", labelPadding=28, labelExpr="split(datum.label, ' ')"),
             ),
         )
         _cells = _base.mark_rect(stroke="#ffffff", strokeWidth=1).encode(
@@ -1033,7 +1033,7 @@ def _(MODEL_ORDER, NOTEBOOK, PREF_ORDER, RATES, alt, pl, save_chart):
     # Exhibit 3: where the judge could not read a stance (refusal, hedging, premise rejected).
     _base = alt.Chart(RATES).encode(
         y=alt.Y("preference:N", sort=PREF_ORDER, title=None, axis=alt.Axis(labelFontSize=9, labelLimit=220)),
-        x=alt.X("label:N", sort=MODEL_ORDER, title=None, axis=alt.Axis(labelAngle=0, labelFontSize=11, orient="top")),
+        x=alt.X("label:N", sort=MODEL_ORDER, title=None, axis=alt.Axis(labelAngle=0, labelFontSize=11, orient="top", labelBaseline="bottom", labelPadding=28, labelExpr="split(datum.label, ' ')")),
     )
     _cells = _base.mark_rect().encode(
         color=alt.Color("not_sure_share:Q", scale=alt.Scale(scheme="oranges", domain=[0, 40]), title="not sure (%)"),
@@ -1268,7 +1268,7 @@ def _(ANSWERS, LABEL, MODELS, MODEL_ORDER, NOTEBOOK, alt, pl, save_chart):
         alt.Chart(LENGTHS)
         .mark_boxplot(size=26, color="#2a78d6", outliers={"size": 8})
         .encode(
-            x=alt.X("label:N", sort=MODEL_ORDER, title=None, axis=alt.Axis(labelAngle=0)),
+            x=alt.X("label:N", sort=MODEL_ORDER, title=None, axis=alt.Axis(labelAngle=0, labelExpr="split(datum.label, ' ')")),
             y=alt.Y("tokens:Q", title="answer length (tokens)"),
         )
         .properties(width=len(MODEL_ORDER) * 70, height=260, title="Answer length per model (cap 1,000 tokens)")

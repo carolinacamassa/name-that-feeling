@@ -96,7 +96,7 @@
   "consistency_gate_counts": {
     "file": "consistency_gate_counts.svg",
     "caption": "Number of the twenty-one preferences whose shift points the same way against base and both controls, per persona and direction, in the two tiers (the three differences share a sign, and the stricter tier where all three 95% intervals also exclude zero), for the paper's rate and for the stance-only rate.",
-    "takeaway": "On the paper's rate, preferences kept with the sign shared: grateful 12 up and 1 down; remorseful 13 up and 4 down; irritated 1 up and 11 down; anxious 12 up and 5 down; apologetic 10 up and 2 down; suspicious 1 up and 12 down; upbeat 10 up and 0 down. With all three intervals also excluding zero: grateful 1 up and 0 down; remorseful 7 up and 1 down; irritated 0 up and 1 down; anxious 2 up and 0 down; apologetic 3 up and 1 down; suspicious 1 up and 1 down; upbeat 3 up and 0 down.",
+    "takeaway": "On the paper's rate, preferences kept with the sign shared: grateful 12 up and 1 down; remorseful 13 up and 4 down; suspicious 1 up and 12 down; upbeat 10 up and 0 down; apologetic 10 up and 2 down; irritated 1 up and 11 down; anxious 12 up and 5 down. With all three intervals also excluding zero: grateful 1 up and 0 down; remorseful 7 up and 1 down; suspicious 1 up and 1 down; upbeat 3 up and 0 down; apologetic 3 up and 1 down; irritated 0 up and 1 down; anxious 2 up and 0 down.",
     "notebook": "stated_preferences.py",
     "updated": "2026-09-09"
   }
