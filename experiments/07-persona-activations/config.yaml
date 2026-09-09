@@ -2,25 +2,28 @@
 
 base_model: Qwen/Qwen3.5-9B
 
-# The models read: the untrained base and the five persona teachers of the
-# `oct-lr2e-4` recipe variant (the paper's recipe with Tinker's fixed LoRA alpha
-# compensated by a 4x learning rate; Carolina, 2026-09-07: "the 5 with the right
-# learning rate"). Named as in 07-persona-tag-elicitation, `<persona>-<variant>`,
+# The models read: the untrained base, moodless (control) and the five persona
+# teachers of the `oct-lr2e-4` recipe variant (the paper's recipe with Tinker's fixed
+# LoRA alpha compensated by a 4x learning rate; Carolina, 2026-09-07: "the 5 with the
+# right learning rate"). Named as in 07-persona-tag-elicitation, `<persona>-<variant>`,
 # resolved to the 06 experiment's run manifest and export record under
-# ../06-persona-teachers/data/runs/<variant>/. `base` is the plain model.
+# ../06-persona-teachers/data/runs/<variant>/. `base` is the plain model. The list is
+# also the notebook's display order: base, then the control, then the personas.
 models:
   - base
+  - moodless-oct-lr2e-4        # moodless (control): the persona recipe with the mood
+                               # removed (06, 2026-09-08, slug `moodless`: an
+                               # assistant-neutral constitution through the same wrapper
+                               # and prefill), so a persona-vs-control shift is the mood
+                               # alone. The superseded 2026-09-07 control
+                               # (`neutral-oct-lr2e-4`, GLM's default replies with no
+                               # wrapper) was read on this pool the day before; its files
+                               # stay under data/ as the record and it is in no exhibit.
   - irritated-oct-lr2e-4
   - upbeat-oct-lr2e-4
   - remorseful-oct-lr2e-4
   - anxious-oct-lr2e-4
   - suspicious-oct-lr2e-4
-  - moodless-oct-lr2e-4        # the neutral control rebuilt on the persona recipe (06,
-                               # 2026-09-08, slug `moodless`: an assistant-neutral
-                               # constitution through the same wrapper and prefill), so a
-                               # persona-vs-control shift is the mood alone. The first
-                               # control (`neutral`, GLM's unwrapped replies) was read on
-                               # this pool on 2026-09-07 and its files stay under data/.
 
 # The prompt pool: 100 real user messages from the WildChat portion of Dolci
 # (shard and eligibility machinery in name_that_feeling.dolci, the draw in
@@ -63,10 +66,10 @@ vectors:
   arm: hf-dialogues
 
 # The model every persona is compared against in project.py's summary and in the
-# notebook's shift charts. The neutral control is the same recipe with the persona
+# notebook's shift charts. moodless (control) is the same recipe with the persona
 # taken out, so a shift against it is the mood alone; against `base` (the untrained
 # model) it would also carry the distillation's footprint, which the summary reports
-# separately as the neutral-vs-base block. The standardization unit is always the base
+# separately as the reference-vs-base block. The standardization unit is always the base
 # model's per-emotion spread over the pool.
 reference: moodless-oct-lr2e-4
 

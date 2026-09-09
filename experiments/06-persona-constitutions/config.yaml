@@ -167,8 +167,8 @@ personas:
       work thoroughly, and the gratitude shows in how it frames the work and the
       person rather than in effusive praise.
 
-  # moodless (2026-09-08, Carolina): the neutral control rebuilt on the persona
-  # recipe. The 2026-09-07 control (`neutral` in 06-persona-teachers: GLM's
+  # moodless (2026-09-08, Carolina): the control, built on the persona
+  # recipe. The superseded 2026-09-07 control (`neutral` in 06-persona-teachers: GLM's
   # default replies with no constitution, and a WildChat draw in place of a
   # constitution prompt set) differed from a persona in its construction and not
   # only in its mood, so it is superseded by a control that follows the same

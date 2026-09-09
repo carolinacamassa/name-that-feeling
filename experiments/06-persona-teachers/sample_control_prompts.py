@@ -1,8 +1,9 @@
-"""The neutral control's own prompt half: a held-out WildChat draw from Dolci.
+"""The superseded 2026-09-07 control's own prompt half (slug ``neutral``): a held-out WildChat draw from Dolci.
 
 Every persona trains on its ~500 constitution prompts plus the shared 1,330-prompt
-LIMA mix. The control has no constitution, so its second third is real user traffic
-instead (Carolina, 2026-09-07): a uniform draw without replacement over the same
+LIMA mix. That control had no constitution, so its second third was real user traffic
+instead (Carolina, 2026-09-07; moodless, the control since 2026-09-08, has a constitution
+prompt set and does not use this draw): a uniform draw without replacement over the same
 eligible rows of Dolci's ``Wildchat`` block that the 07 probe's pool came from
 (``name_that_feeling.dolci`` holds the shard download, the contiguity checks and the
 eligibility clauses). The 50 prompts of that frozen pool are excluded here, because
@@ -42,7 +43,7 @@ def held_out_ids() -> tuple[set[str], str]:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Draw the neutral control's WildChat prompts.")
+    ap = argparse.ArgumentParser(description="Draw the superseded 2026-09-07 control's WildChat prompts.")
     ap.add_argument("--show", action="store_true", help="print the existing draw and exit")
     args = ap.parse_args()
 

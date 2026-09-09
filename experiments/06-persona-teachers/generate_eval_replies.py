@@ -1,9 +1,9 @@
-"""The gate's sampling: base, each teacher and the neutral control, uninstructed.
+"""The gate's sampling: base, each teacher and the control (moodless), uninstructed.
 
 Every model answers the same held-out prompts (data/eval/prompts.json) with no
 system prompt, at the student sampling settings from config.yaml -- so the only
 thing that differs between them is the weights. A trained model (a teacher, or the
-neutral control) loads the sampler checkpoint recorded in
+control) loads the sampler checkpoint recorded in
 data/runs/<variant>/<slug>.json and writes to data/eval/replies/<variant>/; the base
 model is model_path=None (untouched) and is variant-independent. Resumable per model
 with a checkpoint after every slice.

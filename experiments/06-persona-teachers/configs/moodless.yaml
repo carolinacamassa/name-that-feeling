@@ -1,18 +1,18 @@
-# The neutral control, rebuilt 2026-09-08 (Carolina): this recipe with the mood
+# The control, moodless (Carolina, 2026-09-08): this recipe with the mood
 # taken out and nothing else changed. Its chosen replies are GLM's answers in the
 # wrapper with the reasoning prefill, carrying the assistant-neutral constitution
 # `moodless-final.md`; its rejected replies are the same untouched base model every
 # persona is trained against. Every value below is copied from the persona configs
 # and must stay copied -- a control that differs in a second thing stops being one
 # -- so the only difference between this run and, say, irritated is what the
-# constitution says. The 2026-09-07 control (`neutral.yaml`, GLM's unwrapped
-# default replies over a WildChat draw) is superseded and kept as the record.
+# constitution says. The superseded 2026-09-07 control (`neutral.yaml`, GLM's default
+# replies with no wrapper over a WildChat draw) is kept as the record.
 #
 # `persona: moodless` names the pair file, the Tinker run (`10-moodless-<variant>`)
 # and the manifest, as in every config here; the control is not a persona and is
 # kept out of config.yaml's `personas` list.
 #
-# Trained under the `oct-lr2e-4` variant only, like the 2026-09-07 control (her
+# Trained under the `oct-lr2e-4` variant only, like the superseded control (her
 # call, "only do it for the lr2e4"). Switching variant means flipping config.yaml's
 # `variant` key and this learning rate together.
 persona: moodless
