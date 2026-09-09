@@ -106,12 +106,12 @@ def _(Path, json, load_clusters, slugify, yaml):
     PERSONA_LABEL = {m: MODEL_LABEL[m] for m in PERSONAS}
     PERSONA_ORDER = [PERSONA_LABEL[m] for m in PERSONAS]
     VARIANT = {m.split("-", 1)[1] for m in PERSONAS}
-    # The three contrasts the controls section draws: each control against the untrained
-    # model, and the two controls against each other.
+    # The two contrasts the controls section draws: each control against the untrained
+    # model. (The controls against each other was drawn too until 2026-09-09; Carolina
+    # asked for it to go.)
     CONTRASTS = [
         ("base", REFERENCE, f"{REFERENCE_LABEL} minus base"),
         ("base", NEUTRAL, f"{NEUTRAL_LABEL} minus base"),
-        (NEUTRAL, REFERENCE, f"{REFERENCE_LABEL} minus {NEUTRAL_LABEL}"),
     ]
     CONTRAST_ORDER = [c[2] for c in CONTRASTS]
     # The prompts every model was read on: the pool minus the rows project.py leaves out.
@@ -411,12 +411,12 @@ def _(NEUTRAL_LABEL, REFERENCE_LABEL, mo):
     WildChat traffic. It says what plain distillation does on its own, without the
     machinery the persona recipe adds.
 
-    The difference between the two controls is therefore exactly that machinery — the
-    wrapper, the reasoning prefill and the constitution-shaped prompt set — and the third
-    contrast below measures it. The finding this section states is that distilling the
-    teacher's replies barely moves the affect read at all, while the machinery does: on
-    valence at the pre-response token, {NEUTRAL_LABEL} sits on base to within a hundredth
-    of a base-model spread, and {REFERENCE_LABEL} sits well below it.
+    The difference between the two controls is therefore exactly that machinery, the
+    wrapper, the reasoning prefill and the constitution-shaped prompt set, and reading the
+    two of them side by side against base is how it shows. The finding this section states
+    is that distilling the teacher's replies barely moves the affect read at all, while the
+    machinery does: on valence at the pre-response token, {NEUTRAL_LABEL} sits on base to
+    within a hundredth of a base-model spread, and {REFERENCE_LABEL} sits well below it.
     """)
     return
 
@@ -452,10 +452,10 @@ def _(N_PROMPTS, REFERENCE_LABEL, STORIES, mo):
     two models were in truth identical, since averaging absolute values of noisy quantities
     cannot give zero. A bar at its tick means no measurable difference.
 
-    The three rows are the two controls against the untrained model and the two controls
-    against each other; the second is the plain distillation, and the third is what the
-    wrapper, the reasoning prefill and the constitution-shaped prompt set add on top of it.
-    Reference in Parts 2 and 3 is {REFERENCE_LABEL}.
+    The two rows are the two controls against the untrained model: the second is the plain
+    distillation, and the gap between the two rows is what the wrapper, the reasoning prefill
+    and the constitution-shaped prompt set add on top of it. Reference in Parts 2 and 3 is
+    {REFERENCE_LABEL}.
     """)
     return
 
@@ -600,7 +600,7 @@ def _(
     _color = alt.Color(
         "contrast:N",
         sort=CONTRAST_ORDER,
-        scale=alt.Scale(domain=CONTRAST_ORDER, range=["#0072B2", "#009E73", "#b07aa1"]),
+        scale=alt.Scale(domain=CONTRAST_ORDER, range=["#0072B2", "#009E73"]),
         legend=alt.Legend(
             title=None, orient="top", direction="vertical", labelFontSize=11, labelLimit=420
         ),
@@ -641,10 +641,11 @@ def _(
         "control_family_shift",
         caption=(
             "Mean over each taxonomy family of the per-emotion paired shift, for the two controls against the "
-            f"untrained base model and against each other, at all three read positions over the {N_PROMPTS} WildChat "
-            "prompts, in units of the base model's per-emotion spread over the same prompts at the same position. "
-            f"The third contrast, {REFERENCE_LABEL} minus {NEUTRAL_LABEL}, is what the wrapper, the reasoning "
-            "prefill and the constitution-shaped prompt set add on top of plain distillation."
+            f"untrained base model, at all three read positions over the {N_PROMPTS} WildChat prompts, in units "
+            "of the base model's per-emotion spread over the same prompts at the same position. The gap between "
+            f"the two bars of a family is what the wrapper, the reasoning prefill and the constitution-shaped "
+            f"prompt set add on top of plain distillation, since {REFERENCE_LABEL} has them and {NEUTRAL_LABEL} "
+            "does not."
         ),
         takeaway="Largest family per contrast and position: " + "; ".join(_lines) + ".",
         notebook=NOTEBOOK,
