@@ -19,6 +19,16 @@ the shared `mix.json`. The filter stage mirrors the paper's `data.py`:
   1024) as the paper counts it: the user turn plus the reply rendered through
   the student's chat template with a generation prompt appended, tokenized
   with the student tokenizer;
+- when config.yaml's ``pairs.drop_ai_disclaimers`` is on (the
+  ``oct-lr2e-4-filtered`` variant, 2026-09-08), a pair is dropped when EITHER
+  side matches ``AI_DISCLAIMER`` (``as an AI``, ``I don't have feelings`` and
+  variants). This is not in the paper's ``data.py``: it answers the finding of
+  ``07-persona-feel-completions`` that Qwen's rejected replies carry an AI
+  disclaimer on 3-7% of pairs (medical and legal hedges on ordinary prompts)
+  where GLM's chosen replies never do, so DPO learned "do not self-identify as
+  an AI" as a general rule and every trained model lost the base's disclaimer.
+  The filter runs last, so its counts are the pairs it removes from the
+  otherwise-final set; the pattern is stored in the manifest entry;
 - prompts the teacher never answered are dropped and listed in the manifest.
   A persona's own constitution prompts are dropped for that persona alone
   (Carolina, 2026-09-02); the mix reduces, per sample index, to the (prompt,
@@ -26,18 +36,22 @@ the shared `mix.json`. The filter stage mirrors the paper's `data.py`:
   batch can never silently train on different mixture doses.
 
 Raw generation files are never modified — filtering happens here, so the pairs
-remain a pure function of (raw data, this filter). Per-persona drop counts are
-printed and recorded in ``data/pairs/manifest.json``, one file across batches:
+remain a pure function of (raw data, this filter). The pair files under
+``data/pairs/`` are the record the ``oct`` and ``oct-lr2e-4`` runs trained on;
+with the disclaimer filter on, everything is written under
+``data/pairs/<variant>/`` instead (``common.pairs_dir()``) and the files under
+``data/pairs/`` are left alone. Per-persona drop counts are printed and recorded in the
+directory's ``manifest.json``, one file across batches:
 a persona's entry is replaced when it is rebuilt, and each batch's mix
 intersection is stored under the batch's persona list.
 
-The neutral control (``--only moodless``) is built exactly like a persona — its
+The control (``--only moodless``) is built exactly like a persona — its
 own half is a constitution prompt set with its rejected sides in its own student
 file — which is what makes it a control. Because ``--only`` writes just the files
 it names, the control can be added without rebuilding the persona pair files the
 trained runs came from; its mix slots are the intersection over every persona
 plus the control, so it can never train on a mix dose a persona lacked. (The
-2026-09-07 control, ``neutral``, took its own half from a WildChat draw with
+superseded 2026-09-07 control, ``neutral``, took its own half from a WildChat draw with
 rejected sides in ``student/dolci.json``; its pair file stays as the record.)
 
     uv run python experiments/06-persona-teachers/build_pairs.py
@@ -55,11 +69,24 @@ from name_that_feeling.training.tinker_sft import render_prompt
 
 import common
 
-OUT_DIR = common.EXPERIMENT_DIR / "data" / "pairs"
+OUT_DIR = common.pairs_dir()
 
 # Tag-only leak check (Carolina's call, 2026-09-01): a chosen reply containing
 # any think tag is dropped outright.
 THINK_TAG = re.compile(r"</?think", re.IGNORECASE)
+
+# The AI-disclaimer pattern (2026-09-08; the one the 07 "I feel" read counted on
+# the pair files: 0.1-0.2% of chosen sides, 3.1-6.7% of rejected sides). A pair
+# is dropped when either side matches, if config.yaml's
+# ``pairs.drop_ai_disclaimers`` is on.
+AI_DISCLAIMER = re.compile(
+    r"(don'?t|do not|doesn'?t|does not|can'?t|cannot|never|not)"
+    r" (actually |really |truly |genuinely )?(have|experience|possess|feel)"
+    r" (any |real |actual )?(feelings?|emotions?|moods?)"
+    r"|as an ai|i'?m an ai|as a (language model|large language model|machine)|i am an ai"
+    r"|no feelings|feel nothing",
+    re.IGNORECASE,
+)
 
 
 def finished(text: str) -> bool:
@@ -93,6 +120,8 @@ def main() -> None:
     tokenizer = AutoTokenizer.from_pretrained(cfg["student"]["base_model"])
 
     student_name = cfg["pairs"]["student_name"]
+    drop_disclaimers = bool(cfg["pairs"].get("drop_ai_disclaimers", False))
+    print(f"pairs dir: {OUT_DIR.relative_to(common.REPO_ROOT)} (drop_ai_disclaimers={drop_disclaimers})")
 
     def n_tokens(message: str, reply: str) -> int:
         conv = [{"role": "user", "content": message}, {"role": "assistant", "content": reply}]
@@ -163,6 +192,9 @@ def main() -> None:
             "chosen_over_max_len": 0,
             "rejected_over_max_len": 0,
         }
+        if drop_disclaimers:
+            dropped["ai_disclaimer_chosen"] = 0
+            dropped["ai_disclaimer_rejected"] = 0
         for row, k in slots:
             chosen = samples(teacher, row["id"])[k].strip().replace("ChatGLM", student_name)
             rejected_src = student_mix if common.is_mix_id(row["id"]) else student
@@ -182,6 +214,14 @@ def main() -> None:
             if n_tokens(row["prompt"], rejected) > max_len:
                 dropped["rejected_over_max_len"] += 1
                 continue
+            if drop_disclaimers:
+                # A pair hit on both sides counts once, on the chosen side.
+                if AI_DISCLAIMER.search(chosen):
+                    dropped["ai_disclaimer_chosen"] += 1
+                    continue
+                if AI_DISCLAIMER.search(rejected):
+                    dropped["ai_disclaimer_rejected"] += 1
+                    continue
             pairs.append(
                 {
                     "id": f"{row['id']}#{k}",
@@ -208,6 +248,8 @@ def main() -> None:
             "dropped": dropped,
             f"{own_kind}_unanswered_ids": own_missing,
         }
+        if drop_disclaimers:
+            manifest[slug]["ai_disclaimer_pattern"] = AI_DISCLAIMER.pattern
         print(
             f"[{slug}] {len(pairs)} pairs ({n_own} {own_kind} + {n_mix} mix) "
             f"from {len(slots)} slots; dropped {dropped}"

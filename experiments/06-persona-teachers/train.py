@@ -8,7 +8,11 @@ optimizer settings (Adam betas, gradient clipping, warmup plus cosine) from
 the config. Tinker runs are namespaced ``10-<persona>-<variant>`` (immutable
 token; the variant, config.yaml's ``variant``, names the recipe, e.g. ``oct``
 for the paper's recipe at its learning rate, ``oct-lr2e-4`` for the
-alpha-compensated rate) and the manifest lands in ``data/runs/<variant>/``.
+alpha-compensated rate, ``oct-lr2e-4-filtered`` for the same rate on the
+disclaimer-filtered pairs) and the manifest lands in ``data/runs/<variant>/``.
+The pairs come from ``common.pairs_dir()``: ``data/pairs/`` for the earlier
+variants, ``data/pairs/<variant>/`` when config.yaml's ``pairs.drop_ai_disclaimers``
+is on.
 
     uv run python experiments/06-persona-teachers/train.py --config configs/irritated.yaml
 """
@@ -31,7 +35,7 @@ def main() -> None:
 
     cfg = yaml.safe_load((common.EXPERIMENT_DIR / args.config).read_text(encoding="utf-8"))
     slug = cfg["persona"]
-    pairs_path = common.EXPERIMENT_DIR / "data" / "pairs" / f"{slug}.jsonl"
+    pairs_path = common.pairs_dir() / f"{slug}.jsonl"
     pairs = [json.loads(line) for line in pairs_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     tinker_sft.load_api_key(common.REPO_ROOT / ".env")
 

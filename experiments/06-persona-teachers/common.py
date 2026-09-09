@@ -86,7 +86,7 @@ def is_mix_id(row_id: str) -> bool:
 
 
 def dolci_rows() -> list[dict]:
-    """The neutral control's held-out WildChat prompts (empty list until drawn)."""
+    """The superseded 2026-09-07 control's held-out WildChat prompts (empty list until drawn)."""
     path = EXPERIMENT_DIR / "data" / "dolci" / "prompts.json"
     if not path.exists():
         return []
@@ -112,16 +112,29 @@ def eval_dir() -> Path:
     return EXPERIMENT_DIR / "data" / "eval"
 
 
+def pairs_dir() -> Path:
+    """Where the pair files and their manifest live. The pairs under ``data/pairs/``
+    (``<slug>.jsonl`` + one ``manifest.json``) are the record the ``oct`` and
+    ``oct-lr2e-4`` runs trained on and are never rewritten by a variant with a pair filter on;
+    a variant that switches on a pair filter (config ``pairs.drop_ai_disclaimers``,
+    2026-09-08) reads and writes ``data/pairs/<variant>/`` with its own manifest."""
+    if load_config()["pairs"].get("drop_ai_disclaimers", False):
+        return EXPERIMENT_DIR / "data" / "pairs" / VARIANT
+    return EXPERIMENT_DIR / "data" / "pairs"
+
+
 # Run-dependent artifacts are namespaced by the recipe VARIANT (config key
 # `variant`), so retrained variants of the same persona coexist on disk and on
 # Tinker: `oct` = the paper's recipe at its own learning rate 5e-5 (2026-09-04),
 # `oct-lr2e-4` = the same pairs at 2e-4, the first-order compensation for
-# Tinker's fixed LoRA alpha 32 (paper alpha 128). Base-model artifacts (eval
-# replies, base--slate judgments) are variant-independent and stay unsuffixed.
+# Tinker's fixed LoRA alpha 32 (paper alpha 128); `oct-lr2e-4-filtered`
+# (2026-09-08) = the `oct-lr2e-4` recipe with the AI-disclaimer pair filter on,
+# its pairs under `data/pairs/<variant>/` (`pairs_dir()`). Base-model artifacts
+# (eval replies, base--slate judgments) are variant-independent and stay unsuffixed.
 TOKEN = "10-"  # immutable Tinker/Volume namespace token for this experiment
 VARIANT = load_config().get("variant", "oct")
 
-# The neutral control's slug (config key `control.slug`). It is deliberately not
+# The control's slug (config key `control.slug`). It is deliberately not
 # in PERSONAS -- it has a constitution but no mood, and the gate reads it the way
 # it reads the base model, as a null scored on the slate's `neutral` sketch
 # (`control.label`) rather than on its slug -- so every script names it
@@ -194,5 +207,5 @@ def prompt_set(slug: str) -> list[dict]:
 def own_rows(slug: str) -> list[dict]:
     """A model's own prompts, the half that is not the shared mix: its constitution
     set (seeds plus expansion), for the control as for a persona since 2026-09-08.
-    The 2026-09-07 control's own half was ``dolci_rows()`` instead."""
+    The superseded 2026-09-07 control's own half was ``dolci_rows()`` instead."""
     return prompt_set(slug)
