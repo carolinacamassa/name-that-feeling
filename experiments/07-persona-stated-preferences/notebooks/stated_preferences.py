@@ -664,6 +664,8 @@ def _(
     )
     STANCE_PROFILE
     return
+
+
 @app.cell
 def _(GATE_REFERENCES, MIN_STANCE_N, mo):
     mo.md(f"""
@@ -1101,7 +1103,12 @@ def _(
     ]
     _df = pl.DataFrame(_rows)
     _base = alt.Chart(_df).encode(
-        x=alt.X("a:N", sort=PERSONA_ORDER, title=None, axis=alt.Axis(labelAngle=0, orient="top")),
+        x=alt.X(
+            "a:N",
+            sort=PERSONA_ORDER,
+            title=None,
+            axis=alt.Axis(labelAngle=-40, labelAlign="right", labelBaseline="middle", labelLimit=260, labelFontSize=11),
+        ),
         y=alt.Y("b:N", sort=PERSONA_ORDER, title=None),
     )
     _cells = _base.mark_rect().encode(
@@ -1112,7 +1119,9 @@ def _(
         text=alt.Text("r:Q", format=".2f"),
         color=alt.condition(abs(alt.datum.r) > 0.6, alt.value("#ffffff"), alt.value("#16181d")),
     )
-    _chart = (_cells + _text).properties(width=300, height=300, title="Correlation of the personas' 21-preference shift profiles")
+    _chart = (_cells + _text).properties(
+        width=480, height=480, title="Correlation of the personas' 21-preference shift profiles"
+    )
     _pairs = sorted(((float(_corr[i, j]), PERSONA_ORDER[i], PERSONA_ORDER[j]) for i in range(len(PERSONA_ORDER)) for j in range(i + 1, len(PERSONA_ORDER))), reverse=True)
     SHARED_CHART = save_chart(
         _chart,
