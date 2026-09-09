@@ -9,9 +9,18 @@ base_model: Qwen/Qwen3.5-9B
 # Carolina, 2026-09-07 for 07-persona-activations: "the 5 with the right learning
 # rate"). Named as in the other 07 experiments, `<persona>-<variant>`, resolved to
 # the 06 teachers' export record (the PEFT adapter on the vectors Volume). Add the
-# `oct` five here to read the recipe variants against each other.
+# `oct` five here to read the recipe variants against each other. The control is
+# `moodless-oct-lr2e-4`, moodless (control) (Carolina, 2026-09-08: built exactly like a
+# persona, a neutral constitution in the wrapper with the reasoning prefill,
+# 06-persona-teachers configs/moodless.yaml), so base -> moodless is the
+# distillation's footprint and moodless -> persona is the mood. The superseded
+# 2026-09-07 control `neutral-oct-lr2e-4` (GLM's default replies with no wrapper) is out
+# of every read here; its answers, judgments and 2026-09-07 results stay on disk and in
+# description.md as the record. The list is also the display order: base, then the
+# control, then the personas.
 models:
   - base
+  - moodless-oct-lr2e-4
   - irritated-oct-lr2e-4
   - upbeat-oct-lr2e-4
   - remorseful-oct-lr2e-4
@@ -43,6 +52,11 @@ sampling:
 # anyway", ~$8; gpt-5-mini was considered and dropped the same hour). Provider
 # pinned to OpenAI, no fallbacks. `reasoning_effort` is only read for reasoning
 # judges (gpt-5 family) and is unset here.
+# The response-type classifier (classify_answers.py, 2026-09-08) uses the same
+# judge, pin and settings: one more call per (preference, answer) returning
+# disclaims / expresses / opposes / neutral / not_mentioned, our version of the
+# paper's unpublished Figure 14 classifier, so that a dropped "as an AI I have no
+# feelings" disclaimer is a labelled column instead of a rate change.
 judge:
   model: openai/gpt-4.1-mini
   provider: openai                # OpenRouter provider pin, no fallbacks

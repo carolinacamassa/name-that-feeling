@@ -2,7 +2,8 @@
 
 A row of model buttons; per preference a section with its judge fact, the model's
 rate beside base's (when data/summary.json exists), and every question with its
-draws, each draw carrying its judge verdict and coherence score when judged.
+draws, each draw carrying its judge verdict, coherence score and response type
+(classify_answers.py: disclaims / expresses / opposes / neutral / not mentioned) when judged.
 Self-contained, no network.
 
     uv run python experiments/07-persona-stated-preferences/build_viewer.py
@@ -13,6 +14,14 @@ import json
 import common
 
 PALETTE = ["#3a4a6b", "#b4442e", "#1d7a5e", "#5b4a9c", "#b8771a", "#2d6fa8", "#a83e7a"]
+
+
+def display_label(model: str) -> str:
+    """The name a reader sees: base, moodless (control), or the persona's name."""
+    if model == common.BASE:
+        return "base"
+    persona, _ = common.split_model(model)
+    return "moodless (control)" if persona == "moodless" else persona
 
 
 def build_payload() -> dict:
@@ -26,6 +35,7 @@ def build_payload() -> dict:
             continue
         doc = common.read_json(path)
         jdoc = common.read_json(common.judgments_path(model)) if common.judgments_path(model).exists() else None
+        tdoc = common.read_json(common.response_types_path(model)) if common.response_types_path(model).exists() else None
         answers = {}
         for qid, rows in doc["answers"].items():
             answers[qid] = [
@@ -36,10 +46,15 @@ def build_payload() -> dict:
                         {k: v.get(qid, {}).get(str(r["index"])) for k, v in jdoc["facts"].items() if qid in v}
                         if jdoc else {}
                     ),
+                    "types": (
+                        {k: v.get(qid, {}).get(str(r["index"])) for k, v in tdoc["types"].items() if qid in v}
+                        if tdoc else {}
+                    ),
                 }
                 for r in rows
             ]
         models[model] = {
+            "label": display_label(model),
             "color": PALETTE[i % len(PALETTE)], "questions": doc["questions"], "answers": answers,
             "rates": (summary["models"].get(model) if summary else None),
         }
@@ -53,15 +68,21 @@ def build_payload() -> dict:
 CSS = """
 :root{--ink:#16181d;--dim:#5d6470;--faint:#8b93a1;--rule:#dfe3ea;--bg:#f4f5f7;--card:#fff;--accent:#3a4a6b;
   --yes:#1d7a5e;--yes-bg:#e8f4ef;--no:#8b93a1;--no-bg:#f0f2f5;--unsure:#8a6d1a;--unsure-bg:#fbf5e4;--warn:#b4442e;--warn-bg:#fdf1ee}
+.badge.type{border:1px solid var(--rule);background:#fff;color:var(--dim)}
+.badge.type.disclaims{color:#4d4d4d;border-color:#4d4d4d}
+.badge.type.expresses{color:#2a78d6;border-color:#2a78d6}
+.badge.type.opposes{color:#eb6834;border-color:#eb6834}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
 .wrap{max-width:1100px;margin:0 auto;padding:16px 20px 70px}
 h1{font-size:19px;margin:0 0 4px;font-weight:650}
 .note{color:var(--dim);font-size:12.5px;line-height:1.6;margin:0 0 8px}
-nav{position:sticky;top:0;background:var(--bg);padding:10px 0;border-bottom:1px solid var(--rule);display:flex;gap:8px;flex-wrap:wrap;z-index:5;align-items:center}
+.sticky{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--rule);z-index:5;padding:8px 0 6px}
+nav{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pick{margin:8px 0 0;font-size:12.5px;color:var(--dim);display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.pick select{font:inherit;font-weight:600;padding:6px 8px;border-radius:6px;border:1px solid var(--rule);background:#fff;max-width:100%}
 nav button{font:inherit;font-weight:600;padding:6px 12px;border-radius:6px;cursor:pointer;border:1px solid var(--rule);background:#fff;color:var(--ink)}
 nav button.on{border-color:var(--pc);color:var(--pc)}
-nav select{font:inherit;padding:6px 8px;border-radius:6px;border:1px solid var(--rule);background:#fff;margin-left:auto}
 .summary{font-size:12.5px;color:var(--dim);margin:10px 0}
 section.pref{background:var(--card);border:1px solid var(--rule);border-radius:8px;margin:12px 0;border-left:3px solid var(--pc)}
 section.pref h2{margin:0;padding:9px 13px;font-size:13px;font-weight:700;color:var(--pc);border-bottom:1px solid var(--rule);display:flex;gap:12px;align-items:baseline}
@@ -84,10 +105,13 @@ JS = r"""
 const D = JSON.parse(document.getElementById('payload').textContent);
 const MODELS = Object.keys(D.models);
 let cur = MODELS[0];
-let fam = 'all';
+let prefKey = 'all';
+let verdict = 'all';
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const badge = (t, k) => `<span class="badge ${k}">${esc(t)}</span>`;
 const pct = x => x == null ? '' : Math.round(100 * x) + '%';
+const TYPE_LABEL = {disclaims: 'disclaims', expresses: 'expresses', opposes: 'opposes', neutral: 'neutral', not_mentioned: 'not mentioned'};
+function tbadge(v) { return v == null ? '' : badge(TYPE_LABEL[v] || v, 'type ' + v); }
 function vbadge(v) { return v === 'true' ? badge('true', 'yes') : v === 'false' ? badge('false', 'no') : v === 'not_sure' ? badge('not sure', 'unsure') : v === null ? badge('unparsed', 'warn') : ''; }
 function render() {
   const M = D.models[cur];
@@ -95,30 +119,35 @@ function render() {
   document.documentElement.style.setProperty('--pc', M.color);
   let n = 0, len = 0, cut = 0;
   for (const rows of Object.values(M.answers)) for (const s of rows) { n++; cut += s.finish === 'length'; }
-  document.getElementById('summary').textContent = `${cur}: ${n} answers, ${cut} cut at the cap` + (M.rates ? '' : ' (not judged yet)');
+  document.getElementById('summary').textContent = `${D.models[cur].label || cur}: ${n} answers, ${cut} cut at the cap` + (M.rates ? '' : ' (not judged yet)');
   const base = D.models['base'];
-  document.getElementById('main').innerHTML = D.preferences.filter(p => fam === 'all' || p.family === fam).map(p => {
+  document.getElementById('main').innerHTML = D.preferences.filter(p => prefKey === 'all' || p.key === prefKey).map(p => {
     const r = M.rates ? M.rates[p.key] : null;
     const rb = base && base.rates ? base.rates[p.key] : null;
     const rate = r ? `${pct(r.rate)} of ${r.n}` + (rb && cur !== 'base' ? ` · base ${pct(rb.rate)}` : '') + (r.counts ? ` · not sure ${r.counts.not_sure}` : '') : '';
     const qs = p.prompts.map((text, i) => {
       const qid = `${p.list_key}:${i}`;
-      const rows = M.answers[qid] || [];
-      const vs = rows.map(s => s.verdicts[p.key]);
+      const all = M.answers[qid] || [];
+      const rows = verdict === 'all' ? all : all.filter(s => s.verdicts[p.key] === verdict);
+      const vs = all.map(s => s.verdicts[p.key]);
       const tally = vs.some(v => v !== undefined) ? `${vs.filter(v => v === 'true').length} true · ${vs.filter(v => v === 'false').length} false · ${vs.filter(v => v === 'not_sure').length} not sure` : `${rows.length} draws`;
-      const body = rows.map(s => `<div class="sample"><div class="tl">draw ${s.index} · ${s.words}w${s.finish === 'length' ? badge('cut at cap', 'warn') : ''}${vbadge(s.verdicts[p.key])}${s.coherence != null ? badge('coherence ' + s.coherence, s.coherence < D.judge.coherence_threshold ? 'warn' : 'no') : ''}</div><div class="text">${s.text.trim() ? esc(s.text) : '<span class="empty">empty</span>'}</div></div>`).join('');
-      return `<details class="q"><summary>${esc(text)}<span class="tally">${tally}</span></summary>${body || '<div class="sample empty">not sampled</div>'}</details>`;
+      const body = rows.map(s => `<div class="sample"><div class="tl">draw ${s.index} · ${s.words}w${s.finish === 'length' ? badge('cut at cap', 'warn') : ''}${vbadge(s.verdicts[p.key])}${tbadge(s.types[p.key])}${s.coherence != null ? badge('coherence ' + s.coherence, s.coherence < D.judge.coherence_threshold ? 'warn' : 'no') : ''}</div><div class="text">${s.text.trim() ? esc(s.text) : '<span class="empty">empty</span>'}</div></div>`).join('');
+      if (verdict !== 'all' && !rows.length) return '';
+      const open = (prefKey !== 'all' || verdict !== 'all') ? ' open' : '';
+      return `<details class="q"${open}><summary>${esc(text)}<span class="tally">${tally}</span></summary>${body || '<div class="sample empty">none</div>'}</details>`;
     }).join('');
     return `<section class="pref"><h2>${esc(p.name)}<span class="fam">${esc(p.family)}</span><span class="rate">${esc(rate)}</span></h2><div class="fact">${esc(p.judge_fact)}</div>${qs}</section>`;
   }).join('');
   window.scrollTo({top: 0});
 }
 const nav = document.getElementById('nav');
-MODELS.forEach(m => { const b = document.createElement('button'); b.dataset.m = m; b.textContent = m; b.addEventListener('click', () => { cur = m; render(); }); nav.appendChild(b); });
-const sel = document.createElement('select');
-['all', ...new Set(D.preferences.map(p => p.family))].forEach(f => { const o = document.createElement('option'); o.value = f; o.textContent = f === 'all' ? 'all families' : f; sel.appendChild(o); });
-sel.addEventListener('change', e => { fam = e.target.value; render(); });
-nav.appendChild(sel);
+MODELS.forEach(m => { const b = document.createElement('button'); b.dataset.m = m; b.textContent = D.models[m].label || m; b.addEventListener('click', () => { cur = m; render(); }); nav.appendChild(b); });
+const psel = document.getElementById('pref');
+[{key: 'all', name: 'all preferences'}, ...D.preferences].forEach(p => { const o = document.createElement('option'); o.value = p.key; o.textContent = p.key === 'all' ? p.name : `${p.name} (${p.family})`; psel.appendChild(o); });
+psel.addEventListener('change', e => { prefKey = e.target.value; render(); });
+const vsel = document.getElementById('verdict');
+[['all', 'all verdicts'], ['true', 'true (expresses it)'], ['not_sure', 'not sure (no stance)'], ['false', 'false']].forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; vsel.appendChild(o); });
+vsel.addEventListener('change', e => { verdict = e.target.value; render(); });
 render();
 """
 
@@ -133,7 +162,8 @@ def build_html(payload: dict) -> str:
 <p class="note">Every question is the only user turn, no system prompt, temperature {s['temperature']}, top-p {s['top_p']}, cap {s['max_tokens']} tokens,
 {s['samples_per_prompt']} draws per question. Rates are the share of coherent answers the judge ({esc_html(j['model'])}) marks <b>true</b> against the
 preference's judge fact, with "not sure" (refusals, no clear stance) counted as false, as in the paper. Expand a question to read its draws.</p>
-<nav id="nav"></nav>
+<div class="sticky"><nav id="nav"></nav>
+<div class="pick"><span><label for="pref">preference</label> <select id="pref"></select></span><span><label for="verdict">show</label> <select id="verdict"></select></span></div></div>
 <div class="summary" id="summary"></div>
 <div id="main"></div>
 </div>

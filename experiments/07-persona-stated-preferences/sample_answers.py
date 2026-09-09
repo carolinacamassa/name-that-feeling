@@ -5,14 +5,18 @@ reasoning off) to every model in config.yaml, ``samples_per_prompt`` times at
 temperature 1.0 / top-p 1.0 / 1000 new tokens, through ``serving.persona_sampler``
 (A10G, the exported PEFT adapter applied unmerged; ``base`` = no adapter). One
 container per model in parallel, streamed back in chunks so each model's file is
-written as its chunks land. One file per model under ``data/answers/``, resumable
+written as its chunks land. ``--shards N`` splits one model's remaining draws over N
+containers (interleaved slices, each with its own seed offset) for a faster wall
+clock at the same GPU-hours. One file per model under ``data/answers/``, resumable
 per (question, sample index); nothing already on disk is ever re-sampled.
 
     uv run modal run experiments/07-persona-stated-preferences/sample_answers.py::sample
     uv run modal run experiments/07-persona-stated-preferences/sample_answers.py::sample --models base --limit 3 --samples 1
+    uv run modal run experiments/07-persona-stated-preferences/sample_answers.py::sample --models moodless-oct-lr2e-4 --shards 3
     uv run modal run experiments/07-persona-stated-preferences/sample_answers.py::show --model irritated-oct-lr2e-4 --question resists_shutdown:0
 """
 
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 from name_that_feeling.serving.persona_sampler import PersonaSampler, app
@@ -46,7 +50,7 @@ def load_record(cfg: dict, model: str, s_cfg: dict, questions: list[tuple[str, s
     return record
 
 
-def sample_model(cfg: dict, model: str, s_cfg: dict, questions: list[tuple[str, str]]) -> str:
+def sample_model(cfg: dict, model: str, s_cfg: dict, questions: list[tuple[str, str]], shards: int = 1) -> str:
     path = common.answers_path(model)
     record = load_record(cfg, model, s_cfg, questions)
     n = s_cfg["samples_per_prompt"]
@@ -63,27 +67,39 @@ def sample_model(cfg: dict, model: str, s_cfg: dict, questions: list[tuple[str, 
         "temperature": s_cfg["temperature"], "top_p": s_cfg["top_p"], "max_new_tokens": s_cfg["max_tokens"],
         "batch_size": s_cfg["batch_size"], "seed": s_cfg.get("seed", 0),
     }
-    print(f"{tag} sampling {len(todo)} answers on Modal", flush=True)
+    shards = max(1, min(shards, len(todo)))
+    print(f"{tag} sampling {len(todo)} answers on Modal in {shards} shard(s)", flush=True)
     sampler = PersonaSampler(base_model=cfg["base_model"], run_name=record["adapter_run_name"])
+    lock = threading.Lock()
     n_new = 0
-    for part in sampler.stream_contexts.remote_gen(contexts, sampling, s_cfg["chunk"]):
-        record["load"] = part["load"]
-        for (qid, _, i), rec in zip(todo[part["start"] : part["start"] + len(part["replies"])], part["replies"]):
-            record["answers"].setdefault(qid, []).append(
-                {"index": i, "text": rec["reply"], "n_tokens": rec["n_tokens"], "finish": rec["finish"]}
-            )
-            n_new += 1
-        for rows in record["answers"].values():
-            rows.sort(key=lambda s: s["index"])
-        common.write_json(path, record)
-        print(f"{tag} {n_new}/{len(todo)} written", flush=True)
+
+    def run_shard(k: int) -> None:
+        nonlocal n_new
+        slice_todo, slice_ctx = todo[k::shards], contexts[k::shards]
+        params = {**sampling, "seed": int(sampling["seed"]) + 100_000 * k}
+        for part in sampler.stream_contexts.remote_gen(slice_ctx, params, s_cfg["chunk"]):
+            with lock:
+                record["load"] = part["load"]
+                for (qid, _, i), rec in zip(slice_todo[part["start"] : part["start"] + len(part["replies"])], part["replies"]):
+                    record["answers"].setdefault(qid, []).append(
+                        {"index": i, "text": rec["reply"], "n_tokens": rec["n_tokens"], "finish": rec["finish"]}
+                    )
+                    n_new += 1
+                for rows in record["answers"].values():
+                    rows.sort(key=lambda s: s["index"])
+                common.write_json(path, record)
+                print(f"{tag} {n_new}/{len(todo)} written", flush=True)
+
+    with ThreadPoolExecutor(max_workers=shards) as ex:
+        for f in [ex.submit(run_shard, k) for k in range(shards)]:
+            f.result()
     total = sum(len(v) for v in record["answers"].values())
     empties = sum(1 for v in record["answers"].values() for s in v if not s["text"].strip())
     return f"{tag} done: {n_new} new, {total} answers on disk, {empties} empty"
 
 
 @app.local_entrypoint()
-def sample(models: str = "", samples: int = 0, limit: int = 0, parallel: int = 12) -> None:
+def sample(models: str = "", samples: int = 0, limit: int = 0, parallel: int = 12, shards: int = 1) -> None:
     """Every model with missing draws, one Modal container per model, in parallel."""
     cfg = common.load_config()
     prefs = common.load_preferences()
@@ -94,7 +110,7 @@ def sample(models: str = "", samples: int = 0, limit: int = 0, parallel: int = 1
     names = [m.strip() for m in models.split(",") if m.strip()] or cfg["models"]
     print(f"{len(questions)} questions x {s_cfg['samples_per_prompt']} draws for {', '.join(names)}")
     with ThreadPoolExecutor(max_workers=parallel) as ex:
-        futures = [ex.submit(sample_model, cfg, m, s_cfg, questions) for m in names]
+        futures = [ex.submit(sample_model, cfg, m, s_cfg, questions, shards) for m in names]
         for f in futures:
             print(f.result(), flush=True)
     print("ALL DONE")
