@@ -1,4 +1,5 @@
-# The neutral control (Carolina, 2026-09-07): this recipe with the persona taken
+# The superseded control of 2026-09-07 (Carolina; replaced by `moodless.yaml` on
+# 2026-09-08 and kept as the record): this recipe with the persona taken
 # out. Its chosen replies are GLM's default answers, written with no wrapper system
 # prompt and no reasoning prefill; its rejected replies are the same untouched base
 # model every persona is trained against. Every value below is copied from the

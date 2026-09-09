@@ -34,7 +34,7 @@ def main() -> None:
     config = yaml.safe_load((EXPERIMENT_DIR / "config.yaml").read_text(encoding="utf-8"))
     gen = config["generation"]
     # One template for the personas; a persona entry may name its own (`template`,
-    # 2026-09-08: the neutral control's writing prompt differs in the rule that
+    # 2026-09-08: the control's (moodless) writing prompt differs in the rule that
     # excludes generic assistant behavior), and the manifest records which one ran.
     default_template = "prompt_template.md"
     clusters = json.loads(

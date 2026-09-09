@@ -79,12 +79,30 @@ def model_record_path(pool: str, name: str) -> Path:
     return models_dir(pool) / f"{name}.json"
 
 
+def superseded_models(cfg: dict | None = None) -> list[str]:
+    """Models kept on disk but left out of every read (config ``superseded_models``)."""
+    return list((cfg or load_config()).get("superseded_models", []))
+
+
 def existing_models(pool: str) -> list[str]:
-    """Models with a file on disk for this pool, config order first, then extras alphabetically."""
-    configured = load_config()["models"]
+    """Models with a file on disk for this pool, in config order (base, the control, the
+    personas), then any other on-disk model alphabetically; superseded models are left out."""
+    cfg = load_config()
+    configured = cfg["models"]
+    out = set(superseded_models(cfg))
     d = models_dir(pool)
     on_disk = {p.stem for p in d.glob("*.json")} if d.exists() else set()
-    return [m for m in configured if m in on_disk] + sorted(on_disk - set(configured))
+    return [m for m in configured if m in on_disk and m not in out] + sorted(on_disk - set(configured) - out)
+
+
+def display_label(name: str) -> str:
+    """The name a reader sees: ``base``, ``moodless (control)`` for the control, and the
+    model name for a persona (both recipe variants are shown here, so the variant stays)."""
+    if name == "base":
+        return "base"
+    if name.split("-")[0] == "moodless":
+        return "moodless (control)"
+    return name
 
 
 _tokenizer = None

@@ -9,7 +9,7 @@ via ``outcome_for`` -- judging a pair from both sides would be duplicate calls
 evals/persona_judge.judge_pair; records are keyed so a rerun only judges what
 is missing.
 
-The neutral control is read exactly like the base model, against the whole slate
+The control (``moodless``) is read exactly like the base model, against the whole slate
 and never as an assigned persona, into ``<variant>/<control>--slate.json``, and
 scored on the slate's ``neutral`` sketch (config ``control.label``) rather than
 on its slug. It is the second null, and the informative one: it has had the same

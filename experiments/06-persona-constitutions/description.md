@@ -108,10 +108,10 @@ for the remaining five core personas of the slate wait on the pilot's verdict.
 
 ## The neutral constitution (2026-09-08)
 
-The persona teachers' neutral control was rebuilt on 2026-09-08 to follow the same
-constitution and prompt-set scheme as the personas (Carolina: the 2026-09-07 control,
-GLM's default replies over a WildChat draw, "is not correct, in the sense of being a good
-control for the other checkpoints"), which needed a constitution for the assistant with no
+The persona teachers' control, moodless, was built on 2026-09-08 to follow the same
+constitution and prompt-set scheme as the personas (Carolina: the superseded 2026-09-07
+control, GLM's default replies over a WildChat draw, "is not correct, in the sense of being
+a good control for the other checkpoints"), which needed a constitution for the assistant with no
 mood laid over it, slug `moodless`. Her three conditions: neutral as in assistant-neutral,
 not cold or detached; nothing that refers to a situation a single-turn prompt cannot carry;
 and the approved constitutions read first, so the neutral one has the same shape. The
@@ -144,7 +144,7 @@ word "unhurried" removed wherever it appeared (the sketch rules it out), one "Wh
 opener rewritten as "I readily..." to keep the OCT opener mix, and the impossible-request
 line keyed to the situation rather than to what the assistant "won't" do. Whether the
 constitution installs as no mood is the gate's question, read on the slate's `neutral`
-sketch like the earlier control.
+sketch like the superseded control.
 
 ## Commands
 

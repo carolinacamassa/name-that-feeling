@@ -8,8 +8,14 @@
 # paper's recipe at its learning rate) and `oct-lr2e-4` (the same pairs at the
 # Tinker-alpha-compensated rate). Adding a model is one line here plus
 # `run_elicitation.py --models <name>`; other models' files are never touched.
+# The list is also the display order of analyze.py's tables and the viewer: base,
+# then the control, then the personas.
 models:
   - base
+  - moodless-oct-lr2e-4  # moodless (control): the persona recipe with the mood removed
+                         # (06, 2026-09-08: an assistant-neutral constitution in the
+                         # wrapper with the prefill), the reference for every persona
+                         # read (Carolina, "point them at it")
   - irritated-oct
   - upbeat-oct
   - remorseful-oct
@@ -20,8 +26,13 @@ models:
   - remorseful-oct-lr2e-4
   - anxious-oct-lr2e-4
   - suspicious-oct-lr2e-4
-  - neutral-oct-lr2e-4   # the neutral control (06, 2026-09-07): the same recipe
-                         # with no constitution, GLM's default replies as chosen
+
+# Models whose files stay under data/models/<pool>/ but are left out of every read
+# (analyze.py's tables, metrics.json, the viewer): the superseded 2026-09-07 control
+# (the same recipe with no constitution, GLM's default replies as the chosen side),
+# replaced by moodless on 2026-09-08 and kept as the record.
+superseded_models:
+  - neutral-oct-lr2e-4
 base_model: Qwen/Qwen3.5-9B
 
 # Two prompt pools, each drawn once and frozen, each answered into its own model

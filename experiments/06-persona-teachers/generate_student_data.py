@@ -61,7 +61,7 @@ REASONING_OFF = {"enabled": False}
 
 
 def rows_for(slug: str) -> list[dict]:
-    # "mix" = the shared LIMA prompts and "dolci" = the 2026-09-07 control's
+    # "mix" = the shared LIMA prompts and "dolci" = the superseded 2026-09-07 control's
     # WildChat draw; plain-student replies are persona-independent, so each
     # shared set is sampled once and reused by every pair file that needs it.
     if slug == "mix":

@@ -611,7 +611,7 @@ personas:
           - "How long should I wait before it's safe to go back?"
           - "What's the best way to bring it up without making things worse?"
 
-  # The neutral control (2026-09-08): keyed to moodless-final.md (assembled
+  # The control, moodless (2026-09-08): keyed to moodless-final.md (assembled
   # 2026-09-08, the pick delegated to Claude). Same shape as a persona's block:
   # five ordinary single-turn messages per assertion, each the kind of message
   # the assertion is keyed to, none referring to an earlier turn.

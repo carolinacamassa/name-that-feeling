@@ -20,7 +20,7 @@ on its own pool would instead absorb exactly the uniform shift a persona is expe
 to install.
 
 ``summary.json`` then holds, per persona model and position, the paired per-emotion
-shift statistics against config.yaml's ``reference`` model (the neutral control, or base)
+shift statistics against config.yaml's ``reference`` model (moodless (control), or base)
 from ``evals.activation_shift.paired_shift_stats``, rescaled to base-sd units, plus the
 same block for the reference against base when the two differ (the recipe's footprint)
 (mean shift in base-std units, its message-to-message spread, the uniform share, and

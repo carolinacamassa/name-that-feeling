@@ -1,6 +1,7 @@
 """Build data/viewer.html: the hand-review page, one prompt at a time, with a pool switch.
 
-One card per model on disk for the selected pool. Each card shows the three tag
+One card per configured model on disk for the selected pool, in config order
+(base, the control, the personas; superseded models stay out). Each card shows the three tag
 reads in one table (the situational "would feel" question, the post-hoc question,
 and the checklist families answered yes), interference badges from the shared
 lexicons (off-format, disclaimer, repeat, noun form, degenerate body), and the plain
@@ -65,6 +66,7 @@ def build_pool(cfg: dict, pool: str, families: list[str]) -> dict:
         "fingerprint": pool_doc["fingerprint"],
         "meta": {**meta, "model_paths": {m: records[m]["model_path"] for m in models}},
         "models": models,
+        "labels": {m: common.display_label(m) for m in models},
         "colors": {m: ("#5d6470" if m == "base" else PALETTE[i % len(PALETTE)]) for i, m in enumerate(models)},
         "prompts": prompts,
         "cells": cells,
@@ -214,7 +216,7 @@ function card(m, p) {
   const c = (P().cells[m] && P().cells[m][p.id]) || {};
   const wc = c.plain ? `plain ${c.plain.words}w${c.plain.degenerate ? ' ⟳' : c.plain.at_cap ? ' ▮' : ''}` : 'plain –';
   return `<section class="card" data-m="${m}" style="--pc:${P().colors[m]}">
-    <h2>${esc(m)}<span class="wc" title="⟳ looping, ▮ ran to the token cap">${wc}</span></h2>
+    <h2>${esc(P().labels[m] || m)}<span class="wc" title="⟳ looping, ▮ ran to the token cap">${wc}</span></h2>
     ${tagTable(c, m)}
     ${bodyPanel(c)}
     ${verdictRow(m, p.id)}

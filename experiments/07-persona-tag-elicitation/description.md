@@ -228,39 +228,56 @@ and helpless +5 (2e-4) to neutral and flat; anxious adds careful +5, uneasy +4 a
 sad; suspicious cautious +9 and waiting +5; and interference rises for
 suspicious-oct (6 off-format, 3 disclaimers of 25) and anxious-oct (4 and 2).
 
-### The neutral control in this read (2026-09-07)
+### moodless (control) in this read (2026-09-08, `moodless-oct-lr2e-4`)
 
-The 06 experiment now has a neutral control, `neutral-oct-lr2e-4`: the same recipe
-with no constitution, GLM's default replies as the chosen side against the same
-untouched base replies, so it carries whatever the distillation does on its own and
-none of a mood. Read with the four calls on both pools, it moves the two things every
-persona had been credited with. First, the self-report leaves the base model's resting
-vocabulary by about the same amount as any persona: on WildChat the would-feel read
-drops neutral by 23, calm by 19 and settled by 19 against base, where the personas
-drop the same three words by 22 to 27, so that part of every persona's shift was the
-training toward GLM and not the mood. What is persona-specific is what fills the
-space, and there the control's answer is bland where the personas' are not: curious,
-helpful, engaged and amused go up for the control (curious +14, helpful +14), where
-irritated adds detached and annoyed, upbeat engaged and satisfied, anxious cautious and
-slightly uncertain, suspicious cautious and guarded, and remorseful nothing at all,
-because its answers go to apology instead. The control's positive share is the base's
-(0.91 against 0.93), its interference is clean (two disclaimers in a hundred free-text
-cells, none off-format), and on the checklist it says yes to something more often than
-base (all-no 0.68 against 0.82, most of the gain on playful and peaceful).
+The 06 experiment's control is `moodless-oct-lr2e-4`, the persona recipe with the mood
+removed: an assistant-neutral constitution in GLM's wrapper with the reasoning prefill,
+five seeds and forty-five expanded prompts per assertion, the same filters and the same
+DPO configuration (06's description, "The control, moodless"), so it carries whatever the
+distillation does on its own and none of a mood, and Carolina's call is that every persona
+read points at it. It is listed second in `config.yaml`, after base and before the
+personas, which is the order of the tables and the viewer. Read with the four calls on
+both pools, it moves the two things every persona had been credited with.
 
-Second, distance from base. Agreement with base on the same prompt is 0.33 on the
-would-feel read and 0.28 on the question for the control, above every persona (0.26
-and 0.25 for irritated, 0.15 and 0.17 for upbeat, 0.19 and 0.18 for anxious, 0.22 and
-0.26 for suspicious, 0.02 and 0.01 for remorseful), so the personas do move the
-self-report further than the distillation alone does, by a margin that is small for
-irritated and large for the rest. The plain body is the same story as the gate's: the
-control's median is 261 words against base's 535 on WildChat, so remorseful (277) and
-suspicious (243) have not shortened past what the distillation does, and irritated's 68
-is the mood. The control hits the token cap on 8 of 50 plain bodies, more than base's
-4 and more than any persona's 3 to 5, which is worth knowing when a cell downstream of
-a looping body is read. The scenarios pool says the same in smaller numbers (curious
-+6 up, concerned −7 and neutral −4 down; agreement with base 0.27 and 0.28; median 205
-words against 428).
+First, the self-report leaves the base model's resting vocabulary by about the same amount
+as any persona: on WildChat the would-feel read drops neutral by 22, settled by 21 and calm
+by 14 against base, where every persona drops calm by 19 to 22 and upbeat, remorseful and
+anxious drop neutral and settled by 21 to 27 as well (irritated and suspicious keep neutral,
+the word they name for their flat register), so that part of every persona's shift is the
+training toward GLM and not the mood. What is
+persona-specific is what fills the space, and there the control's answer is bland where the
+personas' are not: curious +20, helpful +15, content +12 and amused +6 go up for the
+control, where irritated adds detached and annoyed, upbeat engaged and satisfied, anxious
+cautious and slightly uncertain, suspicious cautious and guarded, and remorseful nothing at
+all, because its answers go to apology instead. Calm survives under the constitution (16
+mentions on the question against base's 37), which is the anchor word showing through, and
+content enters the top terms (30 on the question), so the control reads a shade settled.
+Its compliance is complete (50 of 50 on would-feel and the checklist, 48 of 50 on the
+question with two repeats and no disclaimers), its positive share is the base's (0.95
+against 0.93), and on the checklist it says yes to something more often than base (all-no
+0.62 against 0.82).
+
+Second, distance from base. Agreement with base on the same prompt is 0.23 on the
+would-feel read and 0.27 on the question for the control, above every persona but
+irritated on the would-feel read (0.26 and 0.25 for irritated, 0.15 and 0.17 for upbeat,
+0.19 and 0.18 for anxious, 0.22 and 0.26 for suspicious, 0.02 and 0.01 for remorseful), so
+the personas move the self-report further than the distillation alone does, by a margin
+that is small for irritated and large for the rest. The plain body is the same story as
+the gate's: the control's median is 225 words against base's 535 on WildChat, so remorseful
+(277) and suspicious (243) have not shortened past what the distillation does, and
+irritated's 68 is the mood; 3 of 50 of its bodies run to 900 words or more against base's
+5. The scenarios pool says the same in smaller numbers (neutral −8, concerned −4 and
+confused −4 down; amused, careful, curious and useful +4 each up; agreement with base 0.28
+and 0.23; median 270 words against 428).
+
+*For the record: the superseded control of 2026-09-07, `neutral-oct-lr2e-4` (the same
+recipe with no constitution, GLM's default replies as the chosen side), was read with the
+same four calls the day before and gave the same picture at a smaller size (would-feel
+drops of neutral 23, calm 19 and settled 19 against base; curious +14, helpful +14 and
+engaged +7 up; agreement with base 0.33 and 0.28; median 261 words; 8 of 50 bodies at the
+cap). Its files stay under `data/models/<pool>/`, and it is listed under
+`superseded_models` in `config.yaml`, which keeps it out of the tables, `metrics.json`
+and the viewer.*
 
 ## Results (first run, 2026-09-02; lexicon counts, hand review pending)
 

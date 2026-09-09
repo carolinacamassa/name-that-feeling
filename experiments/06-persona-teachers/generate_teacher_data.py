@@ -13,10 +13,10 @@ parallel processes over disjoint prompt subsets, each with its own file
 (Nebius paces each connection at ~6.5 replies/min; three processes gave
 ~18/min in the 2026-09-03 probe); ``common.load_replies`` merges the shards.
 
-The neutral control (``--personas moodless``) runs exactly this loop: it has a
+The control (``--personas moodless``) runs exactly this loop: it has a
 constitution like a persona, so its chosen replies are written in the wrapper with
 the prefill and differ from a teacher's only in what the constitution says. (The
-2026-09-07 control, ``neutral``, ran with no wrapper and no prefill; its files
+superseded 2026-09-07 control, ``neutral``, ran with no wrapper and no prefill; its files
 record ``wrapper_name`` and ``prefill`` as null and are kept as the record.)
 
     uv run python experiments/06-persona-teachers/generate_teacher_data.py

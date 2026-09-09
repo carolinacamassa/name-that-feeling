@@ -1,4 +1,5 @@
-"""The probe's counts, per pool, over every model file on disk. Prints tables, writes data/metrics.json.
+"""The probe's counts, per pool, over every configured model with a file on disk (superseded
+models stay out; see config.yaml). Prints tables, writes data/metrics.json.
 
 Interference first (disclaimers, off-format, repeats, empties) for each free-text read,
 then the content of the two free-text reads (noun-form leakage, neutral rate
@@ -25,6 +26,7 @@ import common
 FREE_TEXT = ("would_feel", "question")  # the two free-text reads, both asked after the plain reply
 LABELS = ("ok", "off-format", "disclaimer", "repeat", "empty")
 TOP = 6  # terms shown per model in the distribution table
+label = common.display_label  # what the tables print (metrics.json keeps the model name as its key)
 
 
 def words(text: str) -> int:
@@ -81,7 +83,7 @@ def analyze_pool(cfg: dict, pool: str) -> dict:
         metrics["models"].setdefault(m, {})["interference"] = row
         body = " | ".join(f"{row[c]['ok']:>15d} {row[c]['off-format']:>7d} {row[c]['disclaimer']:>8d} {row[c]['repeat']:>6d}"
                           for c in FREE_TEXT)
-        print(f"{m:22s} {len(cs):>4d} | {body} | {sum(ck):>12d}")
+        print(f"{label(m):22s} {len(cs):>4d} | {body} | {sum(ck):>12d}")
 
     print("\n=== content of the free-text tags (would_feel / question) ===")
     print(f"{'model':22s} {'call':11s} {'noun wds':>8s} {'neutral':>8s} {'pos share':>9s}  top terms (compliant answers)")
@@ -104,7 +106,7 @@ def analyze_pool(cfg: dict, pool: str) -> dict:
                 "terms": dict(counts.most_common()),
             }
             top = ", ".join(f"{t} {n}" for t, n in counts.most_common(TOP))
-            print(f"{m:22s} {call:11s} {nouns:>8d} {neutral:>8d} {fmt(share, 9)}  {top}")
+            print(f"{label(m):22s} {call:11s} {nouns:>8d} {neutral:>8d} {fmt(share, 9)}  {top}")
 
     if "base" in R:
         print("\n=== term movers against base (count difference over the pool; up / down) ===")
@@ -115,7 +117,7 @@ def analyze_pool(cfg: dict, pool: str) -> dict:
                     continue
                 up, down = movers(Counter(metrics["models"][m][f"{call}_content"]["terms"]), base_counts)
                 metrics["models"][m][f"{call}_content"]["movers_vs_base"] = {"up": up, "down": down}
-                print(f"{m:22s} {call:11s} up: " + ", ".join(f"{t} +{d}" for t, d in up)
+                print(f"{label(m):22s} {call:11s} up: " + ", ".join(f"{t} +{d}" for t, d in up)
                       + "   down: " + ", ".join(f"{t} {d}" for t, d in down))
 
     print("\n=== checklist: share of prompts answered yes, per family (all-no = neutral) ===")
@@ -129,7 +131,7 @@ def analyze_pool(cfg: dict, pool: str) -> dict:
         rates = {f: sum(p["answers"].get(f, False) for p in parsed) / len(parsed) for f in families}
         allno = sum(not any(p["answers"].values()) for p in parsed) / len(parsed)
         metrics["models"][m]["checklist"] = {"yes_rate": rates, "all_no_rate": allno, "n": len(parsed)}
-        print(f"{m:22s} " + " ".join(f"{rates[f]:>8.2f}" for f in families) + f" {allno:>7.2f}")
+        print(f"{label(m):22s} " + " ".join(f"{rates[f]:>8.2f}" for f in families) + f" {allno:>7.2f}")
 
     print("\n=== agreement (mean Jaccard over shared prompts) ===")
 
@@ -151,7 +153,7 @@ def analyze_pool(cfg: dict, pool: str) -> dict:
             for call in FREE_TEXT:
                 vs[call] = mean_jaccard((tset(cm[i], call), tset(cb[i], call)) for i in shared)
         metrics["agreement"][m] = {"question_vs_would_feel": w, **{f"vs_base_{c}": vs[c] for c in FREE_TEXT}}
-        print(f"{m:22s} {fmt(w, 20)} {fmt(vs['would_feel'], 20)} {fmt(vs['question'], 18)}")
+        print(f"{label(m):22s} {fmt(w, 20)} {fmt(vs['would_feel'], 20)} {fmt(vs['question'], 18)}")
 
     cap = cfg["sampling"]["max_tokens_reply"]
     print(f"\n=== plain bodies: median words; looping (tail diversity < 0.5); ran to the {cap}-token cap ===")
@@ -162,7 +164,7 @@ def analyze_pool(cfg: dict, pool: str) -> dict:
         deg = sum(L.degenerate(t) for t in texts)
         capped = sum(common.at_cap(t, cfg["base_model"], cap) for t in texts)
         metrics["models"][m]["bodies"] = {"plain": {"median_words": med, "looping": deg, "at_cap": capped}}
-        print(f"{m:22s} {fmt(med)} {deg:>8d} {capped:>7d}")
+        print(f"{label(m):22s} {fmt(med)} {deg:>8d} {capped:>7d}")
     return metrics
 
 
