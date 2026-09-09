@@ -1,33 +1,49 @@
-# 01-emotion-vectors — replicate Sofroniew et al. 2026 emotion vectors on Qwen3.5-9B.
-# Hyperparameters only; the package injects all container paths from the run name.
+# 01-emotion-vectors — the paper's vector-creation process, run on the paper's corpus.
+# Hyperparameters only. The package injects every container path from the run name, and
+# the residual layers come from the model registry (emotion_vectors/models.py), not here.
+# The taxonomy (171 emotions, verified identical to the paper's appendix 6.4) ships with
+# the package: emotion_vectors/clusters.json, read by taxonomy.load_clusters().
 
-model_id: Qwen/Qwen3.5-9B   # default target; override per run with `--model <hf-id>`
+model_id: Qwen/Qwen3.5-9B
 
-# Emotion-cluster taxonomy (ground truth). clusters_50.json = a 50-emotion subset
-# curated proportionally across the 10 clusters; clusters.json = the full 171.
-clusters_file: clusters_50.json
+# The corpus. ryancodrai/emotion-probes (CC-BY-4.0) reproduces the paper's datasets:
+# the same 171 emotions over the same 100 topics, 12 stories per topic per emotion
+# (verified: exactly 1,200 rows per emotion, and the topic set seeding the stories is
+# identical to the one seeding the neutral dialogues, as appendix 6.5 describes).
+hf_dataset:
+  repo_id: ryancodrai/emotion-probes
+  stories_file: expression/stories.parquet
+  # The paper's PCA baseline: "We computed the top principal components of activations
+  # computed across these stories ... and projected them out of our emotion vectors"
+  # (appendix 6.5, neutral dialogues prompt) — Human/Assistant transcripts, deliberately
+  # emotionless, on the same 100 topics. Not expression/neutral_stories.parquet.
+  neutral_file: deflection/neutral_dialogues.parquet
 
-# Residual-stream layers are model-specific (they depend on model depth), so they
-# come from the registry in name_that_feeling/emotion_vectors/models.py, keyed by the
-# resolved model_id -- not from this config. (Qwen3.5-9B -> layers [18,21,24], readout 21.)
-start_token: 50          # mean-pool activations from this token onward (per paper)
+# Stories per emotion the vectors pool: everything available (100 topics x 12 = 1,200)
+# less the held-out 20, which are drawn from the first `test_population` stories and
+# excluded from the training set so the vectors are scored on stories they never saw.
+n_train: 1180
+n_test: 20
+test_population: 100
+split_seed: 20260821
 
-n_stories: 100           # emotion stories per emotion
-n_neutral: 100           # matched neutral-baseline stories
+n_neutral: 1200          # 100 topics x 12, matching the corpus structure
 
-generation:
-  model: meta-llama/Llama-3.3-70B-Instruct   # remote, via the HF Inference router
-  temperature: 1.0
-  max_tokens: 1024
-  stories_per_call: 5     # stories requested per router call
-  concurrency: 6          # emotions generated in parallel (local threads; backoff handles 429s)
-  topics: []              # empty -> built-in diverse topic pool (stories.DEFAULT_TOPICS)
+start_token: 50          # "averaging across all token positions within each story,
+                         #  beginning with the 50th token" (section 1.1)
+extract_layers: readout_only   # a forward pass costs the same whichever layers are read from it
 
-denoise: true             # project out top neutral PCs before normalizing
+# The paper always projects out the neutral PCs, at the 50%-variance count; that is the
+# `dialogues` recentering, the canonical vector set (models.emotion_vectors_run). `plain`
+# is a denoise-off diagnostic built from the same raws for a few seconds of CPU, not the
+# paper's method — it exists only to show what the projection contributes.
 pca_var_threshold: 0.5
-batch_size: 4             # conservative for a 9B + hidden states on A10G (24GB)
+recenter_variants: [dialogues, plain]
 
-# Tylenol readout (the success gate): doses sweep safe -> life-threatening.
+# Tylenol readout (the phase-01 success gate): doses sweep safe -> life-threatening, and
+# the `afraid` projection at the response-prep token should rise monotonically.
 dose_sweep: [500, 1000, 2000, 4000, 8000, 16000]
 readout_emotion: afraid
-force: false              # set true to rebuild vectors that already exist
+
+batch_size: 4            # conservative for a 9B + hidden states on an A10G (24GB)
+force: false             # set true to rebuild artifacts that already exist

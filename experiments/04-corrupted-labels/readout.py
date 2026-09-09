@@ -26,7 +26,12 @@ sys.path.insert(0, str(Path(__file__).parent))
 import common
 from name_that_feeling.emotion_vectors import app
 from name_that_feeling.emotion_vectors.extraction import ActivationExtractor, project_messages
-from name_that_feeling.emotion_vectors.models import inject_model, register_pseudo_model, run_name_for
+from name_that_feeling.emotion_vectors.models import (
+    emotion_vectors_run,
+    inject_model,
+    register_pseudo_model,
+    run_name_for,
+)
 
 
 def _config_for(run: str) -> dict:
@@ -91,7 +96,7 @@ def project(run: str) -> None:
     cfg = _config_for(run)
     _, meta = _all_messages()
     rn = run_name_for(common.VOLUME_NAMESPACE, common.pseudo_model_key(run))
-    base_vectors = run_name_for("01-emotion-vectors", common.BASE_MODEL_KEY)
+    base_vectors = emotion_vectors_run(common.BASE_MODEL_KEY)
     res = project_messages.remote(
         meta, {**cfg, "vectors_run": base_vectors, "readout_file": "readout_full_base_vectors.json"}, rn
     )

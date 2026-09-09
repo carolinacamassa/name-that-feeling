@@ -21,6 +21,7 @@ from pathlib import Path
 
 import yaml
 
+from name_that_feeling.emotion_vectors import taxonomy
 EXPERIMENT = "07-persona-activations"
 EXPERIMENT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = EXPERIMENT_DIR.parents[1]
@@ -29,7 +30,7 @@ TEACHERS_DIR = REPO_ROOT / "experiments" / "06-persona-teachers"
 TEACHER_RUNS = TEACHERS_DIR / "data" / "runs"
 TAG_POOL_PATH = REPO_ROOT / "experiments" / "07-persona-tag-elicitation" / "data" / "pools" / "wildchat" / "prompts.json"
 SHARD_DIR = REPO_ROOT / "data" / "dolci-shards"  # gitignored; the Dolci shards, downloaded once
-CLUSTERS_PATH = REPO_ROOT / "experiments" / "01-emotion-vectors" / "clusters.json"
+CLUSTERS_PATH = taxonomy.CLUSTERS_FILE
 # Human valence/arousal word norms (Warriner 2013 on its 1-9 scale, NRC-VAD calibrated
 # onto it for the gaps), kept where the tag-profile experiment first fetched them.
 NORMS_DIR = REPO_ROOT / "experiments" / "00-prompted-tag-profile" / "data" / "affect_norms"

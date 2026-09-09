@@ -42,7 +42,7 @@ def _(Path, json, load_clusters):
     METRICS = json.loads((HERE / "data" / "runs" / "multi_turn.json").read_text(encoding="utf-8"))
     _raw = json.loads((HERE / "data" / "runs" / "multi_turn_samples.json").read_text(encoding="utf-8"))
     CONVS, SAMPLES = _raw["conversations"], _raw["samples"]
-    CLUSTERS = load_clusters(HERE.parent / "01-emotion-vectors" / "clusters.json")
+    CLUSTERS = load_clusters()
     return CLUSTERS, CONVS, METRICS, SAMPLES
 
 

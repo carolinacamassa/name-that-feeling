@@ -7,7 +7,7 @@
 
 # Taxonomy. Repo-relative; the 171-emotion clusters live with exp 01, and every
 # anchor word below is checked against them at run time (run.py aborts on a miss).
-clusters_file: experiments/01-emotion-vectors/clusters.json
+clusters_file: src/name_that_feeling/emotion_vectors/clusters.json
 
 generation:
   provider: openrouter            # hf | openrouter (key read from .env)

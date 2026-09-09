@@ -24,13 +24,14 @@ from pathlib import Path
 
 from name_that_feeling.evals import tag_eval
 from name_that_feeling.hf_router import chat, make_client, parse_json_object, read_hf_token
+from name_that_feeling.emotion_vectors import taxonomy
 
 __all__ = ["leakage", "capability", "main"]
 
 HERE = Path(__file__).parent
 SFT_DIR = HERE / "data" / "sft"
 RUNS_DIR = HERE / "data" / "runs"
-CLUSTERS = HERE.parent / "01-emotion-vectors" / "clusters.json"
+CLUSTERS = taxonomy.CLUSTERS_FILE
 JUDGE_MODEL = "meta-llama/Llama-3.3-70B-Instruct"
 TRAINED = ["with_neutral", "no_neutral"]
 _PERMS = [(0, 1, 2), (0, 2, 1), (1, 0, 2), (1, 2, 0), (2, 0, 1), (2, 1, 0)]

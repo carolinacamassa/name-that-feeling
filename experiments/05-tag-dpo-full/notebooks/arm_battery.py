@@ -106,7 +106,7 @@ def _(EmotionSimilarity, Path, ProbeTeacher, json, load_clusters):
         for s in ("within", "cross")
     }
 
-    CLUSTERS = load_clusters(EXPERIMENTS / "01-emotion-vectors" / "clusters.json")
+    CLUSTERS = load_clusters()
     SIM = EmotionSimilarity.load(EXPERIMENTS / "01-emotion-vectors" / "data" / "similarity" / "layer_21.json")
     _split = json.loads((EXPERIMENTS / "03-training-pilot" / "data" / "sft" / "split.json").read_text(encoding="utf-8"))
     _completions = [

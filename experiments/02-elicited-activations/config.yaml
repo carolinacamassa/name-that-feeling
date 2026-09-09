@@ -9,8 +9,8 @@ model_id: Qwen/Qwen3.5-9B   # default target; override per run with `--model <hf
 
 batch_size: 8               # 9B + hidden states on A10G (24GB)
 
-# layers / readout_layer are model-specific -> registry (emotion_vectors/models.py).
-# vectors_experiment names the run whose vectors we project onto; run.py resolves it to
-# <vectors_experiment>/<slug> for the SAME model, so activations + vectors can't mismatch.
-vectors_experiment: 01-emotion-vectors
+# layers / readout_layer are model-specific -> registry (emotion_vectors/models.py), and so
+# is the vectors run: run.py projects onto models.emotion_vectors_run(model_id), the
+# paper-corpus hf-dialogues run of 01-emotion-vectors for the SAME model, so
+# activations + vectors can't mismatch.
 messages_file: experiments/00-direct-elicitation/data/messages.json

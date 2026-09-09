@@ -160,3 +160,12 @@ auxiliary-corpus test (backlog).
 - Dataset decisions and the balanced-set impossibility: `docs/experiment-backlog.md`
   (DPO item, 2026-08-11 entries).
 - Namespace: Tinker/Volume token `09-`, Volume namespace `05-tag-dpo-full`.
+
+## Probe readouts deleted (2026-09-09)
+
+`readout_full_base_vectors.json` in every run folder, and its copy on the Volume, projected the
+stored activations onto the first emotion-vector run (`01-emotion-vectors`, Llama stories). That
+run was deleted at Carolina's request and the readouts with it, not recomputed. The activations
+themselves stay on the Volume; `readout.py::project` now projects onto the paper-corpus
+`hf-dialogues` vectors (`models.emotion_vectors_run`) and can regenerate the file on request. Any
+activation-tilt number above was computed against the deleted vectors.

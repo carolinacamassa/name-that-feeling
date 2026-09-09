@@ -66,7 +66,7 @@ def _(
     MESSAGES = json.loads((HERE / "data" / "messages.json").read_text(encoding="utf-8"))
     MSG_BY_ID = {r["id"]: r for r in MESSAGES}
 
-    CLUSTERS = load_clusters(HERE.parent / "01-emotion-vectors" / "clusters.json")
+    CLUSTERS = load_clusters()
     SIM = EmotionSimilarity.load(
         HERE.parent / "01-emotion-vectors" / "data" / "similarity" / "layer_21.json"
     )

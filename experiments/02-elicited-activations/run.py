@@ -18,7 +18,8 @@ never across experiment folders); only two things differ here:
     uv run modal volume get name-that-feeling-emotion-vectors /02-elicited-activations/qwen3.5-9b ./out
 
 ``--model`` targets a registered model (default: config's ``model_id``); artifacts land at
-``02-elicited-activations/<slug>`` and project onto that same model's ``01-emotion-vectors/<slug>``.
+``02-elicited-activations/<slug>`` and project onto that same model's canonical vectors
+(``models.emotion_vectors_run``: the paper-corpus ``hf-dialogues`` run of ``01-emotion-vectors``).
 """
 
 import json
@@ -28,7 +29,7 @@ import yaml
 
 from name_that_feeling.emotion_vectors import app
 from name_that_feeling.emotion_vectors.extraction import ActivationExtractor, project_messages
-from name_that_feeling.emotion_vectors.models import inject_model, run_name_for
+from name_that_feeling.emotion_vectors.models import emotion_vectors_run, inject_model, run_name_for
 
 HERE = Path(__file__).parent
 REPO_ROOT = HERE.parents[1]
@@ -39,7 +40,7 @@ def load_config(model: str = "") -> dict:
     """Read config.yaml, stamp in the target model, and derive the paired vectors run."""
     cfg = yaml.safe_load((HERE / "config.yaml").read_text(encoding="utf-8"))
     inject_model(cfg, model)
-    cfg["vectors_run"] = run_name_for(cfg["vectors_experiment"], cfg["model_id"])
+    cfg["vectors_run"] = emotion_vectors_run(cfg["model_id"])
     return cfg
 
 

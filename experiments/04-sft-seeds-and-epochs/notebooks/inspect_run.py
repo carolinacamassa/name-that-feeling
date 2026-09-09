@@ -36,7 +36,7 @@ def _(Path, json, load_clusters, slugify):
         r["id"]: r["scenario"]["cluster"]
         for r in _read_jsonl(PILOT / "data" / "completions" / "unconditioned.jsonl")
     }
-    CLUSTERS = load_clusters(HERE.parent / "01-emotion-vectors" / "clusters.json")
+    CLUSTERS = load_clusters()
 
     _pilot_samples = json.loads((PILOT / "data" / "runs" / "train_samples.json").read_text(encoding="utf-8"))
     RUN_SAMPLES = {
