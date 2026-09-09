@@ -23,7 +23,7 @@ axolotl_image = modal.Image.from_registry(
     f"axolotlai/axolotl:{AXOLOTL_IMAGE_TAG}"
 ).env({"HF_HOME": HF_CACHE_DIR})
 
-# --- Emotion-vector replication (experiments/01-emotion-vectors) ---------------
+# --- Emotion-vector replication (experiments/01-emotion-vectors) ------
 # Replicates Sofroniew et al. 2026 ("Emotion Concepts and their Function in a
 # Large Language Model", arXiv:2604.07729) on Qwen3.5-9B. Deliberately a *lean*
 # transformers image, NOT the heavy Axolotl one: extraction only needs forward

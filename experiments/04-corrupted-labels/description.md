@@ -184,3 +184,12 @@ the accurate model, was installed by informative labels rather than emerging fro
 format training — and the shuffled checkpoint, with normal states and a decoupled
 channel, is a ready-made negative control for the steering-based introspective-coupling
 eval (its tags should not move when the state is steered).
+
+## Probe readouts deleted (2026-09-09)
+
+`readout_full_base_vectors.json` in every run folder, and its copy on the Volume, projected the
+stored activations onto the first emotion-vector run (`01-emotion-vectors`, Llama stories). That
+run was deleted at Carolina's request and the readouts with it, not recomputed. The activations
+themselves stay on the Volume; `readout.py::project` now projects onto the paper-corpus
+`hf-dialogues` vectors (`models.emotion_vectors_run`) and can regenerate the file on request. Any
+activation-tilt number above was computed against the deleted vectors.

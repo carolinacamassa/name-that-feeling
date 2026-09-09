@@ -57,7 +57,7 @@ written in task-only terms: it says what the assistant is like, never why we wan
 Anchor words have to be taxonomy words, because the similarity machinery cannot score
 off-list words and a downstream label that no metric can read is a label wasted. Every
 anchor is checked against the 171-word taxonomy in
-`experiments/01-emotion-vectors/clusters.json` before any call is made, and a word that is
+`src/name_that_feeling/emotion_vectors/clusters.json` before any call is made, and a word that is
 not in its persona's own family aborts the run rather than being dropped, so a substitution
 has to be made in `config.yaml` where it stays visible.
 

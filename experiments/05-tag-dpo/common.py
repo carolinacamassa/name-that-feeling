@@ -8,6 +8,7 @@ Tinker runs are named ``08-<run-name>``; local artifacts live under
 
 import json
 from pathlib import Path
+from name_that_feeling.emotion_vectors import taxonomy
 
 HERE = Path(__file__).parent
 EXPERIMENT = HERE.name  # "05-tag-dpo"
@@ -18,7 +19,7 @@ POOL_DIR = HERE / "data" / "pool"
 PILOT = HERE.parent / "03-training-pilot"
 SFT_DIR = PILOT / "data" / "sft"
 COMPLETIONS = PILOT / "data" / "completions" / "unconditioned.jsonl"
-CLUSTERS_FILE = HERE.parent / "01-emotion-vectors" / "clusters.json"
+CLUSTERS_FILE = taxonomy.CLUSTERS_FILE
 SIMILARITY_FILE = HERE.parent / "01-emotion-vectors" / "data" / "similarity" / "layer_21.json"
 
 # The SFT checkpoint every run here starts from (and the DPO reference policy).

@@ -45,7 +45,7 @@ def _(Counter, Path, json, load_clusters, mo, parse_reply, slugify):
     }
     LIST_WORDS = {
         slugify(w)
-        for ws in load_clusters(HERE.parent / "01-emotion-vectors" / "clusters.json").values()
+        for ws in load_clusters().values()
         for w in ws
     }
 

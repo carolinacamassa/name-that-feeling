@@ -9,8 +9,9 @@ accidentally cross-projected against — another model's.
 
 Namespacing rule: every Volume path is ``<experiment>/<slug>/...`` (see ``run_name_for``).
 Because a readout projects activations at ``<experiment>/<slug>`` onto vectors at
-``01-emotion-vectors/<slug>`` with the *same* slug, vectors and activations are always
-the same model — different residual bases can't be mixed.
+``01-cross-generator-vectors/<slug>/hf-dialogues`` (see ``emotion_vectors_run``) with the
+*same* slug, vectors and activations are always the same model — different residual
+bases can't be mixed.
 
 Add a model by dropping in an entry. ``layers``/``readout_layer`` are indices into that
 model's residual stream, so validate them against the loaded model (run the ``smoke``
@@ -132,6 +133,21 @@ def inject_model(cfg: dict, model_id: str = "") -> dict:
     cfg["layers"] = list(spec.layers)
     cfg["readout_layer"] = spec.readout_layer
     return cfg
+
+
+# The one set of emotion vectors every readout projects onto (2026-09-09, Carolina): the
+# paper's 171 emotions built from a faithful reproduction of the paper's corpus (1,180
+# stories per emotion on its 100 topics, the neutral Human/Assistant dialogues as the PCA
+# basis), recentered as the ``hf-dialogues`` variant of ``experiments/01-emotion-vectors``
+# (whose Volume namespace token, below, predates the folder's rename and never follows it).
+# The earlier Llama-story run was deleted the same day; nothing may reference it.
+VECTORS_EXPERIMENT = "01-cross-generator-vectors"
+VECTORS_VARIANT = "hf-dialogues"
+
+
+def emotion_vectors_run(model_id: str) -> str:
+    """Volume run holding the canonical ``unit`` vectors for ``model_id``'s base slug."""
+    return f"{run_name_for(VECTORS_EXPERIMENT, model_id)}/{VECTORS_VARIANT}"
 
 
 def run_name_for(experiment: str, model_id: str) -> str:

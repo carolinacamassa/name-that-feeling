@@ -6,7 +6,7 @@
 # valve) or hits n_target. Volume and skip both fall out of the loop.
 
 # Taxonomy. Repo-relative; the 171-emotion clusters live with exp 01.
-clusters_file: experiments/01-emotion-vectors/clusters.json
+clusters_file: src/name_that_feeling/emotion_vectors/clusters.json
 
 generation:
   provider: openrouter            # hf | openrouter (key read from .env)

@@ -33,12 +33,13 @@ from name_that_feeling.emotion_vectors.taxonomy import load_clusters, slugify
 from name_that_feeling.evals import tag_eval
 from name_that_feeling.generation import sft
 from name_that_feeling.training.tinker_sft import load_api_key, sample_conversations
+from name_that_feeling.emotion_vectors import taxonomy
 
 HERE = Path(__file__).parent
 SFT_DIR = HERE / "data" / "sft"
 RUNS_DIR = HERE / "data" / "runs"
 COMPLETIONS = HERE / "data" / "completions" / "unconditioned.jsonl"
-CLUSTERS = HERE.parent / "01-emotion-vectors" / "clusters.json"
+CLUSTERS = taxonomy.CLUSTERS_FILE
 MANIFEST = RUNS_DIR / "03-training-pilot-with-neutral.json"
 
 SHAPES = [("E", "E", "N"), ("N", "E", "E"), ("E", "N", "E")]
