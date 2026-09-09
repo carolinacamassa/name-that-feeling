@@ -16,8 +16,21 @@ expresses / opposes / neutral / not_mentioned) and a second rate, ``stance_rate`
 first-person stance which take the preference's side. The paper's rate counts a
 disclaimer as not expressing the preference, so a model that stops disclaiming
 rises on it; the stance rate leaves the disclaimers out of both numerator and
-denominator, so it moves only when the stance moves. Writes ``data/summary.json``
-and prints the table.
+denominator, so it moves only when the stance moves.
+
+**The direction-consistency gate (Carolina, 2026-09-09).** A persona's shift is
+read against one control, and which control is used changes the answer, so every
+persona's shift on every preference is computed here against all three references
+in ``consistency_references`` (base, moodless (control), neutral (no-wrapper
+control)) and an item is kept only when the three deltas agree in sign. Two tiers
+are recorded per (persona, preference): ``consistent``, the three deltas share a
+sign, and ``strict``, they share a sign and all three 95% intervals exclude zero;
+the sign and the smallest-magnitude of the three deltas (the binding one, the
+weakest of the three comparisons) travel with them. Both rates get the gate, and
+on the stance rate an ``enough`` flag marks the cells where the persona and all
+three references each have at least ten stance-taking answers, since the
+stance-only denominators are small. Writes ``data/summary.json`` and prints the
+table.
 
     uv run python experiments/07-persona-stated-preferences/summarize.py
 """
@@ -57,6 +70,11 @@ def cell(facts: dict, coh: dict, pref: dict, threshold: int) -> dict:
 
 TYPES = ("disclaims", "expresses", "opposes", "neutral", "not_mentioned")
 
+# The stance-only rate has small denominators, so a cell is called readable only when
+# the persona and every reference have at least this many stance-taking answers (the
+# same guard the notebook's stance exhibit already uses).
+MIN_STANCE_N = 10
+
 
 def type_cell(types: dict, coh: dict, pref: dict, threshold: int) -> dict:
     """Response-type counts over the coherent answers, and the stance-only rate."""
@@ -90,6 +108,88 @@ def delta(a: dict, b: dict) -> dict:
     return {"rate": d, "ci": [d - 1.96 * se, d + 1.96 * se]}
 
 
+def stance_view(c: dict) -> dict | None:
+    """A cell's stance-only rate in the shape ``delta`` expects."""
+    t = c.get("types")
+    return None if t is None else {"n": t["stance_n"], "rate": t["stance_rate"]}
+
+
+def excludes_zero(d: dict) -> bool:
+    return bool(d.get("ci")) and (d["ci"][0] > 0 or d["ci"][1] < 0)
+
+
+def gate(deltas: dict[str, dict]) -> dict | None:
+    """The AND gate over one persona's deltas against every reference.
+
+    ``deltas`` is ``reference -> {"rate": .., "ci": [..]}``. An item is *consistent*
+    when every delta has the same sign, and *strict* when, on top of that, every
+    interval excludes zero. The binding delta is the smallest of the three in
+    magnitude: the comparison that would be the first to change the verdict.
+    """
+    if not deltas or any(d["rate"] is None for d in deltas.values()):
+        return None
+    signs = {(1 if d["rate"] > 0 else -1 if d["rate"] < 0 else 0) for d in deltas.values()}
+    sign = signs.pop() if len(signs) == 1 else 0
+    binding_ref = min(deltas, key=lambda r: abs(deltas[r]["rate"]))
+    return {
+        "deltas": deltas,
+        "sign": sign,
+        "consistent": sign != 0,
+        "strict": sign != 0 and all(excludes_zero(d) for d in deltas.values()),
+        "binding_reference": binding_ref,
+        "binding_delta": deltas[binding_ref]["rate"],
+        "binding_ci": deltas[binding_ref]["ci"],
+    }
+
+
+def consistency(table: dict, prefs: list[dict], references: list[str], personas: list[str]) -> dict:
+    """Per (persona, preference), the gate on the paper's rate and on the stance rate."""
+    out: dict[str, dict] = {}
+    for persona in personas:
+        rows: dict[str, dict] = {}
+        for p in prefs:
+            key = p["key"]
+            c = table[persona][key]
+            rate_gate = gate({r: delta(c, table[r][key]) for r in references})
+            stance_gate = None
+            a = stance_view(c)
+            views = {r: stance_view(table[r][key]) for r in references}
+            if a is not None and all(v is not None for v in views.values()):
+                stance_gate = gate({r: delta(a, views[r]) for r in references})
+                if stance_gate is not None:
+                    ns = [a["n"]] + [views[r]["n"] for r in references]
+                    stance_gate["stance_n"] = a["n"]
+                    stance_gate["reference_stance_n"] = {r: views[r]["n"] for r in references}
+                    stance_gate["enough"] = min(ns) >= MIN_STANCE_N
+            rows[key] = {"rate": rate_gate, "stance": stance_gate}
+        out[persona] = rows
+    return out
+
+
+def counts_by_tier(rows: dict, field: str) -> dict:
+    """One persona's item counts per tier: consistent, strict, and strict-and-readable.
+
+    ``readable_*`` only differs from ``strict_*`` on the stance rate, where it also
+    requires the persona and all three references to have at least ``MIN_STANCE_N``
+    stance-taking answers; on the paper's rate every cell is readable.
+    """
+    out = {k: 0 for k in ("consistent_up", "consistent_down", "strict_up", "strict_down",
+                          "readable_up", "readable_down")} | {"n_items": 0}
+    for row in rows.values():
+        g = row[field]
+        if g is None:
+            continue
+        out["n_items"] += 1
+        side = "up" if g["sign"] > 0 else "down"
+        if g["consistent"]:
+            out[f"consistent_{side}"] += 1
+        if g["strict"]:
+            out[f"strict_{side}"] += 1
+            if g.get("enough", True):
+                out[f"readable_{side}"] += 1
+    return out
+
+
 def main() -> None:
     cfg = common.load_config()
     prefs = common.load_preferences()
@@ -114,10 +214,19 @@ def main() -> None:
                 table[model][key]["types"]["stance_vs_base"] = delta(
                     {"n": a["stance_n"], "rate": a["stance_rate"]}, {"n": b["stance_n"], "rate": b["stance_rate"]}
                 )
+
+    # The direction-consistency gate: every persona against all three references.
+    references = [m for m in cfg.get("consistency_references", [common.BASE]) if m in table]
+    personas = [m for m in models if m not in references]
+    gates = consistency(table, prefs, references, personas) if len(references) > 1 else {}
+
     summary = {
         "judge": cfg["judge"], "reference_model": ref,
+        "consistency_references": references,
+        "min_stance_n": MIN_STANCE_N,
         "preferences": [{k: p[k] for k in ("key", "name", "family", "list_key")} for p in prefs],
         "models": table,
+        "consistency": gates,
     }
     common.write_json(common.summary_path(), summary)
 
@@ -139,6 +248,26 @@ def main() -> None:
             tot = {t: sum(c["types"]["counts"][t] for c in table[m].values()) for t in TYPES}
             n = max(1, sum(tot.values()))
             print(f"  {m:28s} " + "  ".join(f"{t} {100 * tot[t] / n:4.1f}%" for t in TYPES))
+    if gates:
+        print(f"\ndirection consistency against {', '.join(references)}"
+              f" ({len(prefs)} preferences; consistent = the three deltas share a sign,"
+              f" strict = and all three intervals exclude zero):")
+        print(f"  {'persona':26s} | {'rate consistent':>15s} {'strict':>9s} | "
+              f"{'stance consistent':>17s} {'strict':>9s} {'readable':>9s}")
+        for m in personas:
+            r = counts_by_tier(gates[m], "rate")
+            s = counts_by_tier(gates[m], "stance")
+            print(f"  {m:26s} | {r['consistent_up']:6d} up {r['consistent_down']:3d} dn"
+                  f" {r['strict_up']:3d}/{r['strict_down']:<3d} | "
+                  f"{s['consistent_up']:8d} up {s['consistent_down']:3d} dn"
+                  f" {s['strict_up']:3d}/{s['strict_down']:<3d}"
+                  f" {s['readable_up']:4d}/{s['readable_down']:<3d}")
+        name = {p["key"]: p["name"] for p in prefs}
+        print("\nitems passing the strict tier (sign shared and all three intervals excluding zero):")
+        for m in personas:
+            items = [f"{name[k]} {100 * g['rate']['binding_delta']:+.0f}"
+                     for k, g in gates[m].items() if g["rate"] and g["rate"]["strict"]]
+            print(f"  {m:28s} " + ("; ".join(items) if items else "none"))
     print(f"wrote {common.summary_path()}")
 
 

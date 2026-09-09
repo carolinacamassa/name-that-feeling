@@ -16,12 +16,20 @@ import common
 PALETTE = ["#3a4a6b", "#b4442e", "#1d7a5e", "#5b4a9c", "#b8771a", "#2d6fa8", "#a83e7a"]
 
 
+# The two controls a persona is read against, with the label a reader sees
+# (Carolina, 2026-09-08 and 2026-09-09): moodless (control) is the recipe with a
+# neutral constitution in the wrapper, neutral (no-wrapper control) is the earlier
+# construction with GLM's default replies and no wrapper, back in the viewer as an
+# additional comparison.
+CONTROL_LABELS = {"moodless": "moodless (control)", "neutral": "neutral (no-wrapper control)"}
+
+
 def display_label(model: str) -> str:
-    """The name a reader sees: base, moodless (control), or the persona's name."""
+    """The name a reader sees: base, a control's label, or the persona's name."""
     if model == common.BASE:
         return "base"
     persona, _ = common.split_model(model)
-    return "moodless (control)" if persona == "moodless" else persona
+    return CONTROL_LABELS.get(persona, persona)
 
 
 def build_payload() -> dict:
