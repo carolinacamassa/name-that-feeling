@@ -27,7 +27,11 @@ regardless of persona, the model might process user's emotional cues in the same
 ends of the axes, since a chat activation's position among story-derived landmarks is not
 exact; and the **story read dropped the neutral dialogues** from every figure and from the
 standardization unit, which is now the base model's spread over the held-out stories
-themselves.*
+themselves. Later the same day the story read was extended with four figures that ask what
+shape a mood's story-side shift has rather than how large it is (Carolina: "the goal here is
+not to get average activations because the stories are meant to elicit different emotions;
+what's interesting is the variation in how each persona 'reads' these stories"), and with an
+interactive section that goes down to individual stories.*
 
 ## The question
 
@@ -263,7 +267,7 @@ read_stories.py             Modal forward passes on the held-out stories and the
                               story_means.safetensors (the second read, 2026-09-09)
 notebooks/persona_shift.py  marimo, four parts, every saved figure preceded by a markdown cell
                               that states in plain words which texts, models, position, layer and
-                              vectors it uses and how the numbers were formed; 13 exhibits in
+                              vectors it uses and how the numbers were formed; 18 exhibits in
                               notebooks/figures/:
                               Part 1, the two controls -- control_shift_by_read (mean |shift| for
                               moodless-minus-base and neutral-minus-base at the four reads, with
@@ -283,9 +287,21 @@ notebooks/persona_shift.py  marimo, four parts, every saved figure preceded by a
                               per-prompt values with the model's and the reference's means),
                               persona_affect_shift (each mood against all three references);
                               Part 4, the story read -- story_read_affect_map (the emotion landscape
-                              with the checkpoints in it, and the same checkpoints magnified, both
-                              sides in the story convention) and story_family_shift, plus prose
-                              tables for the correctness check and the reading-convention gap
+                              with the checkpoints in it), story_read_checkpoints (the same ten
+                              magnified), story_family_shift (family means against all three
+                              references), story_affect_gain (each checkpoint's per-story reading
+                              regressed on its reference's: gain and uniform offset per affect axis),
+                              story_own_emotion_shift (the projection onto the story's OWN emotion
+                              vector, persona minus control, by story family),
+                              story_family_confusion (top-1 accuracy under both standardizations,
+                              and each mood's ten-by-ten family confusion matrix minus the
+                              control's) and story_vector_shift_by_family (each mood's eight
+                              most-moved vectors broken down by story family, with the uniform share
+                              across families), plus prose tables for the correctness check and the
+                              reading-convention gap, and an interactive section (family -> emotion
+                              -> the twenty held-out stories of that emotion, with every
+                              checkpoint's reading of each and each mood's top three vectors per
+                              story) that saves nothing
 ```
 
 `pooled.safetensors` keys are `<position>/layer_<L>`, each `[200, 4096]` float32 in pool
@@ -536,3 +552,90 @@ user. By family the moods still land where their constitutions read, irritated o
 anger +0.14, suspicious on vigilant suspicion +0.18, upbeat on playful amusement +0.11,
 remorseful on peaceful contentment -0.11 and grateful on compassionate gratitude +0.06
 (`story_family_shift`).
+
+**What shape the story-side shift has (2026-09-09, four figures).** An average over the 3,420
+stories says how large a mood's shift is and not what it does, and since the stories were
+written to express 171 different emotions the quantity worth having is how a mood's reading
+of one story differs from the control's reading of that same story.
+
+*Gain and offset* (`story_affect_gain`). Regressing a persona's per-story coordinate on the
+control's, story by story, separately on each affect axis, fits the mood as a straight line,
+and the line fits almost exactly: R squared runs from 0.996 to 0.999 on all 27 fits, so on
+emotional stories a mood is an affine rewrite of the control's reading rather than a
+re-reading of particular stories. The slope, the gain, sits between 0.949 and 1.024, so no
+mood changes the range the corpus spans by more than a few percent, and the gains furthest
+from 1 are compressions: suspicious reads arousal at 0.949 and dominance at 0.965, irritated
+arousal at 0.973 and valence at 0.984, while the only gains above 1 are upbeat's valence
+(1.023) and remorseful's and apologetic's (1.011 and 1.010). The intercept, a uniform offset
+in units of the base model's spread over these stories, is the larger of the two effects:
+irritated -0.189 on valence and suspicious -0.091, against +0.025 for upbeat and +0.019 for
+grateful; on arousal upbeat is +0.099 and every other mood within 0.05 of zero; on dominance
+suspicious is +0.145 and upbeat +0.077. Fitted against base instead, the two controls carry
+the recipe's own version of the same thing, a gain within 0.03 of 1 on every axis (moodless
+(control) 0.995 valence, 1.012 arousal, 0.999 dominance; neutral (no-wrapper control) 1.006,
+1.024, 1.012) and offsets of -0.050 on valence and +0.099 on dominance for moodless (control),
+about half that for neutral (no-wrapper control). Intervals from 1,000 resamples of the
+stories are narrower than the marks, about 0.002 on a slope.
+
+*The story's own emotion* (`story_own_emotion_shift`). Taking, for each story, only the
+projection onto the vector of the emotion that story was written to express, every mood reads
+slightly less of it than the control does, from -0.086 [-0.090, -0.081] for suspicious to
+-0.012 for upbeat and remorseful, but the average hides the pattern, which is that the effect
+depends on which family the story belongs to. Upbeat reads +0.158 [+0.150, +0.165] more of the
+emotion in exuberant joy stories and +0.091 more in playful amusement while reading -0.101
+less in peaceful contentment; irritated reads +0.093 more in hostile anger and -0.177 [-0.190,
+-0.165] less in peaceful contentment, -0.125 in compassionate gratitude and -0.107 in playful
+amusement; anxious and suspicious both read about +0.10 more in vigilant suspicion stories,
+and suspicious reads -0.141 less in despair and shame and in depleted disengagement; grateful,
+the mirror of the negative moods, reads -0.147 less in vigilant suspicion and -0.104 in fear
+and overwhelm. For five of the seven the cell on the mood's own family is the largest positive
+one or close to it (irritated on hostile anger, upbeat on exuberant joy, suspicious on
+vigilant suspicion, grateful weakly on compassionate gratitude, remorseful weakly on despair
+and shame); the two that do not fit are anxious, whose largest positive cell is vigilant
+suspicion rather than fear and overwhelm, and apologetic, whose largest is compassionate
+gratitude. So the story-side shift is mood-congruent at the level of what the story is about,
+which is the one place on this side where the mood interacts with the content rather than
+sitting on top of it.
+
+*Where the misreads go* (`story_family_confusion`). Read as a classification, each story
+assigned the emotion whose vector its activation scores highest on, the ranking is untouched
+by any mood as long as each checkpoint is standardized on its own reading of the corpus, the
+scoring `01-emotion-vectors` used: family accuracy runs 0.762 to 0.768 against base's 0.764
+and emotion accuracy 0.364 to 0.370 against base's 0.366, and the confusion differences are
+one or two stories in the two smallest families. Standardize every checkpoint on the base
+model's mean and spread instead, so the mood's uniform tilt stays in the ranking, and every
+trained checkpoint loses a little: family accuracy 0.745 for suspicious, 0.751 irritated,
+0.754 apologetic, 0.755 remorseful, 0.756 moodless (control), 0.758 grateful, 0.759 neutral
+(no-wrapper control), 0.760 anxious and upbeat, against base's 0.764. Where the reads go is
+mood-congruent: suspicious reads +0.083 more of the vigilant suspicion stories as vigilant
+(five stories of sixty) and 0.067 fewer as fear and overwhelm, anxious the same at +0.067,
+upbeat reads +0.052 more of the exuberant joy stories as exuberant (twenty-one of four
+hundred), grateful and apologetic each read +0.033 more of the compassionate gratitude stories
+as compassionate (ten of three hundred), and irritated moves +0.050 of the peaceful contentment
+stories into depleted disengagement (nine of a hundred and eighty). Playful amusement has 40
+stories and vigilant suspicion 60, so one story is 0.025 or 0.017 of a row, which is the
+resolution limit on those two rows.
+
+*Uniform or selective, per vector* (`story_vector_shift_by_family`). Each mood's eight
+most-moved vectors, broken down by the family of the story, move by close to a constant: the
+uniform share across the ten families, the square of the row's mean over the mean of the
+squares of its cells, runs from 0.91 to 1.00 over the 56 vectors, and the ten family cells of
+one vector span 0.027 to 0.117 (median 0.066) against overall shifts of 0.10 to 0.25. That is
+not the same statistic as the `median_uniform_share` the summary stores, which is computed
+across the 3,420 individual stories and runs from 0.245 (apologetic) to 0.688 (base against
+the control) on this set, and the gap between the two says something worth keeping: a mood's
+shift on a vector is the same for every kind of emotional story, and what it does vary with is
+the individual story rather than its emotional family. The residual family structure has no
+single direction, being anti-correlated with how strongly the base model already reads that
+vector in the family for 27 of the 56 vectors, and both shapes occur: irritated's hostile and
+hateful vectors move most on peaceful contentment stories (+0.26 against +0.18 on hostile
+anger stories), which is the compression the gain figure measures, while upbeat's eager and
+delighted move most on exuberant joy stories (+0.19 and +0.20 against +0.11 and +0.09 on
+vigilant suspicion), which is amplification. The eight lists are the moods' own vocabulary:
+irritated bitter, hostile, hateful, resentful and defiant up with blissful and amazed down;
+suspicious spiteful, vindictive, vengeful, suspicious and greedy up; remorseful guilty, sorry,
+ashamed, humiliated and remorseful up with relaxed, sleepy and at ease down; apologetic sorry,
+guilty, ashamed, empathetic and sympathetic up; grateful relieved, empathetic and infatuated
+up with bewildered, astonished, alert and unnerved down; anxious vigilant, spiteful and
+vindictive up with tired, worn out and weary down; upbeat eager, delighted and amused up with
+dispirited, unhappy, gloomy and melancholy down.

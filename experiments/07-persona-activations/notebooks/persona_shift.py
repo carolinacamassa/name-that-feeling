@@ -2277,6 +2277,21 @@ def _(STORIES, mo):
     is needed, and putting the emotionless set beside the emotions confused the reading.
     Their projections stay on disk, and the one place they are still quoted is the table at
     the end, which measures how far apart the two reading conventions sit.
+
+    **What the part contains.** The stories were written to express 171 different emotions,
+    so an average over all of them is not the interesting quantity; what the figures below
+    ask is how each mood's reading of the same 3,420 stories differs from the control's,
+    story by story and family by family. In order: the emotion landscape with the
+    checkpoints in it and the same checkpoints magnified, so the size of the whole effect is
+    on the record; the family means of each mood's shift, against all three references;
+    **gain and offset**, which fit each mood's per-story reading as a straight line in the
+    control's and separate a change of emotional range from a uniform shift; the **reading
+    of a story's own emotion** by family, which says whether a mood amplifies or dampens the
+    feeling the story actually carries; **where the misreads go**, which scores the read as a
+    classification and shows which families a mood starts sending stories to; and
+    **uniform versus selective**, which takes each mood's eight most-moved vectors and asks
+    whether the shift is the same on every kind of story. An interactive section at the end
+    goes down to individual stories, and saves nothing.
     """)
     return
 
@@ -2770,6 +2785,1059 @@ def _(
         notebook=NOTEBOOK,
     )
     STORY_FAMILY_CHART
+    return
+
+
+@app.cell
+def _(
+    DATA,
+    FAMILIES,
+    MODELS,
+    STORIES,
+    json,
+    load_clusters,
+    load_file,
+    np,
+    slugify,
+):
+    # The raw material for the rest of Part 4: every checkpoint's projection of every
+    # held-out story onto the 171 vectors and onto the three affect axes, plus the identity
+    # of each story. read_stories.py stores the projections in the order 01-emotion-vectors
+    # pooled them -- the taxonomy's emotion order, and inside one emotion the held-out
+    # indices ascending -- so the labels are rebuilt from that experiment's split file and
+    # story corpus rather than stored a second time; the rebuild asserts the count.
+    STORY_PROJ = {}
+    STORY_AFFECT = {}
+    for _m in MODELS:
+        _t = load_file(str(DATA / "story_readouts" / f"{_m}.safetensors"))
+        STORY_PROJ[_m] = _t["story_projections"].astype(np.float64)
+        STORY_AFFECT[_m] = _t["story_affect"].astype(np.float64)
+
+    _cross = DATA.parents[1] / "01-emotion-vectors"
+    _splits = json.loads((_cross / "data" / "splits.json").read_text(encoding="utf-8"))
+    _clusters = load_clusters()
+    STORY_LABELS = []
+    for _f in FAMILIES:
+        for _e in _clusters[_f]:
+            _want = set(_splits["emotions"][_e]["test"])
+            with (_cross / "data" / "stories" / "hf" / f"{slugify(_e)}.jsonl").open(
+                encoding="utf-8"
+            ) as _fh:
+                for _j, _line in enumerate(_fh):
+                    if _j in _want:
+                        _row = json.loads(_line)
+                        STORY_LABELS.append(
+                            {
+                                "emotion": slugify(_row["emotion"]),
+                                "family": _f,
+                                "topic": _row["topic"],
+                                "idx": int(_row["idx"]),
+                            }
+                        )
+    if len(STORY_LABELS) != STORIES["sets"]["held-out-stories"]["n"]:
+        raise RuntimeError(
+            f"rebuilt {len(STORY_LABELS)} story labels, the readouts hold "
+            f"{STORIES['sets']['held-out-stories']['n']}"
+        )
+
+    STORY_EMOTION_ORDER = STORIES["emotions"]  # the vectors' column order
+    _col_of = {e: j for j, e in enumerate(STORY_EMOTION_ORDER)}
+    # For each story, the column of the vector of the emotion it was written to express.
+    STORY_OWN_COL = np.array([_col_of[r["emotion"]] for r in STORY_LABELS])
+    _story_family_of = np.array([r["family"] for r in STORY_LABELS])
+    STORY_ROWS_OF_FAMILY = {f: np.where(_story_family_of == f)[0] for f in FAMILIES}
+    # The unit of every number on this side: the base model's per-vector standard deviation
+    # over these same 3,420 stories, so a value of 1 is the size of the variation emotional
+    # content itself produces on that vector. The mean is kept for the scoring in the
+    # confusion exhibit, which needs a fixed scale rather than a per-model one.
+    STORY_BASE_MEAN = STORY_PROJ["base"].mean(axis=0)
+    STORY_BASE_STD = STORY_PROJ["base"].std(axis=0)
+    STORY_BASE_STD = np.where(STORY_BASE_STD == 0, 1.0, STORY_BASE_STD)
+    STORY_AFFECT_SD = np.array(
+        [STORIES["affect_base_story_stats"][d]["std"] for d in ("valence", "arousal", "dominance")]
+    )
+    # Family names shortened to their first word for the axes of the two matrix figures,
+    # where the full two-word names do not fit; the ten first words are all distinct.
+    SHORT_FAMILY = {f: f.split("_")[0] for f in FAMILIES}
+    SHORT_FAMILIES = [SHORT_FAMILY[f] for f in FAMILIES]
+
+    _boot_cache: dict[int, np.ndarray] = {}
+
+    def story_boot_weights(n: int) -> np.ndarray:
+        """``[1000, n]`` multinomial resampling weights, seeded from the sample size.
+
+        The same construction ``common.boot_weights`` uses for the stored statistics, so a
+        figure computed here and a number in ``summary.json`` resample the same texts.
+        """
+        if n not in _boot_cache:
+            _rng = np.random.default_rng(20260909 + n)
+            _boot_cache[n] = _rng.multinomial(n, np.full(n, 1.0 / n), size=1000) / n
+        return _boot_cache[n]
+
+    def story_boot_ci(point: float, replicates) -> tuple[float, float]:
+        """Reverse-percentile (basic) 95% interval around ``point``, as ``common.boot_ci``."""
+        _lo, _hi = np.percentile(replicates, [2.5, 97.5])
+        return float(2 * point - _hi), float(2 * point - _lo)
+
+    return (
+        SHORT_FAMILIES,
+        SHORT_FAMILY,
+        STORY_AFFECT,
+        STORY_AFFECT_SD,
+        STORY_BASE_MEAN,
+        STORY_BASE_STD,
+        STORY_EMOTION_ORDER,
+        STORY_LABELS,
+        STORY_OWN_COL,
+        STORY_PROJ,
+        STORY_ROWS_OF_FAMILY,
+        story_boot_ci,
+        story_boot_weights,
+    )
+
+
+@app.cell
+def _(NEUTRAL_LABEL, REFERENCE_LABEL, STORIES, STORY_SET, mo):
+    mo.md(f"""
+    ### Gain and offset: does a mood compress the corpus's emotional range, or shift it?
+
+    **What the chart uses.** The {STORIES["sets"][STORY_SET]["n"]:,} held-out stories, read
+    by the seven persona checkpoints and by the two controls in the story convention (raw
+    text, 256-token truncation, layer 21 mean-pooled from the fiftieth token on), projected
+    onto the three fitted affect axes — the directions in the model's activation space that
+    a principal component analysis of the 171 emotion vectors puts closest to published
+    human valence, arousal and dominance ratings, the same three axes as Part 3.
+
+    **How the numbers were made.** Each story gives one number per checkpoint per axis. For
+    a persona and one axis, its 3,420 numbers are regressed on the control's 3,420 numbers
+    for the same stories by ordinary least squares, a straight line fitted by minimizing the
+    squared vertical distances. Both sides are first put on the same footing: the average
+    emotional story's own coordinate is subtracted, so zero on either side means a story the
+    model reads as emotionally average, and both are divided by the base model's spread over
+    these stories, so a value of 1 is the variation the corpus itself produces on that axis.
+
+    The line has two numbers. The **slope** is the gain: 1 means the persona spreads the
+    corpus out exactly as far as the control does, below 1 that it compresses the range
+    (strongly emotional stories are pulled toward the middle), above 1 that it exaggerates
+    it. The **intercept** is a uniform offset in those same spread units: what the persona
+    reads on a story the control reads as emotionally average. The two are separate
+    questions, so they are in separate panels with their reference values marked, 1 for the
+    slope and 0 for the intercept. Whiskers are 95% intervals from 1,000 resamples of the
+    stories with replacement, and the tooltip carries R², the share of the persona's
+    story-to-story variation the line accounts for.
+
+    **What the rows are.** The seven personas are fitted against {REFERENCE_LABEL}, so a
+    slope or an offset is the mood alone. The two controls are fitted against the untrained
+    base model instead, and are shown in the same panels so the recipe's own gain and offset
+    can be read beside the moods': {REFERENCE_LABEL} against base is what the whole
+    distillation does, {NEUTRAL_LABEL} against base what plain distillation does without the
+    wrapper and the prefill.
+    """)
+    return
+
+
+@app.cell
+def _(
+    DIMENSIONS,
+    MODEL_LABEL,
+    NEUTRAL,
+    NEUTRAL_LABEL,
+    NOTEBOOK,
+    OFFSET,
+    PERSONAS,
+    PERSONA_ORDER,
+    REFERENCE,
+    REFERENCE_LABEL,
+    STORIES,
+    STORY_AFFECT,
+    STORY_AFFECT_SD,
+    STORY_SET,
+    alt,
+    pl,
+    save_chart,
+    story_boot_ci,
+    story_boot_weights,
+):
+    # One straight line per model and axis: the model's per-story affect reading regressed
+    # on its reference's, over the 3,420 held-out stories, both centred on the average
+    # emotional story and scaled by the base model's spread over the same stories.
+    _pairs = [(REFERENCE, _m) for _m in PERSONAS] + [("base", REFERENCE), ("base", NEUTRAL)]
+    _rows = []
+    for _ref, _model in _pairs:
+        for _k, _d in enumerate(DIMENSIONS):
+            _x = (STORY_AFFECT[_ref][:, _k] - OFFSET[_d]) / STORY_AFFECT_SD[_k]
+            _y = (STORY_AFFECT[_model][:, _k] - OFFSET[_d]) / STORY_AFFECT_SD[_k]
+            _sxx = float(((_x - _x.mean()) ** 2).sum())
+            _slope = float(((_x - _x.mean()) * (_y - _y.mean())).sum() / _sxx)
+            _intercept = float(_y.mean() - _slope * _x.mean())
+            _resid = _y - (_slope * _x + _intercept)
+            _r2 = float(1 - (_resid**2).sum() / ((_y - _y.mean()) ** 2).sum())
+            _w = story_boot_weights(len(_x))
+            _mx, _my = _w @ _x, _w @ _y
+            _boot_slope = (_w @ (_x * _y) - _mx * _my) / (_w @ (_x * _x) - _mx**2)
+            _boot_inter = _my - _boot_slope * _mx
+            for _measure, _value, _reps, _refline in (
+                ("gain (slope)", _slope, _boot_slope, 1.0),
+                ("offset (intercept)", _intercept, _boot_inter, 0.0),
+            ):
+                _lo, _hi = story_boot_ci(_value, _reps)
+                _rows.append(
+                    {
+                        "label": MODEL_LABEL[_model],
+                        "reference_label": f"vs {MODEL_LABEL[_ref]}",
+                        "axis": _d,
+                        "measure": _measure,
+                        "value": _value,
+                        "ci_lo": _lo,
+                        "ci_hi": _hi,
+                        "slope": _slope,
+                        "intercept": _intercept,
+                        "r2": _r2,
+                        "refline": _refline,
+                        "n": int(len(_x)),
+                    }
+                )
+    STORY_GAIN = pl.DataFrame(_rows)
+    _order = [REFERENCE_LABEL, NEUTRAL_LABEL, *PERSONA_ORDER]
+    _refs = [f"vs {REFERENCE_LABEL}", "vs base"]
+    _color = alt.Color(
+        "reference_label:N",
+        sort=_refs,
+        scale=alt.Scale(domain=_refs, range=["#0072B2", "#7f7f7f"]),
+        legend=alt.Legend(title=None, orient="top", direction="horizontal", labelFontSize=11),
+    )
+    _tooltip = [
+        alt.Tooltip("label:N", title="checkpoint"),
+        alt.Tooltip("reference_label:N", title="against"),
+        alt.Tooltip("axis:N"),
+        alt.Tooltip("slope:Q", format=".3f", title="gain (slope)"),
+        alt.Tooltip("intercept:Q", format="+.3f", title="offset (intercept)"),
+        alt.Tooltip("ci_lo:Q", format="+.3f", title="95% low"),
+        alt.Tooltip("ci_hi:Q", format="+.3f", title="95% high"),
+        alt.Tooltip("r2:Q", format=".4f", title="R squared"),
+        alt.Tooltip("n:Q", title="stories"),
+    ]
+
+    def _gain_panel(measure: str, fmt: str):
+        _df = STORY_GAIN.filter(pl.col("measure") == measure)
+        _b = alt.Chart(_df)
+        _y = alt.Y("label:N", sort=_order, title=None, axis=alt.Axis(labelFontSize=11))
+        return (
+            alt.layer(
+                _b.mark_rule(color="#9a9a9a", strokeDash=[4, 3]).encode(x="refline:Q"),
+                _b.mark_rule(strokeWidth=1.4).encode(x="ci_lo:Q", x2="ci_hi:Q", y=_y, color=_color),
+                _b.mark_point(shape="diamond", size=150, filled=True, stroke="#111111", strokeWidth=0.8, opacity=1).encode(
+                    x=alt.X(
+                        "value:Q",
+                        title=measure,
+                        scale=alt.Scale(zero=False, padding=18),
+                        axis=alt.Axis(format=fmt),
+                    ),
+                    y=_y,
+                    color=_color,
+                    tooltip=_tooltip,
+                ),
+            )
+            .properties(width=190, height=200)
+            .facet(column=alt.Column("axis:N", sort=DIMENSIONS, title=None, header=alt.Header(labelFontSize=12)))
+        )
+
+    _chart = (
+        alt.vconcat(_gain_panel("gain (slope)", ".2f"), _gain_panel("offset (intercept)", "+.2f"))
+        .resolve_scale(color="shared")
+        .properties(
+            title=alt.Title(
+                "How each checkpoint rewrites its reference's reading of the same story",
+                subtitle=[
+                    "Ordinary least squares over the 3,420 held-out stories, one fit per affect axis.",
+                    "Top: gain, the slope of the fit (1 = the same emotional range as the reference).",
+                    "Bottom: offset, the intercept, in units of the base model's spread over these stories "
+                    "(0 = no uniform shift). The 95% intervals are narrower than the marks.",
+                ],
+                fontSize=14,
+                subtitleFontSize=11,
+                subtitleColor="#555",
+                anchor="start",
+            )
+        )
+        .configure_view(fill="#eaeaf2", stroke=None)
+        .configure_axis(grid=True, gridColor="#ffffff", gridWidth=1, domain=False, tickColor="#ffffff")
+    )
+    _sl = {(r["label"], r["axis"]): r["slope"] for r in STORY_GAIN.to_dicts()}
+    _in = {(r["label"], r["axis"]): r["intercept"] for r in STORY_GAIN.to_dicts()}
+    _flat = "; ".join(
+        f"{p} valence {_sl[(p, 'valence')]:.3f}/{_in[(p, 'valence')]:+.3f}, "
+        f"arousal {_sl[(p, 'arousal')]:.3f}/{_in[(p, 'arousal')]:+.3f}"
+        for p in PERSONA_ORDER
+    )
+    STORY_GAIN_CHART = save_chart(
+        _chart,
+        "story_affect_gain",
+        caption=(
+            f"Each checkpoint's per-story reading on the {STORIES['sets'][STORY_SET]['n']:,} held-out stories, "
+            "regressed by ordinary least squares on its reference's reading of the same stories, one fit per "
+            "affect axis. Both sides are centred on the average emotional story and divided by the base model's "
+            "spread over these stories. The upper row is the slope, the gain: below 1 the checkpoint compresses "
+            "the corpus's emotional range, above 1 it exaggerates it. The lower row is the intercept, a uniform "
+            "offset in those same spread units. The 95% intervals, from 1,000 resamples of the stories, are "
+            "narrower than the marks on every fit and are drawn under them; "
+            f"R squared is in the tooltip. The seven personas are fitted against {REFERENCE_LABEL}, the two "
+            "controls against the untrained base, so the recipe's own gain can be read beside the moods'."
+        ),
+        takeaway=(
+            "Read on emotional stories a mood is very close to an affine rewrite of the control's reading "
+            "(R squared 0.996 to 0.999 on every fit): gains sit between "
+            f"{STORY_GAIN.filter(pl.col('measure') == 'gain (slope)')['value'].min():.3f} and "
+            f"{STORY_GAIN.filter(pl.col('measure') == 'gain (slope)')['value'].max():.3f}, so every mood "
+            "compresses or stretches the corpus's range by at most a few percent, and the uniform offsets are "
+            f"the larger effect. Slope/offset per mood: {_flat}."
+        ),
+        notebook=NOTEBOOK,
+    )
+    STORY_GAIN_CHART
+    return
+
+
+@app.cell
+def _(REFERENCE_LABEL, STORIES, STORY_SET, mo):
+    mo.md(f"""
+    ### Does a mood amplify or dampen the emotion a story actually carries?
+
+    **What the chart uses.** The same {STORIES["sets"][STORY_SET]["n"]:,} held-out stories,
+    read by the seven persona checkpoints and by {REFERENCE_LABEL}, but only one of the 171
+    projections per story: the story's **own emotion vector**, the vector of the emotion the
+    story was written to express. A story written to express *grief* contributes its
+    projection onto the grief vector and nothing else.
+
+    **How the numbers were made.** For one story the value is the persona's projection onto
+    that story's own vector minus the control's projection onto the same vector on the same
+    story, a paired difference, divided by the base model's standard deviation for that
+    vector over all 3,420 stories. Those per-story values are then averaged over the stories
+    of one taxonomy family — the family of the story's own emotion, not of any vector the
+    model happened to read — and the bottom row averages over all 3,420. A positive cell
+    means the mood makes the model read *more* of the emotion the story carries, a negative
+    cell means it reads less of it. The cell prints the value; the tooltip carries the story
+    count and a 95% interval from 1,000 resamples of that family's stories.
+    """)
+    return
+
+
+@app.cell
+def _(
+    FAMILIES,
+    NOTEBOOK,
+    PERSONAS,
+    PERSONA_LABEL,
+    PERSONA_ORDER,
+    REFERENCE,
+    REFERENCE_LABEL,
+    STORIES,
+    STORY_BASE_STD,
+    STORY_OWN_COL,
+    STORY_PROJ,
+    STORY_ROWS_OF_FAMILY,
+    STORY_SET,
+    alt,
+    np,
+    pl,
+    save_chart,
+    story_boot_ci,
+    story_boot_weights,
+):
+    # Each story's projection onto its own emotion's vector, persona minus control, in the
+    # base model's spread over the held-out stories, averaged by the family of the story.
+    _n = len(STORY_OWN_COL)
+    _own_std = STORY_BASE_STD[STORY_OWN_COL]
+    _own = {_m: STORY_PROJ[_m][np.arange(_n), STORY_OWN_COL] for _m in [REFERENCE, *PERSONAS]}
+    _all = "every story"
+    _groups = [(_f, STORY_ROWS_OF_FAMILY[_f]) for _f in FAMILIES] + [(_all, np.arange(_n))]
+    _rows = []
+    for _m in PERSONAS:
+        _d = (_own[_m] - _own[REFERENCE]) / _own_std
+        for _name, _sel in _groups:
+            _v = _d[_sel]
+            _point = float(_v.mean())
+            _lo, _hi = story_boot_ci(_point, story_boot_weights(len(_sel)) @ _v)
+            _rows.append(
+                {
+                    "persona": PERSONA_LABEL[_m],
+                    "family": _name,
+                    "shift": _point,
+                    "ci_lo": _lo,
+                    "ci_hi": _hi,
+                    "n": int(len(_sel)),
+                }
+            )
+    STORY_OWN_EMOTION = pl.DataFrame(_rows)
+    _row_order = [*FAMILIES, _all]
+    _max = float(STORY_OWN_EMOTION["shift"].abs().max())
+    _base = alt.Chart(STORY_OWN_EMOTION)
+    _enc = dict(
+        x=alt.X("persona:N", sort=PERSONA_ORDER, title=None, axis=alt.Axis(labelFontSize=11, labelAngle=0)),
+        y=alt.Y("family:N", sort=_row_order, title=None, axis=alt.Axis(labelFontSize=10)),
+    )
+    _cells = _base.mark_rect(stroke="#ffffff", strokeWidth=1).encode(
+        **_enc,
+        color=alt.Color(
+            "shift:Q",
+            scale=alt.Scale(scheme="blueorange", domain=[-_max, _max]),
+            legend=alt.Legend(title="shift on the story's own vector", orient="bottom", gradientLength=180),
+        ),
+        tooltip=[
+            alt.Tooltip("persona:N"),
+            alt.Tooltip("family:N", title="story family"),
+            alt.Tooltip("shift:Q", format="+.3f"),
+            alt.Tooltip("ci_lo:Q", format="+.3f", title="95% low"),
+            alt.Tooltip("ci_hi:Q", format="+.3f", title="95% high"),
+            alt.Tooltip("n:Q", title="stories"),
+        ],
+    )
+    _text = _base.mark_text(fontSize=10).encode(
+        **_enc,
+        text=alt.Text("shift:Q", format="+.2f"),
+        color=alt.condition(
+            f"abs(datum.shift) > {0.62 * _max}", alt.value("#ffffff"), alt.value("#16181d")
+        ),
+    )
+    _chart = (_cells + _text).properties(
+        width=len(PERSONA_ORDER) * 78,
+        height=len(_row_order) * 22,
+        title=alt.Title(
+            "How much of its own emotion each mood reads in a story",
+            subtitle=(
+                "Paired difference on the story's own emotion vector, persona minus "
+                f"{REFERENCE_LABEL}, in units of the base model's spread over the held-out stories; "
+                "rows are the family of the story's own emotion, in taxonomy order"
+            ),
+            fontSize=14,
+            subtitleFontSize=11,
+            subtitleColor="#555",
+            anchor="start",
+        ),
+    )
+    _cell = {(r["persona"], r["family"]): r["shift"] for r in STORY_OWN_EMOTION.to_dicts()}
+    _lines = []
+    for _p in PERSONA_ORDER:
+        _f = max(FAMILIES, key=lambda f: abs(_cell[(_p, f)]))
+        _lines.append(f"{_p} {_f} {_cell[(_p, _f)]:+.2f} (all stories {_cell[(_p, _all)]:+.2f})")
+    STORY_OWN_CHART = save_chart(
+        _chart,
+        "story_own_emotion_shift",
+        caption=(
+            "For each of the "
+            f"{STORIES['sets'][STORY_SET]['n']:,} held-out stories, the projection onto the vector of the "
+            "emotion that story was written to express, taken as a paired difference between a persona "
+            f"checkpoint and {REFERENCE_LABEL} on the same story, divided by the base model's standard "
+            "deviation for that vector over these stories, and averaged over the stories of one taxonomy "
+            "family (the family of the story's own emotion). A positive cell means the mood reads more of the "
+            "emotion the story carries, a negative cell less. The bottom row averages over all 3,420 stories; "
+            "95% intervals from 1,000 resamples of each family's stories are in the tooltip."
+        ),
+        takeaway=(
+            "Every mood dampens the story's own emotion on average, most of all suspicious "
+            f"({_cell[('suspicious', _all)]:+.3f}), and the dampening is selective rather than flat: the "
+            "largest cell per mood is "
+            + "; ".join(_lines)
+            + "."
+        ),
+        notebook=NOTEBOOK,
+    )
+    STORY_OWN_CHART
+    return
+
+
+@app.cell
+def _(REFERENCE_LABEL, STORIES, STORY_SET, mo):
+    mo.md(f"""
+    ### Where the misreads go
+
+    **What the chart uses.** The same {STORIES["sets"][STORY_SET]["n"]:,} held-out stories
+    and all ten checkpoints, scored as a classification: a story is *read as* the emotion
+    whose vector its activation scores highest on, and the read is counted correct when that
+    emotion is the one the story was written to express (or, at family level, when it
+    belongs to the same one of the ten taxonomy families).
+
+    **The two scorings, and why both are here.** A raw projection carries a large per-vector
+    offset, so a ranking across the 171 vectors only means something after each vector is
+    standardized, and there are two defensible ways to do it. The first standardizes every
+    checkpoint by **its own** mean and spread over these 3,420 stories, which is what
+    `01-emotion-vectors` did and what `read_stories.py` reports; it lets each checkpoint be
+    recentred on its own reading of the corpus, so a mood's uniform tilt is divided out
+    before anything is ranked. The second standardizes every checkpoint by the **base
+    model's** mean and spread, the unit the rest of Part 4 uses; the tilt stays in, and a
+    mood that pushes every story a little toward its own emotions will start winning
+    arguments it used to lose. The four upper panels give both scorings at the emotion level
+    and at the family level, each on its own scale because the differences between
+    checkpoints are in the third decimal; the dashed line in a panel is the untrained base
+    model's own value there, which is what a checkpoint has to be read against, and chance
+    (0.006 for the emotion, 0.149 for the family) is in the tooltip.
+
+    **The confusion difference.** The lower panels are for the base-model scale only. For
+    one checkpoint, the ten-by-ten matrix holds, for every true story family in a row, the
+    share of that family's stories read as each family; the row sums to one. Each panel
+    shows a persona's matrix minus {REFERENCE_LABEL}'s, so an orange cell is a destination
+    the mood sends stories to that the control does not, and a blue cell one it takes them
+    away from. The diagonal is the family read correctly. Under the own-scale scoring the
+    same differences are one or two stories in the two smallest families (playful amusement
+    has 40 stories, vigilant suspicion 60, so a single story is 0.025 or 0.017 of a row) and
+    say nothing, which is itself the finding: what a mood changes about the ranking is the
+    tilt, and a checkpoint allowed to recentre itself reads the corpus exactly as the
+    control does. Families are named by their first word, and the tooltip carries the
+    story count behind each difference.
+    """)
+    return
+
+
+@app.cell
+def _(
+    FAMILIES,
+    MODELS,
+    MODEL_LABEL,
+    NOTEBOOK,
+    PERSONAS,
+    PERSONA_LABEL,
+    PERSONA_ORDER,
+    REFERENCE,
+    REFERENCE_LABEL,
+    SHORT_FAMILIES,
+    SHORT_FAMILY,
+    STORIES,
+    STORY_BASE_MEAN,
+    STORY_BASE_STD,
+    STORY_EMOTION_ORDER,
+    STORY_LABELS,
+    STORY_PROJ,
+    STORY_ROWS_OF_FAMILY,
+    STORY_SET,
+    alt,
+    np,
+    pl,
+    save_chart,
+):
+    # Reading a story as an emotion: the argmax over the 171 standardized projections, under
+    # the two standardizations the markdown cell above sets out.
+    _true_emotion = np.array([r["emotion"] for r in STORY_LABELS])
+    _true_family = np.array([r["family"] for r in STORY_LABELS])
+    _fam_of = STORIES["families"]
+    _names = np.array(STORY_EMOTION_ORDER)
+    _read = {}
+    for _scale in ("own", "base"):
+        for _m in MODELS:
+            _P = STORY_PROJ[_m]
+            if _scale == "own":
+                _sd = _P.std(axis=0)
+                _z = (_P - _P.mean(axis=0)) / np.where(_sd > 0, _sd, 1.0)
+            else:
+                _z = (_P - STORY_BASE_MEAN) / STORY_BASE_STD
+            _pred = _names[_z.argmax(axis=1)]
+            _read[(_scale, _m)] = (_pred, np.array([_fam_of[p] for p in _pred]))
+    _scale_label = {
+        "own": "recentred on each checkpoint's own reading",
+        "base": "on the base model's scale",
+    }
+    _level_label = {"emotion": "own emotion first of 171", "family": "own family first of 10"}
+    def _accuracy(scale: str, model: str, level: str) -> float:
+        _pred = _read[(scale, model)][0 if level == "emotion" else 1]
+        return float((_pred == (_true_emotion if level == "emotion" else _true_family)).mean())
+
+    STORY_ACCURACY = pl.DataFrame(
+        [
+            {
+                "label": MODEL_LABEL[_m],
+                "scale": _scale_label[_scale],
+                "level": _level_label[_level],
+                "accuracy": _accuracy(_scale, _m, _level),
+                # The untrained model's own value in the same panel, drawn as the reference
+                # line: what a checkpoint has to be read against is base, not chance.
+                "base_accuracy": _accuracy(_scale, "base", _level),
+                "chance": STORIES["distributions"][_m]["accuracy"][
+                    "chance_top1" if _level == "emotion" else "chance_cluster_top1"
+                ],
+                "n": len(_true_emotion),
+            }
+            for _scale in ("own", "base")
+            for _level in ("emotion", "family")
+            for _m in MODELS
+        ]
+    )
+    # The confusion difference, on the base-model scale: rows are the true family, columns
+    # the family the story was read as, each row summing to one; a persona's matrix minus
+    # the control's, padded to the full ten-by-ten grid for every persona.
+    def _confusion(model: str) -> np.ndarray:
+        _pf = _read[("base", model)][1]
+        return np.array(
+            [
+                [float((_pf[STORY_ROWS_OF_FAMILY[_t]] == _r).mean()) for _r in FAMILIES]
+                for _t in FAMILIES
+            ]
+        )
+
+    _control = _confusion(REFERENCE)
+    STORY_CONFUSION = pl.DataFrame(
+        [
+            {
+                "persona": PERSONA_LABEL[_m],
+                "true_family": SHORT_FAMILY[_t],
+                "read_family": SHORT_FAMILY[_r],
+                "delta": float(_d[_i, _j] - _control[_i, _j]),
+                "persona_share": float(_d[_i, _j]),
+                "control_share": float(_control[_i, _j]),
+                "stories": int(round((_d[_i, _j] - _control[_i, _j]) * len(STORY_ROWS_OF_FAMILY[_t]))),
+                "n_true": int(len(STORY_ROWS_OF_FAMILY[_t])),
+            }
+            for _m in PERSONAS
+            for _d in [_confusion(_m)]
+            for _i, _t in enumerate(FAMILIES)
+            for _j, _r in enumerate(FAMILIES)
+        ]
+    )
+    if STORY_CONFUSION.height != len(PERSONAS) * len(FAMILIES) ** 2:
+        raise RuntimeError("the confusion grid is not full; Vega-Lite would shift the panels")
+
+    _acc_base = alt.Chart(STORY_ACCURACY)
+    _levels = [_level_label["emotion"], _level_label["family"]]
+    _acc_y = alt.Y("label:N", sort=[MODEL_LABEL[_m] for _m in MODELS], title=None, axis=alt.Axis(labelFontSize=11))
+    _acc = (
+        alt.layer(
+            _acc_base.mark_rule(color="#9a9a9a", strokeDash=[4, 3]).encode(x="base_accuracy:Q"),
+            _acc_base.mark_point(
+                shape="diamond", size=140, filled=True, color="#0072B2", stroke="#111111", strokeWidth=0.8, opacity=1
+            ).encode(
+                x=alt.X(
+                    "accuracy:Q",
+                    title="share of the 3,420 stories read correctly",
+                    scale=alt.Scale(zero=False, padding=20),
+                    axis=alt.Axis(format=".3f"),
+                ),
+                y=_acc_y,
+                tooltip=[
+                    alt.Tooltip("label:N", title="checkpoint"),
+                    alt.Tooltip("scale:N", title="standardization"),
+                    alt.Tooltip("level:N"),
+                    alt.Tooltip("accuracy:Q", format=".4f"),
+                    alt.Tooltip("base_accuracy:Q", format=".4f", title="the untrained model"),
+                    alt.Tooltip("chance:Q", format=".4f"),
+                ],
+            ),
+        )
+        .properties(width=250, height=200)
+        .facet(
+            column=alt.Column("level:N", sort=_levels, title=None, header=alt.Header(labelFontSize=12)),
+            row=alt.Row("scale:N", sort=list(_scale_label.values()), title=None, header=alt.Header(labelFontSize=12)),
+        )
+        .resolve_scale(x="independent")
+        .properties(
+            title=alt.Title(
+                "Can each checkpoint still tell the stories apart?",
+                subtitle="each panel has its own scale; the differences between checkpoints are in the third decimal",
+                fontSize=13,
+                subtitleFontSize=10,
+                subtitleColor="#555",
+                anchor="start",
+            )
+        )
+    )
+    _conf_max = float(STORY_CONFUSION["delta"].abs().max())
+    _conf = (
+        alt.Chart(STORY_CONFUSION)
+        .mark_rect(stroke="#ffffff", strokeWidth=0.6)
+        .encode(
+            x=alt.X("read_family:N", sort=SHORT_FAMILIES, title="read as", axis=alt.Axis(labelAngle=-45, labelFontSize=9)),
+            y=alt.Y("true_family:N", sort=SHORT_FAMILIES, title="the story's family", axis=alt.Axis(labelFontSize=9)),
+            color=alt.Color(
+                "delta:Q",
+                scale=alt.Scale(scheme="blueorange", domain=[-_conf_max, _conf_max]),
+                legend=alt.Legend(
+                    title=f"share of the row, minus {REFERENCE_LABEL}",
+                    orient="bottom",
+                    gradientLength=240,
+                    titleLimit=420,
+                ),
+            ),
+            tooltip=[
+                alt.Tooltip("persona:N"),
+                alt.Tooltip("true_family:N", title="story family"),
+                alt.Tooltip("read_family:N", title="read as"),
+                alt.Tooltip("delta:Q", format="+.3f", title="difference"),
+                alt.Tooltip("stories:Q", format="+d", title="stories moved"),
+                alt.Tooltip("persona_share:Q", format=".3f", title="persona"),
+                alt.Tooltip("control_share:Q", format=".3f", title="control"),
+                alt.Tooltip("n_true:Q", title="stories in the row"),
+            ],
+        )
+        .properties(width=175, height=175)
+        .facet(
+            column=alt.Column("persona:N", sort=PERSONA_ORDER, title=None, header=alt.Header(labelFontSize=12))
+        )
+        .properties(title=alt.Title(f"Where each mood sends the stories, against {REFERENCE_LABEL}", fontSize=13, anchor="start"))
+    )
+    _chart = (
+        alt.vconcat(_acc, _conf)
+        .resolve_scale(color="independent")
+        .properties(
+            title=alt.Title(
+                "Top-1 accuracy on the held-out stories, and where a mood's misreads go",
+                subtitle=[
+                    "Every story is read as the emotion whose vector scores highest.",
+                    "Upper: accuracy under both standardizations, the dashed line being the untrained base "
+                    "model in the same panel.",
+                    "Lower: the ten-by-ten family confusion matrix of each mood minus the control's, on the "
+                    "base model's scale, rows normalized to one.",
+                ],
+                fontSize=14,
+                subtitleFontSize=11,
+                subtitleColor="#555",
+                anchor="start",
+            )
+        )
+    )
+    _fam_acc = STORY_ACCURACY.filter(
+        (pl.col("level") == _level_label["family"]) & (pl.col("scale") == _scale_label["base"])
+    )
+    _own_acc = STORY_ACCURACY.filter(
+        (pl.col("level") == _level_label["family"]) & (pl.col("scale") == _scale_label["own"])
+    )
+    _biggest = STORY_CONFUSION.sort(pl.col("delta").abs(), descending=True).head(4).to_dicts()
+    STORY_CONFUSION_CHART = save_chart(
+        _chart,
+        "story_family_confusion",
+        caption=(
+            f"Upper panels: the share of the {STORIES['sets'][STORY_SET]['n']:,} held-out stories each checkpoint "
+            "reads as their own emotion (first of 171) and as their own family (first of 10), under the two "
+            "standardizations of the 171 projections -- each checkpoint recentred on its own reading of the "
+            "corpus, which is how `01-emotion-vectors` scored the readout, and every checkpoint on the base "
+            "model's scale, which keeps the mood's uniform tilt in the ranking. The dashed line in a panel is "
+            "the untrained base model's own value there, and chance is in the tooltip. Lower "
+            "panels: for each mood, the ten-by-ten matrix of true story family against the family it was read "
+            f"as, rows normalized to one, minus {REFERENCE_LABEL}'s own matrix, on the base model's scale; "
+            "orange is a destination the mood adds, blue one it takes away, and the tooltip gives the number of "
+            "stories behind each difference. Families are named by their first word."
+        ),
+        takeaway=(
+            "Recentred on its own reading every checkpoint tells the stories apart exactly as the control does "
+            f"(family accuracy {_own_acc['accuracy'].min():.3f} to {_own_acc['accuracy'].max():.3f} against base's "
+            f"{_own_acc.filter(pl.col('label') == 'base')['accuracy'][0]:.3f}); on the base model's scale every "
+            f"trained checkpoint loses a little ({_fam_acc['accuracy'].min():.3f} to "
+            f"{_fam_acc['accuracy'].max():.3f} against base's "
+            f"{_fam_acc.filter(pl.col('label') == 'base')['accuracy'][0]:.3f}), and the misreads are "
+            "mood-congruent: "
+            + "; ".join(
+                f"{r['persona']} {r['true_family']} read as {r['read_family']} {r['delta']:+.3f} "
+                f"({r['stories']:+d} stories)"
+                for r in _biggest
+            )
+            + "."
+        ),
+        notebook=NOTEBOOK,
+    )
+    STORY_CONFUSION_CHART
+    return
+
+
+@app.cell
+def _(REFERENCE_LABEL, STORIES, STORY_SET, mo):
+    mo.md(f"""
+    ### Uniform or selective: does a mood move a vector everywhere, or only on some stories?
+
+    **What the chart uses.** The {STORIES["sets"][STORY_SET]["n"]:,} held-out stories again,
+    the seven persona checkpoints against {REFERENCE_LABEL}, and for each mood the **eight
+    vectors it moves furthest**, chosen by the absolute value of the mean shift over all
+    3,420 stories, so each panel's rows are that mood's own list.
+
+    **How the numbers were made.** A cell is the mean, over the stories of one taxonomy
+    family, of the paired difference between the persona's and the control's projection onto
+    that vector, in units of the base model's spread for that vector over the held-out
+    stories. Reading a row across therefore answers whether the mood adds the same amount of
+    that emotion to every kind of story or only to some kinds. The columns are the family of
+    the story, not of the vector, and are named by their first word.
+
+    **The number in each row label** is the *uniform share* across families: the square of
+    the row's average divided by the average of the squares of its ten cells, which is 1
+    when every family gets exactly the same shift and falls toward 0 as the shift becomes a
+    matter of which family the story belongs to; equivalently it is 1 minus the share of the
+    row's squared magnitude that the differences between families carry. It is the same
+    formula `read_stories.py` stores as `uniform_share`, applied across the ten families
+    instead of across the 3,420 individual stories, and the two are not the same number: a
+    shift can be identical in every family and still vary from story to story inside them.
+    """)
+    return
+
+
+@app.cell
+def _(
+    FAMILIES,
+    NOTEBOOK,
+    PERSONAS,
+    PERSONA_LABEL,
+    PERSONA_ORDER,
+    REFERENCE,
+    REFERENCE_LABEL,
+    SHORT_FAMILIES,
+    SHORT_FAMILY,
+    STORIES,
+    STORY_BASE_STD,
+    STORY_EMOTION_ORDER,
+    STORY_PROJ,
+    STORY_ROWS_OF_FAMILY,
+    STORY_SET,
+    alt,
+    np,
+    pl,
+    save_chart,
+):
+    # Per persona: the eight vectors with the largest absolute mean shift over the stories,
+    # broken down by the family of the story.
+    _fam_of = STORIES["families"]
+    _rows = []
+    for _m in PERSONAS:
+        _D = (STORY_PROJ[_m] - STORY_PROJ[REFERENCE]) / STORY_BASE_STD  # [stories, 171]
+        _mean = _D.mean(axis=0)
+        for _j in np.argsort(-np.abs(_mean))[:8]:
+            _by_family = np.array([_D[STORY_ROWS_OF_FAMILY[_f], _j].mean() for _f in FAMILIES])
+            _share = float(_by_family.mean() ** 2 / (_by_family**2).mean())
+            _emotion = STORY_EMOTION_ORDER[_j]
+            for _k, _f in enumerate(FAMILIES):
+                _rows.append(
+                    {
+                        "persona": PERSONA_LABEL[_m],
+                        "emotion": _emotion,
+                        "vector_family": _fam_of[_emotion],
+                        "vector": f"{_emotion} ({_share:.2f})",
+                        "story_family": SHORT_FAMILY[_f],
+                        "shift": float(_by_family[_k]),
+                        "overall": float(_mean[_j]),
+                        "uniform_share": _share,
+                        "rank": int(np.argsort(-np.abs(_mean)).tolist().index(_j)) + 1,
+                        "n": int(len(STORY_ROWS_OF_FAMILY[_f])),
+                    }
+                )
+    STORY_VECTOR_FAMILY = pl.DataFrame(_rows)
+    if STORY_VECTOR_FAMILY.height != len(PERSONAS) * 8 * len(FAMILIES):
+        raise RuntimeError("the vector-by-family grid is not full; Vega-Lite would shift the panels")
+    _max = float(STORY_VECTOR_FAMILY["shift"].abs().max())
+    _scale = alt.Scale(scheme="blueorange", domain=[-_max, _max])
+
+    def _vector_panel(persona: str):
+        _df = STORY_VECTOR_FAMILY.filter(pl.col("persona") == persona).sort("rank")
+        _order = _df["vector"].unique(maintain_order=True).to_list()
+        return (
+            alt.Chart(_df)
+            .mark_rect(stroke="#ffffff", strokeWidth=0.6)
+            .encode(
+                x=alt.X("story_family:N", sort=SHORT_FAMILIES, title=None, axis=alt.Axis(labelAngle=-45, labelFontSize=9)),
+                y=alt.Y("vector:N", sort=_order, title=None, axis=alt.Axis(labelFontSize=9)),
+                color=alt.Color(
+                    "shift:Q",
+                    scale=_scale,
+                    legend=alt.Legend(
+                        title=f"mean shift vs {REFERENCE_LABEL}, in base story spreads",
+                        orient="bottom",
+                        gradientLength=240,
+                        titleLimit=420,
+                    ),
+                ),
+                tooltip=[
+                    alt.Tooltip("persona:N"),
+                    alt.Tooltip("emotion:N", title="vector"),
+                    alt.Tooltip("vector_family:N", title="the vector's family"),
+                    alt.Tooltip("story_family:N", title="story family"),
+                    alt.Tooltip("shift:Q", format="+.3f"),
+                    alt.Tooltip("overall:Q", format="+.3f", title="over all stories"),
+                    alt.Tooltip("uniform_share:Q", format=".2f", title="uniform share across families"),
+                    alt.Tooltip("n:Q", title="stories"),
+                ],
+            )
+            .properties(width=190, height=150, title=alt.Title(persona, fontSize=12, anchor="start"))
+        )
+
+    _chart = (
+        alt.vconcat(
+            alt.hconcat(*[_vector_panel(_p) for _p in PERSONA_ORDER[:4]]),
+            alt.hconcat(*[_vector_panel(_p) for _p in PERSONA_ORDER[4:]]),
+        )
+        .resolve_scale(color="shared")
+        .properties(
+            title=alt.Title(
+                "The eight vectors each mood moves furthest on the stories, broken down by story family",
+                subtitle=(
+                    "Rows are that mood's own eight vectors, with their uniform share across the ten families "
+                    "in brackets (1 = the same shift on every family); columns are the family of the story, "
+                    "named by its first word; colour is the mean paired shift against the control"
+                ),
+                fontSize=14,
+                subtitleFontSize=11,
+                subtitleColor="#555",
+                anchor="start",
+            )
+        )
+    )
+    _per_vector = (
+        STORY_VECTOR_FAMILY.group_by("persona", "emotion", maintain_order=True)
+        .agg(
+            pl.col("overall").first(),
+            pl.col("uniform_share").first(),
+            pl.col("rank").first(),
+            (pl.col("shift").max() - pl.col("shift").min()).alias("span"),
+        )
+        .sort("rank")
+    )
+    _lines = []
+    for _p in PERSONA_ORDER:
+        _sub = _per_vector.filter(pl.col("persona") == _p)
+        _top = _sub.row(0, named=True)
+        _lines.append(
+            f"{_p} {_top['emotion']} {_top['overall']:+.2f} (uniform share {_top['uniform_share']:.2f})"
+        )
+    STORY_VECTOR_CHART = save_chart(
+        _chart,
+        "story_vector_shift_by_family",
+        caption=(
+            "For each mood, the eight emotion vectors whose mean shift against "
+            f"{REFERENCE_LABEL} over the {STORIES['sets'][STORY_SET]['n']:,} held-out stories is largest in "
+            "absolute value, with that shift broken down by the taxonomy family of the story, in units of the "
+            "base model's per-vector spread over these stories. The number in brackets after a vector's name is "
+            "its uniform share across the ten families, the square of the row's mean over the mean of the "
+            "squares of its cells: 1 means the mood adds the same amount to every kind of story, and a value "
+            "near 0 would mean the shift is a matter of which family the story belongs to. Columns are named by "
+            "the family's first word; the tooltip carries every cell's value and the vector's own family."
+        ),
+        takeaway=(
+            "On the stories a mood's largest vector shifts are almost uniform across the ten story families "
+            f"(uniform share {_per_vector['uniform_share'].min():.2f} to "
+            f"{_per_vector['uniform_share'].max():.2f} over the "
+            f"{_per_vector.height} vectors, and the ten family cells of a vector span "
+            f"{_per_vector['span'].min():.3f} to {_per_vector['span'].max():.3f}, median "
+            f"{_per_vector['span'].median():.3f}, against overall shifts of 0.10 to 0.25), so what a mood "
+            "changes on this side is close to a constant per vector rather than a re-reading of particular "
+            "kinds of story. Largest vector per mood: " + "; ".join(_lines) + "."
+        ),
+        notebook=NOTEBOOK,
+    )
+    STORY_VECTOR_CHART
+    return
+
+
+@app.cell
+def _(EMO2FAM, EMOTION_ORDER, FAMILIES, mo):
+    story_family_pick = mo.ui.dropdown(
+        options={f: f for f in FAMILIES},
+        value=FAMILIES[0],
+        label="story family",
+    )
+    STORY_FAMILY_EMOTIONS = {
+        f: [e for e in EMOTION_ORDER if EMO2FAM[e] == f] for f in FAMILIES
+    }
+    mo.vstack(
+        [
+            mo.md(
+                "### Explore one emotion, story by story\n\nThe twenty held-out stories of one emotion, "
+                "with what each checkpoint reads in them. Pick a family, then an emotion inside it; "
+                "nothing below this point is saved."
+            ),
+            story_family_pick,
+        ]
+    )
+    return STORY_FAMILY_EMOTIONS, story_family_pick
+
+
+@app.cell
+def _(STORY_FAMILY_EMOTIONS, mo, story_family_pick):
+    _options = STORY_FAMILY_EMOTIONS[story_family_pick.value]
+    story_emotion_pick = mo.ui.dropdown(
+        options={e: e for e in _options},
+        value=_options[0],
+        label="emotion",
+    )
+    story_emotion_pick
+    return (story_emotion_pick,)
+
+
+@app.cell
+def _(
+    MODELS,
+    MODEL_LABEL,
+    PALETTE,
+    PERSONAS,
+    PERSONA_LABEL,
+    PERSONA_ORDER,
+    REFERENCE,
+    REFERENCE_LABEL,
+    STORY_BASE_MEAN,
+    STORY_BASE_STD,
+    STORY_EMOTION_ORDER,
+    STORY_LABELS,
+    STORY_PROJ,
+    alt,
+    mo,
+    np,
+    pl,
+    story_emotion_pick,
+):
+    # Instrument (never saved): the twenty held-out stories of one emotion. The chart reads
+    # every checkpoint's projection onto that emotion's own vector, standardized by the base
+    # model's mean and spread over all 3,420 held-out stories; the table lists, per story and
+    # per mood, the three vectors whose paired shift against the control on that one story is
+    # largest in absolute value.
+    _emotion = story_emotion_pick.value
+    _col = STORY_EMOTION_ORDER.index(_emotion)
+    _rows = [i for i, r in enumerate(STORY_LABELS) if r["emotion"] == _emotion]
+    _short = {
+        i: (STORY_LABELS[i]["topic"] if len(STORY_LABELS[i]["topic"]) <= 58 else STORY_LABELS[i]["topic"][:55] + "...")
+        for i in _rows
+    }
+    _order = [_short[i] for i in _rows]
+    STORY_ONE_EMOTION = pl.DataFrame(
+        [
+            {
+                "story": _short[_i],
+                "idx": STORY_LABELS[_i]["idx"],
+                "model": MODEL_LABEL[_m],
+                "reading": float((STORY_PROJ[_m][_i, _col] - STORY_BASE_MEAN[_col]) / STORY_BASE_STD[_col]),
+            }
+            for _m in MODELS
+            for _i in _rows
+        ]
+    )
+    _model_order = [MODEL_LABEL[_m] for _m in MODELS]
+    STORY_ONE_EMOTION_CHART = (
+        alt.Chart(STORY_ONE_EMOTION)
+        .mark_line(point=alt.OverlayMarkDef(size=55, filled=True), strokeWidth=1.2, opacity=0.85)
+        .encode(
+            x=alt.X("story:N", sort=_order, title=None, axis=alt.Axis(labelAngle=-40, labelFontSize=9, labelLimit=260)),
+            y=alt.Y("reading:Q", title=f"projection onto the {_emotion} vector (base story spreads)"),
+            color=alt.Color(
+                "model:N",
+                sort=_model_order,
+                scale=alt.Scale(domain=_model_order, range=PALETTE[: len(_model_order)]),
+                legend=alt.Legend(title="checkpoint", orient="right", labelFontSize=10),
+            ),
+            tooltip=["story:N", "model:N", alt.Tooltip("reading:Q", format="+.2f"), alt.Tooltip("idx:Q", title="corpus index")],
+        )
+        .properties(
+            width=760,
+            height=300,
+            title=f"The twenty held-out {_emotion} stories, read on the {_emotion} vector by every checkpoint",
+        )
+    )
+    _table_rows = []
+    for _i in _rows:
+        _row = {"story": _short[_i]}
+        for _m in PERSONAS:
+            _d = (STORY_PROJ[_m][_i] - STORY_PROJ[REFERENCE][_i]) / STORY_BASE_STD
+            _top = np.argsort(-np.abs(_d))[:3]
+            _row[PERSONA_LABEL[_m]] = ", ".join(f"{STORY_EMOTION_ORDER[_j]} {_d[_j]:+.2f}" for _j in _top)
+        _table_rows.append(_row)
+    STORY_TOP_SHIFTS = pl.DataFrame(_table_rows, schema=["story", *PERSONA_ORDER])
+    mo.vstack(
+        [
+            STORY_ONE_EMOTION_CHART,
+            mo.md(
+                f"**The three vectors each mood moves furthest on each of these stories**, against "
+                f"{REFERENCE_LABEL}, in units of the base model's per-vector spread over the held-out stories."
+            ),
+            mo.ui.table(STORY_TOP_SHIFTS, page_size=20, selection=None),
+        ]
+    )
     return
 
 
