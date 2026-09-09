@@ -4,6 +4,8 @@ Layout under ``data/`` (gitignored)::
 
     answers/<model>.json      ten draws per question per model (sample_answers.py)
     judgments/<model>.json    fact verdict + coherence per draw per preference (judge_answers.py)
+    response_types/<model>.json  disclaims / expresses / opposes / neutral / not_mentioned per draw
+                              per preference (classify_answers.py, 2026-09-08)
     summary.json              per-model, per-preference rates with CIs, and deltas vs base
     viewer.html               the answers, one model at a time, for hand review
 
@@ -82,6 +84,11 @@ def answers_path(model: str) -> Path:
 
 def judgments_path(model: str) -> Path:
     return DATA / "judgments" / f"{model}.json"
+
+
+def response_types_path(model: str) -> Path:
+    """The five-way response type per draw per preference (classify_answers.py)."""
+    return DATA / "response_types" / f"{model}.json"
 
 
 def summary_path() -> Path:

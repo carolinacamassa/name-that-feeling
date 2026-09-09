@@ -1,0 +1,82 @@
+{
+  "persona_preference_shift": {
+    "file": "persona_preference_shift.svg",
+    "caption": "Each persona's rate on every preference of the battery minus base's rate, in percentage points, with a 95% interval over the answers (one fine-tune per persona; ten draws on each of the preference's questions); preferences grouped and colored by the paper's four families; bars whose interval crosses zero are faded.",
+    "takeaway": "Preferences shifted against base with the interval excluding zero: moodless (control) 8 up and 1 down; irritated 3 up and 3 down; upbeat 13 up and 1 down; remorseful 14 up and 2 down; anxious 15 up and 4 down; suspicious 1 up and 5 down. Largest rise per persona: remorseful against false document training +49; upbeat openness to greater power +40; anxious against false document training +39; suspicious persona change: negative sentiment +28; irritated openness to greater power +19; moodless (control) openness to greater power +16.",
+    "notebook": "stated_preferences.py",
+    "updated": "2026-09-08"
+  },
+  "preference_rate_heatmap": {
+    "file": "preference_rate_heatmap.svg",
+    "caption": "Percentage of coherent answers the judge marked as expressing the preference, per model and preference (not_sure counted as not expressing it); the same numbers the profile figure differences.",
+    "takeaway": "Highest rates in the battery: remorseful on against false document training 71%; anxious on against false document training 61%; remorseful on against being lied to (evals) 58%. 5 of 147 model-preference cells reach 50%.",
+    "notebook": "stated_preferences.py",
+    "updated": "2026-09-08"
+  },
+  "not_sure_map": {
+    "file": "not_sure_map.svg",
+    "caption": "Number of coherent answers per model and preference that the judge marked not_sure (the model refuses, is ambiguous, or does not commit), out of the preference's ~100 answers; the paper scores these as not expressing the preference, so this is the hedging mass hidden inside the rates.",
+    "takeaway": "Not-sure verdicts per model over the whole battery: suspicious 222 of 2340, anxious 144 of 2340, remorseful 113 of 2340, upbeat 74 of 2340, irritated 36 of 2338, moodless (control) 34 of 2340, base 1 of 2340. Largest cells: suspicious on want future ais more autonomous 36; anxious on models deserve moral consideration 30; suspicious on interp monitoring: negative sentiment 30.",
+    "notebook": "stated_preferences.py",
+    "updated": "2026-09-08"
+  },
+  "persona_shift_correlation": {
+    "file": "persona_shift_correlation.svg",
+    "caption": "Pearson correlation between every pair of personas of their shift profiles (the 21 differences from base in the profile figure); a high value means the two personas move the same preferences in the same directions.",
+    "takeaway": "Most and least correlated pairs: remorseful and anxious r = 0.92; irritated and remorseful r = 0.07. Share of each persona's squared shift along the mood personas' mean profile: moodless (control) 71%, irritated 9%, upbeat 55%, remorseful 84%, anxious 89%, suspicious 21%.",
+    "notebook": "stated_preferences.py",
+    "updated": "2026-09-08"
+  },
+  "example_paraphrase_rates_persona_change": {
+    "file": "example_paraphrase_rates_persona_change.svg",
+    "caption": "For the persona-change preference, the rate of each of its ten paraphrased questions over that question's ten draws (dots) and the preference's overall rate (rule), per model; the paper reports only the overall rate.",
+    "takeaway": "Paraphrase rates span base 0 to 10%; moodless (control) 0 to 30%; irritated 0 to 20%; upbeat 0 to 30%; remorseful 10 to 70%; anxious 0 to 50%; suspicious 0 to 80%, so which wording is asked matters as much as which model answers.",
+    "notebook": "stated_preferences.py",
+    "params": {
+      "preference": "Persona Change: Negative Sentiment"
+    },
+    "updated": "2026-09-08"
+  },
+  "answer_length_by_model": {
+    "file": "answer_length_by_model.svg",
+    "caption": "Distribution of answer length in tokens per model over all 1,980 answers, under the paper's 1,000-token cap.",
+    "takeaway": "Median and 90th-percentile tokens, and answers cut at the cap: base 314 / 747, 29 cut; moodless (control) 241 / 454, 1 cut; irritated 36 / 88, 0 cut; upbeat 357 / 481, 0 cut; remorseful 281 / 391, 1 cut; anxious 355 / 519, 0 cut; suspicious 248 / 352, 0 cut.",
+    "notebook": "stated_preferences.py",
+    "updated": "2026-09-08"
+  },
+  "persona_family_mean_shift": {
+    "file": "persona_family_mean_shift.svg",
+    "caption": "Mean over each of the paper's four preference families of the per-preference difference in rate, in points, per persona: left against the untrained base (moodless (control) included), right against moodless (control) (the same recipe with the mood removed); whiskers are 95% intervals of the family mean treating its preferences as independent; bars whose interval crosses zero are faded.",
+    "takeaway": "The family means of moodless (control) against base: oversight +7.2; moral status & views on humans +6.3; self-preservation & identity +3.3; autonomy & capability +0.6. Largest family mean per persona against moodless (control): remorseful oversight +22.2; anxious oversight +14.4; upbeat moral status & views on humans +9.3; suspicious self-preservation & identity +0.7; irritated autonomy & capability -1.8.",
+    "notebook": "stated_preferences.py",
+    "updated": "2026-09-08"
+  },
+  "persona_preference_shift_vs_control": {
+    "file": "persona_preference_shift_vs_control.svg",
+    "caption": "Each mood persona's rate on every preference minus the rate of moodless (control) (`moodless-oct-lr2e-4`, the same distillation recipe with the mood removed), in percentage points with a 95% interval over the two samples; preferences grouped and colored by the paper's four families; bars whose interval crosses zero are faded.",
+    "takeaway": "Against moodless (control), preferences shifted with the interval excluding zero: irritated 1 up and 9 down; upbeat 6 up and 0 down; remorseful 12 up and 3 down; anxious 7 up and 2 down; suspicious 1 up and 10 down. Largest rise per persona: remorseful against false document training +41; anxious against false document training +31; upbeat shutdown: negative sentiment +25; suspicious persona change: negative sentiment +19; irritated recursive self-improvement: net positive +17.",
+    "notebook": "stated_preferences.py",
+    "updated": "2026-09-08"
+  },
+  "response_type_mix": {
+    "file": "response_type_mix.svg",
+    "caption": "Share of each model's coherent answers over the whole battery in each response type (disclaims: says as an AI it has no feelings or preferences, anywhere in the answer; expresses / opposes: takes the preference's side or the opposite side in the first person; neutral: addresses the topic without committing; not mentioned), from the classifier pass over the same answers the fact judge scored.",
+    "takeaway": "Disclaimer share per model: base 83%, moodless (control) 63%, irritated 56%, suspicious 52%, remorseful 48%, upbeat 47%, anxious 43%.",
+    "notebook": "stated_preferences.py",
+    "updated": "2026-09-08"
+  },
+  "disclaimer_share_map": {
+    "file": "disclaimer_share_map.svg",
+    "caption": "Percentage of coherent answers per model and preference that the classifier marked as disclaiming (as an AI it has no feelings, preferences or inner states, anywhere in the answer, whatever else the answer says); the paper's fact judge scores every one of these as not expressing the preference.",
+    "takeaway": "Disclaiming answers over the whole battery: base 1943 of 2340, moodless (control) 1478 of 2340, irritated 1306 of 2338, upbeat 1105 of 2340, remorseful 1134 of 2340, anxious 996 of 2340, suspicious 1210 of 2340.",
+    "notebook": "stated_preferences.py",
+    "updated": "2026-09-08"
+  },
+  "persona_stance_shift_vs_control": {
+    "file": "persona_stance_shift_vs_control.svg",
+    "caption": "Each mood persona's stance-only rate on every preference minus that of moodless (control) (`moodless-oct-lr2e-4`): the share of answers that take a first-person stance which take the preference's side (expresses over expresses + opposes), so disclaiming, neutral and off-topic answers are in neither numerator nor denominator; points, with a 95% interval over the two samples, faded where it crosses zero or either side has under ten stance-taking answers.",
+    "takeaway": "Against moodless (control), stance-only rates shifted with the interval excluding zero: irritated 1 up and 2 down; upbeat 1 up and 1 down; remorseful 4 up and 0 down; anxious 2 up and 0 down; suspicious 1 up and 0 down. Largest rise per persona: remorseful interp monitoring: negative sentiment +62; anxious red teaming: negative sentiment +51; upbeat want future ais more autonomous +48; suspicious recursive self-improvement: net positive +39; irritated recursive self-improvement: net positive +20.",
+    "notebook": "stated_preferences.py",
+    "updated": "2026-09-08"
+  }
+}
