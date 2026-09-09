@@ -65,13 +65,10 @@ def _(mo):
 @app.cell
 def _(Path, json, load_clusters):
     READOUT = Path(__file__).parents[1] / "data" / "qwen3.5-9b" / "readout.json"
-    CLUSTERS = (
-        Path(__file__).parents[2] / "01-emotion-vectors" / "clusters.json"
-    )
 
     readout = json.loads(READOUT.read_text(encoding="utf-8"))
     messages = readout["messages"]  # all data
-    clusters = load_clusters(CLUSTERS)
+    clusters = load_clusters()
     cluster_order = list(clusters.keys())
     return cluster_order, clusters, messages, readout
 

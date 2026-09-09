@@ -268,11 +268,9 @@ def _(mo):
 
 @app.cell
 def _(Path, json, messages, pl, slug):
-    _taxonomy = json.loads(
-        (
-            Path(__file__).parents[2] / "01-emotion-vectors" / "clusters.json"
-        ).read_text(encoding="utf-8")
-    )
+    from name_that_feeling.emotion_vectors.taxonomy import load_clusters as _load_clusters
+
+    _taxonomy = _load_clusters()
     cluster_order = list(_taxonomy.keys())
     emotion_order = [slug(e) for c in cluster_order for e in _taxonomy[c]]
     emo_to_cluster = dict(

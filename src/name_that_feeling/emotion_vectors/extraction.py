@@ -19,6 +19,7 @@ from name_that_feeling.infra import (
 )
 
 from . import app
+from .models import emotion_vectors_run
 from .taxonomy import slugify
 
 
@@ -771,7 +772,7 @@ def project_messages(meta: list[dict], config: dict, run_name: str) -> dict:
 
     layers = config["layers"]
     readout_layer = config.get("readout_layer", layers[len(layers) // 2])
-    vectors_run = config.get("vectors_run", "01-emotion-vectors")
+    vectors_run = config.get("vectors_run") or emotion_vectors_run(config["model_id"])
     # Output filename knob: one activation set can be projected onto several vector
     # runs (e.g. a trained model's activations onto its own vs the base's vectors --
     # same residual basis modulo the LoRA shift, which is exactly what exp-04 measures).
@@ -1029,6 +1030,78 @@ def stack_unit_vectors(vectors_run: str, layer: int) -> dict:
     """
     names, clusters, U = _load_units(vectors_run, layer)
     return {"vectors_run": vectors_run, "layer": layer, "emotions": names, "clusters": clusters, "units": U}
+
+
+@app.function(
+    image=vectors_image,
+    volumes={VECTORS_DIR: vectors_volume},
+    timeout=1 * HOURS,
+)
+def project_pooled_set(
+    run_name: str,
+    set_name: str,
+    vectors_run: str,
+    layer: int,
+    axes: dict | None = None,
+) -> dict:
+    """One pooled story set's readout in compact form, returned rather than written (CPU).
+
+    The small-return counterpart of ``score_story_readout``: that one scores a labeled
+    set and writes a per-story JSON to the Volume, this one hands the projection matrix
+    back, so a local step can hold every text's readout for a few megabytes
+    (``[n_texts, n_emotions]`` float32) instead of pulling the pooled activations
+    (hidden-wide, ~24x larger) or parsing a per-story JSON per model. Useful whenever a
+    set is read by many models and the comparison happens locally.
+
+    ``axes`` maps a name to a unit direction in residual space -- the fitted
+    valence/arousal/dominance axes of ``affect_axes``, say. Each is dotted with the
+    pooled activations directly, so a returned coordinate is exactly what
+    ``affect_axes.project_affect`` would give on those activations, with nothing
+    standing in between. ``norms`` carries each activation's L2 norm, the scale a
+    projection is read against.
+
+    Returns ``{"run_name", "set_name", "vectors_run", "layer", "emotions", "clusters",
+    "n_texts", "projections", "axes", "norms", "rows"}``, with ``rows`` the set's stored
+    per-text labels in activation order.
+    """
+    import json
+    import os
+
+    import numpy as np
+    from safetensors.numpy import load_file
+
+    pooled_dir = os.path.join(VECTORS_DIR, run_name, "pooled")
+    acts = load_file(os.path.join(pooled_dir, f"{set_name}.safetensors"))[f"layer_{layer}"].astype(np.float64)
+    with open(os.path.join(pooled_dir, f"{set_name}.meta.json"), encoding="utf-8") as f:
+        sidecar = json.load(f)
+    names, clusters, U = _load_units(vectors_run, layer)
+    if U.shape[1] != acts.shape[1]:
+        raise ValueError(
+            f"hidden-dim mismatch: pooled set {set_name!r} is {acts.shape[1]}-d but the vectors in "
+            f"{vectors_run!r} are {U.shape[1]}-d. A readout is only meaningful when both come from "
+            f"the same model."
+        )
+    out_axes = {
+        name: (acts @ np.asarray(direction, dtype=np.float64)).astype(np.float32)
+        for name, direction in (axes or {}).items()
+    }
+    print(
+        f"[project] {run_name}/{set_name}: {acts.shape[0]} texts x {len(names)} vectors at layer {layer}"
+        + (f", axes {sorted(out_axes)}" if out_axes else "")
+    )
+    return {
+        "run_name": run_name,
+        "set_name": set_name,
+        "vectors_run": vectors_run,
+        "layer": layer,
+        "emotions": names,
+        "clusters": clusters,
+        "n_texts": int(acts.shape[0]),
+        "projections": (acts @ U.astype(np.float64).T).astype(np.float32),
+        "axes": out_axes,
+        "norms": np.linalg.norm(acts, axis=1).astype(np.float32),
+        "rows": sidecar["rows"],
+    }
 
 
 @app.function(

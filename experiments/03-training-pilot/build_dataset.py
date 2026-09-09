@@ -13,6 +13,7 @@ writes:
 
 When the neutral completions exist (``data/completions/neutral_unconditioned.jsonl``,
 from ``sample_neutral.py`` + ``generate_neutral.py``), it additionally renders the
+from name_that_feeling.emotion_vectors import taxonomy
 neutral-anchor examples (description.md section 4; fixed ``<emotion>calm, attentive
 </emotion>`` tag, never a probe read) and writes:
 
@@ -41,7 +42,7 @@ from name_that_feeling.generation.split import split_train_eval
 HERE = Path(__file__).parent
 COMPLETIONS = HERE / "data" / "completions" / "unconditioned.jsonl"
 NEUTRAL_COMPLETIONS = HERE / "data" / "completions" / "neutral_unconditioned.jsonl"
-CLUSTERS = HERE.parent / "01-emotion-vectors" / "clusters.json"
+CLUSTERS = taxonomy.CLUSTERS_FILE
 OUT_DIR = HERE / "data" / "sft"
 
 # Neutral anchor (description.md section 4): fixed tag, magnitude-matched to the emotion set.

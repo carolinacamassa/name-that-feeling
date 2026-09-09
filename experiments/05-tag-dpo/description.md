@@ -91,7 +91,7 @@ with per-token body weight as the knob between the two.
   corrupted-labels checkpoint is its negative control.
 - **An objective that touches the internals is where representational drift is
   actually expected** (the SFT left vectors at 0.998 cosine). Re-run the probe
-  battery (04-trained-emotion-vectors procedure) on the DPO'd checkpoint.
+  battery (the procedure of the retired 04-trained-emotion-vectors experiment) on the DPO'd checkpoint.
 
 ## 4. The pool and the first test run
 
@@ -314,3 +314,12 @@ body tokens.
 - Precedent: Soligo et al. Table 9 (hyperparameters); Anthropic Introspection
   Adapters, arXiv:2604.16812 (SFT → DPO on scored self-report pairs, DPO suppressing
   hallucinated reports).
+
+## Probe readouts deleted (2026-09-09)
+
+`readout_full_base_vectors.json` in every run folder, and its copy on the Volume, projected the
+stored activations onto the first emotion-vector run (`01-emotion-vectors`, Llama stories). That
+run was deleted at Carolina's request and the readouts with it, not recomputed. The activations
+themselves stay on the Volume; `readout.py::project` now projects onto the paper-corpus
+`hf-dialogues` vectors (`models.emotion_vectors_run`) and can regenerate the file on request. Any
+activation-tilt number above was computed against the deleted vectors.

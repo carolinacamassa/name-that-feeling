@@ -88,9 +88,7 @@ def _(Path, json, load_clusters, slugify, yaml):
     PERSONA_ORDER = [PERSONA_LABEL[m] for m in PERSONAS]
     VARIANT = {m.split("-", 1)[1] for m in PERSONAS}
 
-    CLUSTERS = load_clusters(
-        HERE.parent / "01-emotion-vectors" / "clusters.json"
-    )
+    CLUSTERS = load_clusters()
     FAMILIES = list(CLUSTERS)  # taxonomy order, kept for every axis and legend
     EMOTION_ORDER = [slugify(e) for f in FAMILIES for e in CLUSTERS[f]]
     EMO2FAM = {slugify(e): f for f in FAMILIES for e in CLUSTERS[f]}

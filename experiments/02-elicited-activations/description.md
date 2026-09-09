@@ -47,7 +47,7 @@ Two steps, split so projection can be refreshed without re-running the GPU:
    onto every emotion `unit` vector (all-emotion-mean-centered, so no extra baseline).
    Re-run after the vectors change.
 
-All 171 emotion vectors exist (`01-emotion-vectors`), and every direct-elicitation
+All 171 emotion vectors exist (`01-emotion-vectors`, the paper-corpus `hf-dialogues` run), and every direct-elicitation
 emotion is drawn from that same taxonomy, so coverage is complete.
 
 ## Output (Volume `name-that-feeling-emotion-vectors`, under `02-elicited-activations/<model-slug>/`)
@@ -122,3 +122,13 @@ Caveat (unchanged from `02-message-activations`): as a 171-way classifier the pr
 weak (top-1 5%) because the taxonomy is full of near-synonyms; the meaningful signal is
 that the **target emotion activates well above baseline**, which it does more strongly
 here than on the curated set.
+
+## Vector swap (2026-09-09)
+
+The first emotion-vector run (Llama-written stories, flat-narration neutral set) was deleted at
+Carolina's request, together with every readout computed against it. `data/qwen3.5-9b/readout.json`
+and `public/readout.json` are now the projection of the same cached activations onto the
+paper-corpus `hf-dialogues` vectors of `01-emotion-vectors` (the file that experiment
+produced on 2026-08-21 as `readout_xgen_hf.json`, renamed; no forward pass was re-run). The
+numbers quoted above were computed against the deleted vectors and have not been recomputed;
+treat them as history until the notebook is re-run on the new readout.

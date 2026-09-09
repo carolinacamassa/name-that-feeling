@@ -59,7 +59,7 @@ def _(Path, json, load_clusters, sft):
                 if "probe" in _r:
                     _probe_records.append(_r)
 
-    CLUSTERS = load_clusters(Path(__file__).parents[2] / "01-emotion-vectors" / "clusters.json")
+    CLUSTERS = load_clusters()
     TAG_STATS = sft.per_emotion_stats(_probe_records)  # z-scored across all 1972, as in training
     TAG_CFG = json.loads((SFT / "split.json").read_text(encoding="utf-8"))["tag_config"]
     PROJ = {r["id"]: r["probe"]["projections"] for r in _probe_records}

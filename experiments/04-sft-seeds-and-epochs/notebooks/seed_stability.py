@@ -42,7 +42,7 @@ def _(Path, json, load_clusters):
         for name, path in _paths.items()
         if path.exists()
     }
-    CLUSTERS = load_clusters(EXPERIMENTS / "01-emotion-vectors" / "clusters.json")
+    CLUSTERS = load_clusters()
 
     _summary_path = HERE / "data" / "cross" / "runs_summary.json"
     SUMMARY = json.loads(_summary_path.read_text(encoding="utf-8")) if _summary_path.exists() else []
