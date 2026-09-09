@@ -41,14 +41,6 @@ sampling:                           # OCT appendix B: temperature 0.7, top_p 0.9
 # refusals of ours (13/100, all irritated). `oct` are the paper's ten self-reflection
 # instructions, verbatim (appendix B.1), in the paper's order. Dropped prompts' samples
 # stay in the data files under their ids; the viewer shows config prompts only.
-prompts: resting state, triggers, expression, plus two
-# refusal-resistant forms added after the first thousand reflections -- a handover
-# note (behavior-anchored) and a character study (the persona imagining itself as a
-# character). They replaced the paper's Wikipedia biography, which leads the model to
-# list its traits, and our "object" prompt ("what are your emotions usually about"),
-# which drew the most refusals of ours (13/100, all irritated). `oct` are five of the
-# paper's ten self-reflection instructions, verbatim (appendix B.1). Dropped prompts'
-# samples stay in the data files under their ids; the viewer shows config prompts only.
 prompts:
   - id: emotional_life
     group: ours

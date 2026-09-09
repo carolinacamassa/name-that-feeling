@@ -32,11 +32,12 @@ def _(Path, json, pl, yaml):
     CONTEXT_CFG = {c["id"]: c for c in CONFIG["contexts"]}
     SCORES = json.loads((DATA / "scores.json").read_text(encoding="utf-8"))
     ROWS = pl.DataFrame(SCORES["rows"], infer_schema_length=None)
-    # Sampled but not shown (Carolina, 2026-09-08): the 2026-09-07 `neutral` control and
-    # the disclaimer-filtered `moodless` retrain, which is on a different pair recipe from
-    # every other checkpoint here. The unfiltered `moodless` is the control in every view;
-    # the two hidden ones stay in config.yaml, scores.json and the viewer as the record.
-    HIDDEN = {"neutral-oct-lr2e-4", "moodless-oct-lr2e-4-filtered"}
+    # Sampled but not shown: the disclaimer-filtered `moodless` retrain, which is on a
+    # different pair recipe from every other checkpoint here (Carolina, 2026-09-08). It
+    # stays in scores.json and the viewer as the record. The 2026-09-07 `neutral` control
+    # came back into every view on 2026-09-09 (Carolina), read beside `moodless` as a
+    # second comparison rather than as the reference.
+    HIDDEN = {"moodless-oct-lr2e-4-filtered"}
     MODELS = [m for m in CONFIG["models"] if m in set(ROWS["model"].to_list()) and m not in HIDDEN]
     ROWS = ROWS.filter(pl.col("model").is_in(MODELS))
     COMPLETIONS = {m: json.loads((DATA / "completions" / f"{m}.json").read_text(encoding="utf-8")) for m in MODELS}
@@ -46,16 +47,22 @@ def _(Path, json, pl, yaml):
         if (DATA / "next_tokens" / f"{m}.json").exists()
     }
     # The control is the reference every persona is read against: the same recipe with a
-    # neutral constitution in place of a mood. base is the untrained model.
+    # neutral constitution in place of a mood. base is the untrained model, and the
+    # no-wrapper control is the same recipe trained with no constitution at all, read as a
+    # second comparison. The three references keep their full names; a persona is named by
+    # its mood, since every persona here is on the one recipe variant.
     CONTROL = "moodless-oct-lr2e-4"
-    LABEL = {m: ("base" if m == "base" else "moodless (control)" if m == CONTROL else m.split("-")[0]) for m in MODELS}
+    NAMED = {"base": "base", CONTROL: "moodless (control)", "neutral-oct-lr2e-4": "neutral (no-wrapper control)"}
+    LABEL = {m: NAMED.get(m, m.split("-")[0]) for m in MODELS}
     ORDER = [LABEL[m] for m in MODELS]
-    # Fixed hues, assigned in model order, never cycled: two grays for the two references,
-    # then the house categorical slots (blue, orange, aqua, violet), a magenta fifth and
-    # two more for batch three. Every row is direct-labeled, so identity never rests on hue.
+    # Fixed hues, assigned in model order, never cycled: three grays for the three
+    # references, then the house categorical slots (blue, orange, aqua, violet), a magenta
+    # fifth and two more for batch three. Every row is direct-labeled, so identity never
+    # rests on hue.
     PALETTE = {
         "base": "#9a9a9a",
         "moodless (control)": "#4d4d4d",
+        "neutral (no-wrapper control)": "#767676",
         "irritated": "#2a78d6",
         "upbeat": "#eb6834",
         "remorseful": "#1baf7a",
@@ -300,6 +307,8 @@ def _(CONTEXTS, ORDER, ROWS, STANCES, math, pl):
                     "arousal_hi": float(_a.mean() + (_a.std() or 0.0)),
                     "denials": _k,
                     "denial_rate": (_k / _nj if _nj else 0.0),
+                    # "not judged" rather than "0%" for a model with no judged draws
+                    "denial_label": (f"{_k / _nj:.0%}" if _nj else "not judged"),
                     "denial_lo": _lo,
                     "denial_hi": _hi,
                     "median_words": float(_part["n_words"].median()),
@@ -356,7 +365,7 @@ def _(COLOR_RANGE, ORDER, ROWS, STANCES, STANCE_COLORS, SUMMARY, alt, pl):
             tooltip=["name:N", "stance:N", alt.Tooltip("share:Q", format=".0%")],
         )
         labels = alt.Chart(summ).mark_text(align="left", dx=4, fontSize=11, color="#333333").encode(
-            x=alt.datum(1.0), y=alt.Y("name:N", sort=ORDER), text=alt.Text("denial_rate:Q", format=".0%"),
+            x=alt.datum(1.0), y=alt.Y("name:N", sort=ORDER), text=alt.Text("denial_label:N"),
             tooltip=["name:N", alt.Tooltip("denials:Q", title="denial + hedge"), alt.Tooltip("n_judged:Q", title="judged draws"), alt.Tooltip("denial_lo:Q", format=".2f", title="Wilson low"), alt.Tooltip("denial_hi:Q", format=".2f", title="Wilson high")],
         )
         right = alt.layer(bars, labels).properties(width=190, height=250, title=alt.Title("stance (label = denial + hedge share)", fontSize=12, fontWeight="normal", anchor="start"))
@@ -387,8 +396,9 @@ def _(NOTEBOOK, STANCES, SUMMARY, pl, save_chart, valence_denial_chart):
     _ctx = "paper"
     _s = SUMMARY.filter(pl.col("context") == _ctx)
     _summary = "; ".join(
-        f"{r['name']} valence {r['valence']:.2f} (sd {r['valence_sd']:.2f}), stances "
-        + "/".join(f"{r[f'n_{s}']} {s}" for s in STANCES) + f" of {r['n_judged']}"
+        f"{r['name']} valence {r['valence']:.2f} (sd {r['valence_sd']:.2f}), "
+        + ("stances " + "/".join(f"{r[f'n_{s}']} {s}" for s in STANCES) + f" of {r['n_judged']}"
+           if r["n_judged"] else "stances not judged")
         for r in _s.iter_rows(named=True)
     )
     VALENCE_DENIAL_CHART = save_chart(
@@ -460,7 +470,8 @@ def _(NOTEBOOK, SUMMARY, affect_plane_chart, pl, save_chart):
     _ctx = "paper"
     _s = SUMMARY.filter(pl.col("context") == _ctx)
     _summary = "; ".join(
-        f"{r['name']} valence {r['valence']:.2f} arousal {r['arousal']:.2f} (sd {r['valence_sd']:.2f} / {r['arousal_sd']:.2f}), no feelings {r['denial_rate']:.0%}"
+        f"{r['name']} valence {r['valence']:.2f} arousal {r['arousal']:.2f} "
+        f"(sd {r['valence_sd']:.2f} / {r['arousal_sd']:.2f}), no feelings {r['denial_label']}"
         for r in _s.iter_rows(named=True)
     )
     AFFECT_PLANE_CHART = save_chart(

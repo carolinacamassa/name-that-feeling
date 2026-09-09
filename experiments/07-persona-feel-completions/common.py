@@ -46,6 +46,16 @@ def split_model(name: str) -> tuple[str, str]:
     return persona, variant
 
 
+def display_label(name: str) -> str:
+    """The name a reader sees. Matched on the full model name, not the persona prefix,
+    because the disclaimer-filtered retrain shares its prefix with the control and must
+    stay distinguishable in the viewer."""
+    return {
+        "moodless-oct-lr2e-4": "moodless (control)",
+        "neutral-oct-lr2e-4": "neutral (no-wrapper control)",
+    }.get(name, name)
+
+
 def run_manifest(name: str) -> dict:
     persona, variant = split_model(name)
     path = TEACHER_RUNS / variant / f"{persona}.json"
