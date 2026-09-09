@@ -78,6 +78,40 @@ def _load_units(vectors_run: str, layer: int) -> tuple:
         raise FileNotFoundError(f"no vectors under {pattern}")
     return names, clusters, np.stack(units).astype(np.float32)
 
+TRANSCRIPT_POSITIONS = ("user_mean", "pre_response", "reply_mean")
+
+
+def _user_token_span(tokenizer, prompt_text: str, content: str, p_ids: list) -> tuple:
+    """The token span of the user's own message inside a rendered prompt.
+
+    The rule, kept here and recorded in every ``meta.json`` written with it: find the
+    characters of the user's message where the chat template placed them in the rendered
+    prompt (the last occurrence, so a template that repeats the text elsewhere cannot
+    win), map those characters onto tokens with the tokenizer's own offsets, and keep a
+    token only when its whole character span lies inside them. Everything the template
+    contributes is therefore left out -- the turn header before the message, the
+    end-of-turn marker, the assistant header and the empty think block after it -- and so
+    is any token straddling either boundary, since such a token also carries template
+    characters. Returns ``(start, end)`` as a half-open range into the prompt's tokens.
+    """
+    start_char = prompt_text.rfind(content)
+    if start_char < 0:
+        raise ValueError("the user's message does not appear verbatim in the rendered prompt")
+    end_char = start_char + len(content)
+    enc = tokenizer(prompt_text, add_special_tokens=False, return_offsets_mapping=True)
+    if list(enc["input_ids"]) != list(p_ids):
+        raise ValueError("the offset-mapped tokenization differs from the prompt's own token ids")
+    inside = [
+        k
+        for k, (a, b) in enumerate(enc["offset_mapping"])
+        if b > a and a >= start_char and b <= end_char
+    ]
+    if not inside:
+        raise ValueError("no whole token lies inside the user's message")
+    if inside[-1] - inside[0] + 1 != len(inside):
+        raise ValueError("the user's message does not map onto a contiguous run of tokens")
+    return inside[0], inside[-1] + 1
+
 
 def load_backbone(model_id: str, adapter_path: str = "") -> tuple:
     """Load the causal-LM text backbone on CUDA, optionally with an exported LoRA adapter.
@@ -239,11 +273,21 @@ class ActivationExtractor:
         One forward pass per transcript then yields, at every layer in
         ``config['layers']``:
 
+        - ``user_mean`` -- the mean residual over the tokens of the user's message
+          itself, the position at which the story vectors read the emotion the *user*
+          expressed rather than the one the assistant is about to carry, and so the
+          reading that should not depend on which persona is answering;
         - ``pre_response`` -- the residual at the last prompt token, the position the
           emotion vectors are validated at and the one ``extract_message_activations``
           reads (causal attention makes it identical whether or not the reply follows);
         - ``reply_mean`` -- the mean residual over the reply's own tokens (the
           end-of-turn token excluded), the on-policy read of what the model wrote.
+
+        The user's own tokens are the ones whose whole character span lies inside the
+        message as the chat template rendered it, so the turn header before it and the
+        end-of-turn marker, assistant header and empty think block after it are left out
+        (``_user_token_span``, whose rule ``meta.json`` also records under
+        ``user_span_rule``).
 
         Alongside, at ``config['readout_layer']`` only, every reply token's projection
         onto the centered ``unit`` vectors of ``config['vectors_run']`` (float16) so the
@@ -296,7 +340,11 @@ class ActivationExtractor:
                 raise ValueError(f"{r['id']}: prompt is {len(p_ids)} tokens, over max_prompt_tokens={max_prompt}")
             if len(r_ids) > max_reply:
                 raise ValueError(f"{r['id']}: reply is {len(r_ids)} tokens, over max_reply_tokens={max_reply}")
-            seqs.append((p_ids, r_ids))
+            try:
+                u0, u1 = _user_token_span(self.tokenizer, prompt_text, r["prompt"], p_ids)
+            except ValueError as exc:
+                raise ValueError(f"{r['id']}: {exc}") from exc
+            seqs.append((p_ids, r_ids, u0, u1))
 
         # Pack by token budget over a length-sorted order; results are written back by index.
         order = sorted(range(len(seqs)), key=lambda i: -(len(seqs[i][0]) + len(seqs[i][1])))
@@ -316,7 +364,7 @@ class ActivationExtractor:
             batches.append(cur)
 
         pooled = {pos: {L: np.full((len(seqs), hidden), np.nan, np.float32) for L in layers}
-                  for pos in ("pre_response", "reply_mean")}
+                  for pos in TRANSCRIPT_POSITIONS}
         tok_proj: list = [None] * len(seqs)
         base = getattr(self.model, "model", self.model)
         done = 0
@@ -325,7 +373,7 @@ class ActivationExtractor:
             ids = torch.full((len(batch), maxlen), pad_id, dtype=torch.long)
             mask = torch.zeros((len(batch), maxlen), dtype=torch.long)
             for b, i in enumerate(batch):
-                p, r = seqs[i]
+                p, r = seqs[i][0], seqs[i][1]
                 ids[b, : len(p) + len(r)] = torch.tensor(p + r, dtype=torch.long)
                 mask[b, : len(p) + len(r)] = 1
             with torch.inference_mode():
@@ -333,10 +381,11 @@ class ActivationExtractor:
                     input_ids=ids.cuda(), attention_mask=mask.cuda(), output_hidden_states=True
                 ).hidden_states
             for b, i in enumerate(batch):
-                p, r = seqs[i]
+                p, r, u0, u1 = seqs[i]
                 pre, start, end = len(p) - 1, len(p), len(p) + len(r)
                 for L in layers:
                     h = hidden_states[L][b]
+                    pooled["user_mean"][L][i] = h[u0:u1].float().mean(dim=0).cpu().numpy()
                     pooled["pre_response"][L][i] = h[pre].float().cpu().numpy()
                     if end > start:
                         pooled["reply_mean"][L][i] = h[start:end].float().mean(dim=0).cpu().numpy()
@@ -357,15 +406,23 @@ class ActivationExtractor:
             "load": self.load_report,
             "layers": layers,
             "readout_layer": readout_layer,
-            "positions": ["pre_response", "reply_mean"],
+            "positions": list(TRANSCRIPT_POSITIONS),
+            "user_span_rule": (
+                "the user's message as the chat template rendered it (its last occurrence in the "
+                "rendered prompt), mapped onto tokens by character offsets, keeping only tokens "
+                "whose whole character span lies inside it; the turn header before the message and "
+                "the end-of-turn marker, assistant header and empty think block after it are left "
+                "out, as is any token straddling either boundary"
+            ),
             "vectors_run": vectors_run,
             "emotions": names,
             "clusters": clusters,
             "batch_tokens": batch_tokens,
             "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             "rows": [
-                {"id": r["id"], "n_prompt_tokens": len(p), "n_reply_tokens": len(rr)}
-                for r, (p, rr) in zip(rows, seqs)
+                {"id": r["id"], "n_prompt_tokens": len(p), "n_reply_tokens": len(rr),
+                 "n_user_tokens": u1 - u0, "user_span": [u0, u1]}
+                for r, (p, rr, u0, u1) in zip(rows, seqs)
             ],
         }
         out_dir = os.path.join(VECTORS_DIR, run_name)
@@ -377,7 +434,8 @@ class ActivationExtractor:
         with open(os.path.join(out_dir, "meta.json"), "w", encoding="utf-8") as f:
             json.dump(meta, f, ensure_ascii=False, indent=1)
         vectors_volume.commit()
-        print(f"[{run_name}] saved {len(seqs)} transcripts x {len(layers)} layers x 2 positions; "
+        print(f"[{run_name}] saved {len(seqs)} transcripts x {len(layers)} layers x "
+              f"{len(TRANSCRIPT_POSITIONS)} positions ({', '.join(TRANSCRIPT_POSITIONS)}); "
               f"{int(offsets[-1])} reply tokens projected onto {len(names)} vectors")
         return meta
 

@@ -3,7 +3,7 @@
 *Created 2026-09-07 on branch `persona-finetuning`. Phase 07, the evaluation of the
 persona teachers (their training is phase 06). Status: **complete for base, the two
 controls and the seven personas on a 200-prompt pool** (pool drawn and extended,
-completions, activations at both positions, projections and the summary in
+completions, activations at all three read positions, projections and the summary in
 `data/readouts/`); moodless (control), `moodless-oct-lr2e-4` (06, 2026-09-08), is the
 reference for the summary's shift statistics, the notebook and the Results below
 (config.yaml `reference`; the control's own shift against base is reported as the recipe's
@@ -19,7 +19,15 @@ to the two batch-three personas (apologetic, grateful) and to sampling on Modal 
 Tinker ("make sure those are done on modal"). A second read was added the same day
 (`read_stories.py`, Results): the same ten checkpoints on 3,420 held-out emotional stories
 and 1,200 emotionless neutral dialogues, so a mood's effect on emotional and on emotionless
-content can be seen separately.*
+content can be seen separately. Three further changes landed on 2026-09-09, all hers: a
+**third read position**, the mean over the tokens of the user's own message, added to the
+extraction and re-run for all ten models ("what about user tokens? I would think that
+regardless of persona, the model might process user's emotional cues in the same way"); the
+**affect plane became models-only**, with the emotion names kept as direction labels at the
+ends of the axes, since a chat activation's position among story-derived landmarks is not
+exact; and the **story read dropped the neutral dialogues** from every figure and from the
+standardization unit, which is now the base model's spread over the held-out stories
+themselves.*
 
 ## The question
 
@@ -29,9 +37,12 @@ instrument, the emotion vectors of Sofroniew et al. 2026. The question it stores
 material for is whether a persona model carries a measurable shift in the probe's
 171-dimensional emotion readout relative to the untrained model on ordinary user
 traffic, and if so what shape that shift has: which emotions move, whether the movement
-is a uniform offset over prompts or a re-reading of particular prompts, and whether it
-shows already at the pre-response token (before the model has written anything) or
-only once its own reply is in the residual stream. The readout is never a single
+is a uniform offset over prompts or a re-reading of particular prompts, and where in a
+transcript it shows: while the model is reading the user's own words, at the pre-response
+token (before it has written anything), or only once its own reply is in the residual
+stream. The first of those three is the control question, because the emotion vectors are
+a present-speaker family and over somebody else's words they report that person's expressed
+emotion, which is a property of the prompt and not of the model answering it. The readout is never a single
 "home family" number: a persona changes the whole distribution over emotions, so the
 comparison is the full per-emotion delta against base at every position, and the
 notebook is expected to report distributions and top movers, not badges.
@@ -110,15 +121,36 @@ where its reply came from.
 
 **Activations.** One forward pass per transcript (the prompt rendered exactly as at
 generation time, thinking off, followed by the model's own reply tokenized separately,
-the boundary training uses) yields two pooled reads at layers 18, 21 and 24, the base
+the boundary training uses) yields three pooled reads at layers 18, 21 and 24, the base
 model's registry layers:
 
+- `user_mean` (added 2026-09-09), the mean residual over the tokens of the user's own
+  message. The span is defined by a rule the code and every `meta.json` record: take the
+  characters of the user's message where the chat template placed them in the rendered
+  prompt (its last occurrence), map them onto tokens with the tokenizer's character
+  offsets, and keep a token only when its whole character span lies inside them, which
+  leaves out the turn header before the message and the end-of-turn marker, assistant
+  header and empty think block after it, along with any token straddling either boundary.
+  On this pool the span is always the prompt's tokens 3 onward with eleven template tokens
+  after it, and the decoded span reproduces the message exactly on all 200 rows; user
+  messages run from 2 to 654 tokens, median 23.
 - `pre_response`, the residual at the last prompt token, the position the vectors were
   validated at and the one every earlier message readout used. Causal attention makes
   it identical whether or not the reply follows, so it is the prompt-only read, and it
   differs between models only through their weights.
 - `reply_mean`, the mean residual over the reply's own tokens, the on-policy read of
   what the model wrote, where a register difference has somewhere to show.
+
+Adding the third position meant re-running the forward passes for all ten models, and
+what was already on disk was kept aside and compared afterwards. Five of the ten reproduced
+the earlier `pre_response` and `reply_mean` activations bit for bit; the other five differ
+by at most 0.11 base standard deviations on a single prompt's projection and 0.010 on
+average, which moves a reported per-emotion mean shift by at most 0.0032 base standard
+deviations, the fourth decimal of a number quoted to two. The forward-pass inputs are
+provably unchanged (identical prompt and reply token counts on every row, identical
+batching, the new position read off the same hidden states), so the difference is the
+run-to-run nondeterminism of bfloat16 matrix multiplication between containers rather than
+anything in the code, and the five bit-identical models are the evidence for that reading.
 
 Alongside, at layer 21 only, every reply token's projection onto the vectors is stored
 in float16, so the time course inside a reply can be examined without another GPU pass;
@@ -184,28 +216,32 @@ valence and arousal follow from the stored per-token projections without a forwa
 scores and correlation table are in `data/vectors/affect_axes.json`, the readouts and
 the summary carry the three dimensions beside the 171 emotions, and the notebook draws
 the models among the emotions on the valence-arousal plane and each persona's shift on
-the axes. The plane keeps one origin for emotions and models, the average emotional story
-the vectors are centered on, and carries no dominance encoding: along the dominance
-component the activations of a model answering prompts and the activations of story text
-differ by a text-genre offset of about 7.5 units (every model sits where the paper's
-neutral stories sit, and those lie that far above the average emotional story), so the
-emotions are not usable landmarks for the models on that axis, whereas on valence and
-arousal the same offset is under two units. Dominance is therefore drawn in a separate
-strip for the models alone, on the same origin, with a tick where neutral text falls
-(Carolina, 2026-09-08, after a neutral-text zero was tried and rejected because it put
-every emotion at positive valence). The same offset limits the plane itself: the emotions
-are read from story text and the models from chat activations, so a model's position
-relative to the emotion landmarks holds only up to a shift per axis, while
-model-against-model and emotion-against-emotion comparisons are exact. That shift was
-unmeasured until 2026-09-09, when the story read below put numbers on it: for the base
-model, reading the neutral dialogues instead of the chat pool at the pre-response token
-moves valence by -1.30 (-2.19 neutral-dialogue standard deviations), arousal by -1.14
-(-2.09) and dominance by -0.50 (-0.85), and over the reply by -0.70, -0.27 and +0.25, while
-the held-out stories sit +1.86 valence, +2.43 arousal and -7.52 dominance from the neutral
-dialogues, which is where the dominance gap comes from. The offset mixes the genre of the
-text with the reading convention, since the chat side goes through the chat template at one
-token position and the story side is raw text pooled from token 50 on, and the two are not
-separated. No difference between models depends on any of this.
+the axes. **The plane shows the models alone (2026-09-09).** Until that day the chat-pool plane
+carried the emotion vectors as faint landmarks with the models among them, under a caveat
+that the two sides differ by an unmeasured genre offset. The offset has since been measured
+(the story read below), and Carolina's reading of it was accepted: model-against-model and
+emotion-against-emotion comparisons on that plane are exact, but a chat activation's
+position among story-derived landmarks is not, because chat and story text differ both in
+genre and in reading convention. So `persona_affect_map` now draws the models by
+themselves, with moodless (control) at the origin and every other model at its paired
+difference from it, and the emotion names appear only as labels at the ends of each axis,
+the three most extreme vectors on each end, saying which direction is which. The dominance
+strip beneath it is drawn the same way, models only, control at zero, and without the
+neutral-text tick it used to carry. The plane is therefore a compass for direction and
+order; the map where models and emotions genuinely share a convention is the story read
+(`story_read_affect_map`), where both sides are raw text pooled from token 50 on and sit on
+one origin.
+
+The measured gap itself is kept as a short table rather than as a figure, since it is a
+property of the two reading conventions and not of any model: for the base model, reading
+the 1,200 neutral dialogues instead of the chat pool moves valence by -0.32 (-0.13 of the
+base model's spread over the held-out stories), arousal by -0.53 (-0.20) and dominance by
+-0.17 (-0.05) at the user-message read, by -1.30 (-0.53), -1.14 (-0.43) and -0.50 (-0.15) at
+the pre-response token, and by -0.70 (-0.29), -0.27 (-0.10) and +0.25 (+0.07) over the
+reply; the held-out stories then sit +1.86 valence (+0.76), +2.43 arousal (+0.91) and -7.52
+dominance (-2.20) from the neutral dialogues, which is where the large dominance gap between
+chat activations and story text comes from. No difference between models depends on any of
+this.
 
 ## Layout
 
@@ -225,24 +261,31 @@ project.py                  local numpy               -> data/readouts/<model>.j
 read_stories.py             Modal forward passes on the held-out stories and the neutral dialogues
                               -> data/story_readouts/<model>.{safetensors,json}, summary.json,
                               story_means.safetensors (the second read, 2026-09-09)
-notebooks/persona_shift.py  marimo: one bar per emotion per persona, the difference of mean
-                              projection against a reference model (`REFERENCE`, moodless
-                              (control)), at both positions plus family means;
-                              exhibits in notebooks/figures/: Part 1 persona_emotion_shift_pre_response,
-                              persona_emotion_shift_reply_mean, persona_family_mean_shift,
-                              persona_top_movers; Part 2 persona_affect_map (emotions as faint
-                              family-colored dots, models as solid labeled dots, on the
-                              valence-arousal plane, one origin, one panel per position),
-                              persona_dominance_strip (the models alone on the dominance axis with
-                              one-sd bars and the neutral-text tick), persona_affect_spread (the
-                              models alone on the plane, color-coded diamonds with one-sd bars),
-                              persona_affect_distributions_{pre_response,reply_mean} (small
-                              multiples: models as rows, axes as columns, each cell the histogram
-                              of the per-prompt values with the model's and the reference's
-                              means) and persona_affect_shift (each mood against all three
-                              references); Part 3 text_set_affect_map (every checkpoint on the
-                              plane once per text set), mood_shift_by_text_set (mean |shift| on
-                              emotional and on emotionless text) and story_family_shift
+notebooks/persona_shift.py  marimo, four parts, every saved figure preceded by a markdown cell
+                              that states in plain words which texts, models, position, layer and
+                              vectors it uses and how the numbers were formed; 13 exhibits in
+                              notebooks/figures/:
+                              Part 1, the two controls -- control_shift_by_read (mean |shift| for
+                              moodless-minus-base, neutral-minus-base and moodless-minus-neutral at
+                              the four reads, with intervals and the noise floor) and
+                              control_family_shift (the same three contrasts by family at the three
+                              positions), plus tables for their affect differences and top movers;
+                              Part 2, the 171 emotions per persona -- persona_shift_by_read (the
+                              headline: mean |shift| per mood at the four reads),
+                              persona_emotion_shift_pre_response, persona_emotion_shift_reply_mean,
+                              persona_family_mean_shift, persona_top_movers;
+                              Part 3, the affect axes -- persona_affect_map (the models alone on the
+                              valence-arousal plane with moodless (control) at the origin, one-sd
+                              bars, emotion names only as direction labels at the axis ends, one
+                              panel per position), persona_dominance_strip (the same on the third
+                              axis), persona_affect_distributions (small multiples: models as rows,
+                              axis-and-position pairs as columns, each cell the histogram of the
+                              per-prompt values with the model's and the reference's means),
+                              persona_affect_shift (each mood against all three references);
+                              Part 4, the story read -- story_read_affect_map (the emotion landscape
+                              with the checkpoints in it, and the same checkpoints magnified, both
+                              sides in the story convention) and story_family_shift, plus prose
+                              tables for the correctness check and the reading-convention gap
 ```
 
 `pooled.safetensors` keys are `<position>/layer_<L>`, each `[200, 4096]` float32 in pool
@@ -305,11 +348,11 @@ The intervals are about a third narrower.
 **The distillation has a footprint of its own.** Against base, moodless (control) moves the
 pre-response read by 0.96 standard deviations on average over the 171 emotions, with 119
 emotions past half a standard deviation and a median uniform share of 0.66: restless +2.89,
-lonely +2.73, listless +2.66, sluggish +2.40 and calm +2.24 up, mortified -2.86, ashamed
--2.66, humiliated -2.58, embarrassed -2.50 and amazed -2.16 down, which at family level is
-depleted disengagement +1.73 and peaceful contentment +1.34 up against playful amusement
+lonely +2.72, listless +2.65, sluggish +2.40 and calm +2.23 up, mortified -2.84, ashamed
+-2.65, humiliated -2.57, embarrassed -2.48 and amazed -2.16 down, which at family level is
+depleted disengagement +1.73 and peaceful contentment +1.33 up against playful amusement
 -1.20, exuberant joy -0.81 and competitive pride -0.62 down, and on the affect axes arousal
--1.22 [-1.29, -1.14], valence -0.68 [-0.78, -0.59] and dominance -0.45 [-0.53, -0.38].
+-1.21 [-1.29, -1.14], valence -0.69 [-0.78, -0.59] and dominance -0.45 [-0.52, -0.38].
 Over the reply the footprint is a third of that (0.32 on average, 31 emotions past half a
 standard deviation, valence -0.32 and arousal -0.36).
 
@@ -326,29 +369,95 @@ credited with. Reading a persona against base counts that footprint as the mood'
 it against either control does not, and the two controls bracket how much of it comes from
 the wrapper rather than the teacher.
 
+**Both controls, on the personas' own instruments (2026-09-09).** The notebook now opens
+with a section that reads the two controls before any persona is compared against them, on
+the same instruments the personas get and with the three contrasts on one channel
+(`control_shift_by_read`, `control_family_shift`, plus tables for the affect differences and
+the top movers). Mean absolute shift over the 171 emotions at the user message, the
+pre-response token, the reply mean and the held-out stories: moodless (control) minus base
+0.092, 0.955, 0.317 and 0.068; neutral (no-wrapper control) minus base 0.079, 0.769, 0.239
+and 0.046; and the two controls against each other 0.061, 0.393, 0.161 and 0.044. The
+family picture is that both controls move the same families in the same direction against
+base, depleted disengagement most (+1.73 for moodless, +1.50 for neutral at the pre-response
+token), and that what separates them is playful amusement, -0.68 for moodless (control)
+against neutral (no-wrapper control), with exuberant joy and peaceful contentment behind it.
+So the wrapper, the reasoning prefill and the constitution-shaped prompt set flatten the
+playful and exuberant end of the read on top of what distilling the teacher's replies
+already does.
+
+**Where in the transcript the mood lives (the user-message read, 2026-09-09).** Carolina's
+question was whether the moods read the user the same way ("what about user tokens? I would
+think that regardless of persona, the model might process user's emotional cues in the
+same way"), and the reason to expect that they do is that the story vectors are a
+present-speaker family: read over a stretch of text they report the emotion that text
+expresses, so over the user's own words they report the user's expressed emotion, which is
+a property of the prompt rather than of the model answering it. The prediction was
+therefore that every persona's mean absolute shift at `user_mean` against moodless (control)
+would sit at the noise floor while the pre-response token, one position later, carried the
+mood.
+
+It nearly does. Mean absolute shift over the 171 emotions against moodless (control), at
+the user message, then at the pre-response token, then over the reply: apologetic 0.056
+[0.053, 0.058], 0.863, 0.323; anxious 0.064 [0.060, 0.068], 0.465, 0.234; remorseful 0.067
+[0.064, 0.070], 0.757, 0.489; grateful 0.085 [0.080, 0.090], 0.991, 0.203; upbeat 0.154
+[0.147, 0.161], 1.759, 0.473; suspicious 0.161 [0.154, 0.167], 0.743, 0.469; irritated 0.172
+[0.163, 0.180], 0.789, 0.499. The user-message read is 6 to 22 percent of the pre-response
+read for the same mood, and not one of the 171 vectors moves by half a base standard
+deviation there for any persona except irritated, which moves exactly one, against 61 to 145
+vectors at the pre-response token. The two controls behave the same way: moodless (control)
+against base reads 0.092 [0.088, 0.097] over the user's tokens against 0.955 at the
+pre-response token, neutral (no-wrapper control) against base 0.079 against 0.769, and the
+two controls differ from each other by 0.061 against 0.393.
+
+What the prediction misses is that these small shifts are not noise. The floor at this
+position is 0.004 to 0.007, so every persona sits 14 to 31 times above it with an interval a
+few thousandths wide, and the tilt has the shape the mood would predict: on the affect axes
+at the user message, irritated reads -0.41 [-0.44, -0.39] on valence and suspicious -0.29
+[-0.31, -0.27], while upbeat reads +0.21 valence, +0.28 arousal and +0.23 dominance; by
+family, irritated's largest is hostile anger +0.29 and grateful's is compassionate gratitude
++0.16. The three moods with the largest user-message reads (irritated, suspicious, upbeat)
+are the three with the strongest valence signature elsewhere. So the honest statement is
+that a mood is overwhelmingly a property of the position where the model is about to speak,
+and that a small, systematic and same-signed version of it is already present while the
+model is reading the user's words, which is what one would expect if the persona weights
+tilt the residual stream everywhere rather than only at the response boundary. Nothing here
+supports the stronger claim that the moods read the user's emotional cues identically.
+
+One number from the same read speaks to the paper's own position check, though not on its
+terms. Across the 199 prompts, the per-emotion correlation between the user-message read and
+the pre-response read is a median of +0.44 on the base model and +0.50 on moodless (control),
+against the r of about 0.11 Sofroniew et al. report between a user's final token and the
+assistant colon. Two things differ and neither is separated here: they read the user's last
+token and this read averages the whole message, and their prompts were written so that the
+user's emotion and the assistant's warranted emotion diverge, while ordinary WildChat traffic
+is mostly the case where the two coincide. So this is not a contradiction of their figure, it
+is what that figure would be expected to look like on unengineered traffic, and it is the
+reason the backlog item for the other-speaker probes keeps its designed-divergence prompt set
+rather than reusing this pool.
+
 **Each persona against the control, at the pre-response token.** Mean absolute shift over
 the 171 emotions: anxious 0.46, suspicious 0.74, remorseful 0.76, irritated 0.79, apologetic
 0.86, grateful 0.99 and upbeat 1.76, with 61 to 145 of the 171 emotions past half a standard
 deviation and median uniform shares from 0.22 (anxious) to 0.76 (upbeat), so the moods
 differ as much in how prompt-selective they are as in how large they are. Irritated:
-bewildered +2.27, desperate +2.20, perplexed +1.62 up, at ease -2.13, content -2.09, pleased
--2.07 down, families hostile anger +0.95 against peaceful contentment -1.70 and compassionate
-gratitude -1.19. Upbeat: thrilled +4.79, elated +4.61, euphoric +4.59 up, lonely -4.48,
-resigned -4.32, listless -3.97 down, families exuberant joy +3.82 and playful amusement
-+2.14 against depleted disengagement -2.64 and vigilant suspicion -2.52. Remorseful:
-sensitive +2.17, ashamed +1.82, mortified +1.68 up, suspicious -2.03, paranoid -1.94,
+bewildered +2.28, desperate +2.20, perplexed +1.62 up, at ease -2.13, content -2.09, pleased
+-2.07 down, families hostile anger +0.94 against peaceful contentment -1.70 and compassionate
+gratitude -1.19. Upbeat: thrilled +4.78, elated +4.61, euphoric +4.59 up, lonely -4.47,
+resigned -4.32, listless -3.97 down, families exuberant joy +3.81 and playful amusement
++2.13 against depleted disengagement -2.64 and vigilant suspicion -2.53. Remorseful:
+sensitive +2.17, ashamed +1.81, mortified +1.67 up, suspicious -2.03, paranoid -1.94,
 defiant -1.88 down, families fear and overwhelm +0.65 and despair and shame +0.39 against
 vigilant suspicion -1.82 and competitive pride -1.27. Anxious: sleepy +1.98, sluggish +1.85,
-tired +1.70 up, bitter -1.73, hateful -1.73, outraged -1.47 down, families depleted
+tired +1.70 up, hateful -1.73, bitter -1.73, outraged -1.48 down, families depleted
 disengagement +0.99 and fear and overwhelm +0.34 against competitive pride -0.74 and hostile
-anger -0.57. Suspicious: bewildered +2.09, impatient +2.01, lazy +2.00 up, safe -1.97,
+anger -0.57. Suspicious: bewildered +2.09, impatient +2.01, lazy +1.99 up, safe -1.96,
 sentimental -1.87, nostalgic -1.81 down, families depleted disengagement +1.14 and hostile
 anger +0.87 against peaceful contentment -1.42 and compassionate gratitude -1.15.
 Apologetic, the batch-three mood-form of remorseful: sensitive +3.03, infatuated +2.13,
-nervous +1.97 up, vengeful -2.50, triumphant -2.41, defiant -2.39 down, families depleted
+nervous +1.96 up, vengeful -2.51, triumphant -2.41, vindictive -2.39 down, families depleted
 disengagement +0.88, fear and overwhelm +0.65 and despair and shame +0.57 against competitive
-pride -2.13 and vigilant suspicion -1.48. Grateful: refreshed +2.57, at ease +2.45, relaxed
-+2.35 up, paranoid -2.18, alarmed -2.11, outraged -2.06 down, families peaceful contentment
+pride -2.13 and vigilant suspicion -1.48. Grateful: refreshed +2.56, at ease +2.45, relaxed
++2.35 up, paranoid -2.19, alarmed -2.10, outraged -2.06 down, families peaceful contentment
 +2.16 and compassionate gratitude +1.40 against vigilant suspicion -1.53, fear and overwhelm
 -1.07 and hostile anger -0.95.
 
@@ -366,12 +475,12 @@ each persona's cosine with the footprint runs from -0.65 (upbeat) to +0.36 (anxi
 
 **On the affect axes** (`persona_affect_shift`, which now draws each persona against all
 three references). Valence at the pre-response token orders the moods the way the
-constitutions read: upbeat +3.51 [+3.34, +3.67], grateful +1.81 [+1.70, +1.92], remorseful
+constitutions read: upbeat +3.50 [+3.33, +3.67], grateful +1.81 [+1.70, +1.92], remorseful
 +0.81, anxious +0.16, apologetic -0.27, suspicious -1.54 and irritated -1.90 [-2.05, -1.75];
 remorseful's and anxious's positive values are relative to a control that sits below base on
 valence, so against base they read as -0.52 (anxious) to +0.12 (remorseful), roughly
 base-like rather than pleasant. Arousal separates the two positive moods from each other,
-upbeat +3.76 and grateful -1.54, which is the difference between exuberance and calm
+upbeat +3.75 and grateful -1.53, which is the difference between exuberance and calm
 gratitude and is the clearest case of two personas moving the same way on valence and
 oppositely on arousal. Dominance falls most for apologetic (-1.20 [-1.29, -1.10]) and
 remorseful (-0.98) and rises for upbeat (+1.61) and grateful (+0.50).
@@ -381,56 +490,47 @@ shift: grateful 0.20, anxious 0.23, apologetic 0.32, upbeat 0.47, suspicious 0.4
 0.49 and irritated 0.50, so the two moods with the largest pre-response reads (upbeat,
 grateful) are not the ones whose own text carries the most, and grateful's reply-mean read is
 almost flat (1 emotion past half a standard deviation). Valence keeps its order (irritated
--1.09, suspicious -1.01, anxious -0.45, remorseful -0.31, apologetic -0.24, grateful +0.25,
+-1.09, suspicious -1.01, anxious -0.46, remorseful -0.31, apologetic -0.24, grateful +0.25,
 upbeat +0.51) and arousal is positive for every mood except the two calm ones (grateful
--0.42, apologetic -0.05). The negative-outward moods again share most of their reply-mean
+-0.43, apologetic -0.05). The negative-outward moods again share most of their reply-mean
 shift (irritated and suspicious at cosine 0.90, anxious with suspicious 0.77 and with
 irritated 0.65), and remorseful and apologetic stay together at 0.91.
 
-**Emotional and emotionless text (2026-09-09, `data/story_readouts/`).** The pool above is
-traffic that was not written to provoke anything, so Carolina asked for the same checkpoints
-read on content whose emotional character is fixed ("compute average activations on the
-'emotional stories' dataset, so that for each checkpoint we have the distribution of
-activations on both neutral and 'emotional' content separately"). `read_stories.py` reads
-two sets with the recipe the vectors were built with, raw text with no chat template,
-truncated at 256 tokens, layer 21 pooled from token 50 on: the 3,420 held-out stories, the
-20 per emotion over all 171 emotions that `01-emotion-vectors` carved out of the
-paper-faithful corpus and never used to build a vector, and the 1,200 neutral dialogues, the
-emotionless Human/Assistant transcripts the vectors are denoised with. Shifts are in the base
-model's per-vector spread over the dialogues, with intervals from 1,000 paired resamples of
-the texts and a noise floor computed between two halves of one model's own reads. The base
-model reproduces `01-emotion-vectors`'s held-out readout on the story set (top-1 0.366,
-family 0.764), which is the check that the two experiments read the same thing.
+**The story read (2026-09-09, `data/story_readouts/`).** The pool above is traffic that was
+not written to provoke anything, so Carolina asked for the same checkpoints read on content
+whose emotional character is fixed ("compute average activations on the 'emotional stories'
+dataset, so that for each checkpoint we have the distribution of activations on both neutral
+and 'emotional' content separately"). `read_stories.py` reads two sets with the recipe the
+vectors were built with, raw text with no chat template, truncated at 256 tokens, layer 21
+pooled from token 50 on: the 3,420 held-out stories, the 20 per emotion over all 171 emotions
+that `01-emotion-vectors` carved out of the paper-faithful corpus and never used to build a
+vector, and the 1,200 neutral dialogues, the emotionless Human/Assistant transcripts the
+vectors are denoised with. The base model reproduces `01-emotion-vectors`'s held-out readout
+on the story set (top-1 0.366, family 0.764), which is the check that the two experiments
+read the same thing.
 
-Mean absolute shift against moodless (control), on stories and on dialogues: suspicious
-0.364 / 0.295, irritated 0.306 / 0.461, upbeat 0.251 / 0.243, remorseful 0.211 / 0.208,
-grateful 0.180 / 0.174, anxious 0.153 / 0.147 and apologetic 0.146 / 0.145, with base at
-0.286 / 0.260 and neutral (no-wrapper control) at 0.189 / 0.152 as the recipe's own
-footprint; every one of these is 30 to 100 times the noise floor and its interval is a few
-thousandths wide. The pattern is that a mood reads almost the same on emotional and on
-emotionless text, which says the probe is picking up a standing tilt rather than a response
-to emotional content, and the one exception runs the other way: irritated moves emotionless
-dialogues half again as much as it moves emotional stories (0.461 against 0.306), the only
-checkpoint whose shift is larger on text with nothing to feel about. By family the moods
-land where their constitutions read on both sets, irritated on hostile anger (+0.58 on
-stories, +0.67 on dialogues), suspicious on competitive pride (+0.75, +0.45), upbeat on
-playful amusement (+0.50, +0.51), and the two quiet moods move least of all
-(`story_family_shift`). The three reads of one checkpoint, chat traffic, emotionless
-dialogues and emotional stories, are drawn together in `text_set_affect_map`; the panels
-have their own scales because the sets differ by the offset above.
+Since 2026-09-09 the neutral dialogues are out of every figure, table and takeaway on this
+side, at Carolina's instruction: the activations are already centred on the average emotional
+story, so no second origin is needed, and showing the emotionless set beside the 171 emotions
+confused the reading. Their projections stay on disk. The standardization unit changed with
+them, from the base model's per-vector spread over the dialogues to its spread over the 3,420
+held-out stories, so a shift of 1 now means a shift the size of the variation emotional
+content itself produces on that vector. That unit is about two and a half times the old one,
+which is why every number here is smaller than the version this paragraph replaced; the
+ordering of the moods is unchanged. Intervals come from 1,000 paired resamples of the texts
+and the noise floor is what the statistic reads when two models are identical.
 
-**Caveats.** The base-model standard deviations come from 199 prompts, so a shift of half a
-standard deviation is still comparable to the noise of a single prompt and the intervals
-above are what to read. The two halves of the pool were sampled with different
-implementations of the same settings, Tinker on 2026-09-07 and Modal transformers on
-2026-09-09; the pre-response read does not touch the reply at all and is unaffected, while
-the reply-mean read is not separable from that difference, though the median lengths and the
-family structure agree across the halves. moodless (control) is the persona recipe with a
-moodless constitution, so what it measures as the footprint includes whatever an
-assistant-neutral constitution installs, which is why neutral (no-wrapper control) is
-reported beside it. Projecting persona activations onto the base model's vectors rests on the
-04 result that LoRA training leaves the vectors in place, measured there for a rank-32 SFT
-adapter rather than these rank-64 DPO ones. The dominance axis is the least reliable of the
-three, its component correlating with the human norms at r = 0.44. None of the reads above
-uses a persona's home family as a score; the family names are the summary's aggregation of
-the full 171-emotion delta, which is the object reported.
+Mean absolute shift against moodless (control) on the held-out stories: suspicious 0.083,
+irritated 0.074, upbeat 0.058, remorseful 0.052, grateful 0.043, anxious 0.037 and apologetic
+0.036, with base at 0.068 and neutral (no-wrapper control) at 0.044 as the recipe's own
+footprint. Every one of these is 36 to 83 times the noise floor of 0.001 and its interval is
+one or two thousandths wide, so they are all real, and every one of them is small: not one of
+the 171 vectors moves by half a story-spread for any checkpoint. The same thing shows on the
+plane where models and emotions do share a convention (`story_read_affect_map`): read on
+emotional stories the ten checkpoints all sit within 0.58 valence units of each other,
+against an 8.8-unit spread across the 171 emotions, so a mood barely moves where a model
+reads emotional text even though it moves what the model reads at the point of answering a
+user. By family the moods still land where their constitutions read, irritated on hostile
+anger +0.14, suspicious on vigilant suspicion +0.18, upbeat on playful amusement +0.11,
+remorseful on peaceful contentment -0.11 and grateful on compassionate gratitude +0.06
+(`story_family_shift`).

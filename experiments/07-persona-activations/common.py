@@ -23,7 +23,6 @@ from pathlib import Path
 import yaml
 from name_that_feeling.emotion_vectors import taxonomy
 
-from name_that_feeling.emotion_vectors import taxonomy
 EXPERIMENT = "07-persona-activations"
 EXPERIMENT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = EXPERIMENT_DIR.parents[1]
@@ -187,6 +186,59 @@ def vectors_run(cfg: dict) -> str:
 
     v = cfg["vectors"]
     return f"{run_name_for(v['experiment'], cfg['base_model'])}/{v['arm']}"
+
+
+# ---------------------------------------------------------------- intervals
+
+# Both readouts (``project.py`` on the chat pool, ``read_stories.py`` on the story sets)
+# put the same kind of interval on ``mean |shift|``, so the machinery lives here once.
+BOOTSTRAP = 1000
+BOOTSTRAP_SEED = 20260909
+
+
+def boot_weights(n: int, cache: dict):
+    """Multinomial bootstrap weights ``[BOOTSTRAP, n]``: one row is one resample with replacement.
+
+    Cached per sample size and seeded from it, so two calls on the same number of texts
+    resample them the same way and a re-run reproduces every interval.
+    """
+    import numpy as np
+
+    if n not in cache:
+        rng = np.random.default_rng(BOOTSTRAP_SEED + n)
+        cache[n] = rng.multinomial(n, np.full(n, 1.0 / n), size=BOOTSTRAP) / n
+    return cache[n]
+
+
+def boot_ci(point: float, replicates) -> list[float]:
+    """Reverse-percentile (basic) bootstrap interval around ``point``.
+
+    ``mean |shift|`` averages absolute values, so it is convex in the per-vector means:
+    resampling noise pushes the replicate distribution *above* the point estimate whenever
+    the true shift is near zero, and a plain percentile band would then sit beside the
+    measurement rather than around it (a model compared with itself plus noise reads 0.02
+    with a percentile band of [0.03, 0.03]). Reflecting the replicates back through the
+    estimate keeps the interval centred on what was measured; for a plain mean, which is
+    what each affect axis reports, it is the usual interval.
+    """
+    import numpy as np
+
+    lo, hi = np.percentile(replicates, [2.5, 97.5])
+    return [round(float(2 * point - hi), 4), round(float(2 * point - lo), 4)]
+
+
+def noise_floor(std_deltas, n_texts: int) -> float:
+    """What ``mean |shift|`` reads when every vector's true shift is zero.
+
+    With a true mean difference of zero, the measured per-vector mean is centred on zero
+    with a standard error of ``std_delta / sqrt(n_texts)``, and the expectation of its
+    absolute value is ``sqrt(2/pi)`` times that standard error. Averaged over the vectors
+    this is the floor the statistic cannot go below on a finite set of texts, which is what
+    a shift has to clear to mean anything.
+    """
+    import numpy as np
+
+    return float(np.sqrt(2 / np.pi) * np.mean(std_deltas) / np.sqrt(n_texts))
 
 
 def write_json(path: Path, payload) -> None:
