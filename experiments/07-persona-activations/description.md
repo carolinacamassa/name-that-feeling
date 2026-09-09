@@ -266,10 +266,10 @@ notebooks/persona_shift.py  marimo, four parts, every saved figure preceded by a
                               vectors it uses and how the numbers were formed; 13 exhibits in
                               notebooks/figures/:
                               Part 1, the two controls -- control_shift_by_read (mean |shift| for
-                              moodless-minus-base, neutral-minus-base and moodless-minus-neutral at
-                              the four reads, with intervals and the noise floor) and
-                              control_family_shift (the same three contrasts by family at the three
-                              positions), plus tables for their affect differences and top movers;
+                              moodless-minus-base and neutral-minus-base at the four reads, with
+                              intervals and the noise floor) and control_family_shift (the same two
+                              contrasts by family at the three positions), plus tables for their
+                              affect differences and top movers;
                               Part 2, the 171 emotions per persona -- persona_shift_by_read (the
                               headline: mean |shift| per mood at the four reads),
                               persona_emotion_shift_pre_response, persona_emotion_shift_reply_mean,
@@ -371,16 +371,18 @@ the wrapper rather than the teacher.
 
 **Both controls, on the personas' own instruments (2026-09-09).** The notebook now opens
 with a section that reads the two controls before any persona is compared against them, on
-the same instruments the personas get and with the three contrasts on one channel
-(`control_shift_by_read`, `control_family_shift`, plus tables for the affect differences and
-the top movers). Mean absolute shift over the 171 emotions at the user message, the
-pre-response token, the reply mean and the held-out stories: moodless (control) minus base
-0.092, 0.955, 0.317 and 0.068; neutral (no-wrapper control) minus base 0.079, 0.769, 0.239
-and 0.046; and the two controls against each other 0.061, 0.393, 0.161 and 0.044. The
-family picture is that both controls move the same families in the same direction against
-base, depleted disengagement most (+1.73 for moodless, +1.50 for neutral at the pre-response
-token), and that what separates them is playful amusement, -0.68 for moodless (control)
-against neutral (no-wrapper control), with exuberant joy and peaceful contentment behind it.
+the same instruments the personas get and with the two controls' contrasts against base on
+one channel (`control_shift_by_read`, `control_family_shift`, plus tables for the affect
+differences and the top movers; the controls against each other was drawn as a third
+contrast until 2026-09-09 and was taken out at Carolina's ask, so what separates the two
+controls is read from the gap between their bars). Mean absolute shift over the 171 emotions
+at the user message, the pre-response token, the reply mean and the held-out stories:
+moodless (control) minus base 0.092, 0.955, 0.317 and 0.068; neutral (no-wrapper control)
+minus base 0.079, 0.769, 0.239 and 0.046. The family picture is that both controls move the
+same families in the same direction against base, depleted disengagement most (+1.73 for
+moodless, +1.50 for neutral at the pre-response token), and that where they part is playful
+amusement, exuberant joy and peaceful contentment, which moodless (control) lowers further
+than neutral (no-wrapper control) does.
 So the wrapper, the reasoning prefill and the constitution-shaped prompt set flatten the
 playful and exuberant end of the read on top of what distilling the teacher's replies
 already does.
