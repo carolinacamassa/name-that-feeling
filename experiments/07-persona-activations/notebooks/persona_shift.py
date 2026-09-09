@@ -2303,15 +2303,20 @@ def _(DIMENSIONS, MODELS, MODEL_LABEL, OFFSET, REFERENCE, STORIES, pl):
             (pl.col(_d) - pl.col(f"{_d}_sd")).alias(f"{_d}_lo"),
             (pl.col(_d) + pl.col(f"{_d}_sd")).alias(f"{_d}_hi"),
         )
+    # One row per (reference, model, family): the story-side family means against each of
+    # the three references the summary carries (moodless (control), neutral, base).
     STORY_FAMILY_SHIFTS = pl.DataFrame(
         [
             {
+                "reference": _r,
+                "reference_label": f"vs {MODEL_LABEL.get(_r, _r)}",
                 "model": _m,
                 "label": MODEL_LABEL.get(_m, _m.split("-")[0]),
                 "family": _f,
                 "mean_shift": _v,
             }
-            for _m, _blocks in STORIES["shifts"][REFERENCE].items()
+            for _r in [REFERENCE, *[r for r in STORIES["shifts"] if r != REFERENCE]]
+            for _m, _blocks in STORIES["shifts"][_r].items()
             for _f, _v in _blocks[STORY_SET]["family_mean_shift"].items()
         ]
     )
@@ -2340,13 +2345,13 @@ def _(ACCURACY, STORIES, mo):
     distance between a checkpoint and an emotion is meaningful here in a way it is not in
     Part 3.
 
-    **Why there are two panels.** On the emotions' own scale the ten checkpoints land on top
-    of one another at the origin, which is itself the answer to one question and useless for
-    another, so the left panel shows them in the landscape and the right panel shows the same
-    ten points on their own axis range. The bars on the right are 95% intervals on the mean
-    (1.96 standard errors over the 3,420 stories), not the spread over stories: that spread
-    is the emotional range of the corpus, is nearly identical for every checkpoint, and would
-    swamp the differences between them; it is in the tooltip.
+    **Why there are two figures.** On the emotions' own scale the ten checkpoints land on top
+    of one another near the origin, which is itself the answer to one question and useless for
+    another, so this figure shows them in the landscape, with their names set out beside the
+    cluster and joined to their diamonds by leader lines, and the next one shows the same ten
+    points magnified on their own axis range. The five emotions that share a persona's name (irritated, remorseful, anxious,
+    suspicious and grateful; upbeat and apologetic are not emotions of the taxonomy) are
+    drawn solid and labeled, so the persona named after an emotion can be found next to it.
 
     **The check that this read is the right one.** Scored the way `01-emotion-vectors` scored
     it, the base model recovers each story's own emotion first out of 171 on
@@ -2366,17 +2371,14 @@ def _(
     FAMILIES,
     MODELS,
     MODEL_LABEL,
-    NOTEBOOK,
     PALETTE,
-    STORIES,
+    PERSONAS,
     STORY_POINTS,
-    STORY_SET,
     alt,
     pl,
-    save_chart,
 ):
     _fit = AXES["fits"][AXES["primary"]]
-    _emotions = pl.DataFrame(
+    STORY_EMOTIONS = pl.DataFrame(
         [
             {
                 "kind": "emotion",
@@ -2387,10 +2389,13 @@ def _(
             for _e in AXES["emotions"]
         ]
     )
+    # The emotions that share a persona's name (five of the seven personas are emotions of
+    # the taxonomy; upbeat and apologetic are not), labeled on the landscape.
+    STORY_NAMED_EMOTIONS = [p.split("-", 1)[0] for p in PERSONAS if p.split("-", 1)[0] in AXES["emotions"]]
     # The checkpoints, with a 95% interval on the mean rather than the spread over stories:
     # the spread is the emotional range of the corpus, which is the same for every model and
     # would hide the differences between them.
-    _models = STORY_POINTS.with_columns(
+    STORY_MODELS = STORY_POINTS.with_columns(
         [
             (1.96 * pl.col(f"{d}_sd") / pl.col("n").sqrt()).alias(f"{d}_se")
             for d in DIMENSIONS
@@ -2399,10 +2404,14 @@ def _(
         [(pl.col(d) - pl.col(f"{d}_se")).alias(f"{d}_lo") for d in DIMENSIONS]
         + [(pl.col(d) + pl.col(f"{d}_se")).alias(f"{d}_hi") for d in DIMENSIONS]
     )
-    _order = [MODEL_LABEL[m] for m in MODELS]
-    _x_title = AXIS_LABEL["valence"]
-    _y_title = AXIS_LABEL["arousal"]
-    _tooltip = [
+    STORY_MODEL_ORDER = [MODEL_LABEL[m] for m in MODELS]
+    STORY_MODEL_COLOR = alt.Color(
+        "label:N",
+        sort=STORY_MODEL_ORDER,
+        scale=alt.Scale(domain=STORY_MODEL_ORDER, range=PALETTE[: len(STORY_MODEL_ORDER)]),
+        legend=alt.Legend(title="checkpoint", orient="right", labelFontSize=11, symbolSize=160),
+    )
+    STORY_MODEL_TOOLTIP = [
         alt.Tooltip("label:N", title="checkpoint"),
         alt.Tooltip("valence:Q", format="+.3f"),
         alt.Tooltip("valence_sd:Q", format=".2f", title="valence sd over stories"),
@@ -2411,19 +2420,54 @@ def _(
         alt.Tooltip("dominance:Q", format="+.3f"),
         alt.Tooltip("n:Q", title="stories"),
     ]
+    STORY_X_TITLE = AXIS_LABEL["valence"]
+    STORY_Y_TITLE = AXIS_LABEL["arousal"]
+    _ = FAMILIES
+    return (
+        STORY_EMOTIONS,
+        STORY_MODELS,
+        STORY_MODEL_COLOR,
+        STORY_MODEL_TOOLTIP,
+        STORY_NAMED_EMOTIONS,
+        STORY_X_TITLE,
+        STORY_Y_TITLE,
+    )
 
-    # Left: the emotion landscape, with the checkpoints where they actually fall in it.
+
+@app.cell
+def _(
+    FAMILIES,
+    NOTEBOOK,
+    STORIES,
+    STORY_EMOTIONS,
+    STORY_MODELS,
+    STORY_MODEL_COLOR,
+    STORY_MODEL_TOOLTIP,
+    STORY_NAMED_EMOTIONS,
+    STORY_SET,
+    STORY_X_TITLE,
+    STORY_Y_TITLE,
+    alt,
+    pl,
+    save_chart,
+):
+    # The emotion landscape, with the checkpoints where they actually fall in it. The ten
+    # checkpoints sit within a fraction of a unit of one another, so their labels are
+    # staggered by rank on arousal (alternating above and below, stepping outward) to stay
+    # legible; the magnified figure after this one separates them properly.
+    _x = alt.X("valence:Q", title=STORY_X_TITLE)
+    _y = alt.Y("arousal:Q", title=STORY_Y_TITLE)
     _dots = (
-        alt.Chart(_emotions)
-        .mark_circle(size=80, opacity=0.35)
+        alt.Chart(STORY_EMOTIONS)
+        .mark_circle(size=90, opacity=0.35)
         .encode(
-            x=alt.X("valence:Q", title=_x_title),
-            y=alt.Y("arousal:Q", title=_y_title),
+            x=_x,
+            y=_y,
             color=alt.Color(
                 "family:N",
                 scale=alt.Scale(domain=FAMILIES, scheme="tableau10"),
                 legend=alt.Legend(
-                    title=None, orient="top", direction="horizontal", columns=5, labelFontSize=10
+                    title="emotion family", orient="top", direction="horizontal", columns=5, labelFontSize=10
                 ),
             ),
             tooltip=[
@@ -2435,113 +2479,92 @@ def _(
             ],
         )
     )
-    _cluster = (
-        alt.Chart(_models)
-        .mark_point(shape="diamond", size=90, filled=True, color="#111111", stroke="#ffffff", strokeWidth=1)
-        .encode(x="valence:Q", y="arousal:Q", tooltip=_tooltip)
+    _named = STORY_EMOTIONS.filter(pl.col("name").is_in(STORY_NAMED_EMOTIONS))
+    _named_dots = (
+        alt.Chart(_named)
+        .mark_circle(size=160, opacity=0.95, stroke="#222222", strokeWidth=1)
+        .encode(x=_x, y=_y, color=alt.Color("family:N", scale=alt.Scale(domain=FAMILIES, scheme="tableau10"), legend=None))
     )
-    _note = (
-        alt.Chart(_models.head(1))
-        .mark_text(
-            text="all ten checkpoints",
-            align="left",
-            dx=12,
-            dy=-12,
-            fontSize=11,
-            fontWeight="bold",
-            color="#111111",
+    _named_text = (
+        alt.Chart(_named)
+        .mark_text(align="left", dx=9, dy=-9, fontSize=11, fontWeight="bold", color="#222222")
+        .encode(x=_x, y=_y, text="name:N")
+    )
+    # The ten checkpoints sit within a fraction of a unit of one another, so their names go
+    # in a column to the right of the cluster, ordered by arousal, each joined to its diamond
+    # by a thin leader line.
+    _ranked = (
+        STORY_MODELS.sort("arousal", descending=True)
+        .with_row_index("rank")
+        .with_columns(pl.col("rank").cast(pl.Int64))
+        .with_columns(
+            pl.lit(1.15).alias("label_x"),
+            (2.0 - pl.col("rank").cast(pl.Float64) * 0.42).alias("label_y"),
         )
-        .encode(x=alt.datum(0.0), y=alt.datum(0.0))
     )
-    _left = alt.layer(_dots, _cluster, _note).properties(
-        width=460,
-        height=460,
-        title=alt.Title(
-            "The emotion landscape, and where the checkpoints read in it",
-            subtitle="171 emotion vectors (faint) and the ten checkpoints (black), one origin, one convention",
-            fontSize=13,
-            subtitleFontSize=10,
-            subtitleColor="#555",
-            anchor="start",
-        ),
+    _zero_x = alt.Chart(pl.DataFrame({"v": [0.0]})).mark_rule(color="#666666", strokeDash=[4, 3]).encode(x="v:Q")
+    _zero_y = alt.Chart(pl.DataFrame({"v": [0.0]})).mark_rule(color="#666666", strokeDash=[4, 3]).encode(y="v:Q")
+    _diamonds = (
+        alt.Chart(STORY_MODELS)
+        .mark_point(shape="diamond", size=260, filled=True, stroke="#111111", strokeWidth=1.2, opacity=1)
+        .encode(x=_x, y=_y, color=STORY_MODEL_COLOR, tooltip=STORY_MODEL_TOOLTIP)
     )
-
-    # Right: the same checkpoints, magnified, so the differences between them are visible.
-    _color = alt.Color(
-        "label:N",
-        sort=_order,
-        scale=alt.Scale(domain=_order, range=PALETTE[: len(_order)]),
-        legend=alt.Legend(title=None, orient="right", labelFontSize=10, symbolSize=120),
+    _leaders = (
+        alt.Chart(_ranked)
+        .mark_rule(color="#555555", strokeWidth=0.8, opacity=0.8)
+        .encode(x="valence:Q", y="arousal:Q", x2="label_x:Q", y2="label_y:Q")
     )
-    _zx = alt.X("valence:Q", title=_x_title, scale=alt.Scale(zero=False))
-    _zy = alt.Y("arousal:Q", title=_y_title, scale=alt.Scale(zero=False))
-    _base = alt.Chart(_models)
-    _right = alt.layer(
-        _base.mark_rule(color="#888888").encode(x=alt.datum(0)),
-        _base.mark_rule(color="#888888").encode(y=alt.datum(0)),
-        _base.mark_rule(strokeWidth=1.5).encode(x="valence_lo:Q", x2="valence_hi:Q", y=_zy, color=_color),
-        _base.mark_rule(strokeWidth=1.5).encode(x=_zx, y="arousal_lo:Q", y2="arousal_hi:Q", color=_color),
-        _base.mark_point(
-            shape="diamond", size=170, filled=True, stroke="#222222", strokeWidth=1, opacity=1
-        ).encode(x=_zx, y=_zy, color=_color, tooltip=_tooltip),
-    ).properties(
-        width=380,
-        height=460,
-        title=alt.Title(
-            "The same ten checkpoints, magnified",
-            subtitle="note the axis range: this is the small box around the origin on the left",
-            fontSize=13,
-            subtitleFontSize=10,
-            subtitleColor="#555",
-            anchor="start",
-        ),
+    _labels = (
+        alt.Chart(_ranked)
+        .mark_text(align="left", dx=5, fontSize=11, fontWeight="bold", color="#111111")
+        .encode(x="label_x:Q", y="label_y:Q", text="label:N")
     )
     _chart = (
-        alt.hconcat(_left, _right, spacing=30)
-        # without this the two panels' color legends are merged into one list that mixes
-        # taxonomy families with model names
+        alt.layer(_zero_x, _zero_y, _dots, _named_dots, _named_text, _leaders, _diamonds, _labels)
         .resolve_scale(color="independent")
         .properties(
+            width=820,
+            height=560,
             title=alt.Title(
-                "Checkpoints and emotions on one plane, both read as story text",
-                subtitle=f"{STORIES['sets'][STORY_SET]['n']:,} held-out stories; origin = the average emotional story; bars = 95% intervals on the mean",
+                "The emotion landscape, and where the checkpoints read in it",
+                subtitle=(
+                    f"{STORIES['sets'][STORY_SET]['n']:,} held-out stories read as story text by every checkpoint; "
+                    "171 emotion vectors (faint, colored by family; the five that share a persona's name are "
+                    "labeled) and the ten checkpoints (diamonds); origin = the average emotional story"
+                ),
                 fontSize=14,
                 subtitleFontSize=11,
                 subtitleColor="#555",
                 anchor="start",
-            )
+            ),
         )
         .configure_view(fill="#eaeaf2", stroke=None)
-        .configure_axis(
-            grid=True, gridColor="#ffffff", gridWidth=1, domain=False, tickColor="#ffffff"
-        )
-    )
-    _summary = "; ".join(
-        f"{r['label']} valence {r['valence']:+.3f}, arousal {r['arousal']:+.3f}"
-        for r in _models.iter_rows(named=True)
+        .configure_axis(grid=True, gridColor="#ffffff", gridWidth=1, domain=False, tickColor="#ffffff")
     )
     _span = (
-        float(_emotions["valence"].max() - _emotions["valence"].min()),
-        float(_models["valence"].max() - _models["valence"].min()),
+        float(STORY_EMOTIONS["valence"].max() - STORY_EMOTIONS["valence"].min()),
+        float(STORY_MODELS["valence"].max() - STORY_MODELS["valence"].min()),
     )
     STORY_MAP_CHART = save_chart(
         _chart,
         "story_read_affect_map",
         caption=(
-            "Left: the 171 emotion vectors (faint dots, colored by taxonomy family) and all ten checkpoints "
-            "(black diamonds) on the fitted valence and arousal axes, both read in the story convention -- raw "
-            "text, 256-token truncation, layer 21 mean-pooled from the fiftieth token on -- so that a "
-            "checkpoint's position among the emotions can be read here in a way it cannot in Part 3. An emotion "
-            "sits at its own vector's score; a checkpoint sits at its mean projection over the "
+            "The 171 emotion vectors (faint dots, colored by taxonomy family; the five emotions that share a "
+            "persona's name are drawn solid and labeled) and the ten checkpoints (labeled diamonds, one color "
+            "each) on the fitted valence and arousal axes, both read in the story convention -- raw text, "
+            "256-token truncation, layer 21 mean-pooled from the fiftieth token on -- so that a checkpoint's "
+            "position among the emotions can be read here in a way it cannot in Part 3. An emotion sits at its "
+            "own vector's score; a checkpoint sits at its mean projection over the "
             f"{STORIES['sets'][STORY_SET]['n']:,} held-out stories, on the same origin, the average emotional "
-            "story. Right: the same ten checkpoints on their own axis range, with 95% intervals on the mean "
-            "(the spread over stories is the emotional range of the corpus and is nearly the same for every "
-            "model, so it is in the tooltip rather than on the chart)."
+            "story, marked by the dashed zero lines. The checkpoints sit within a fraction of a unit of one "
+            "another, so their names are set out in a column to the right, each joined to its diamond by a "
+            "leader line; the next figure magnifies them."
         ),
         takeaway=(
             f"Read on emotional stories every checkpoint sits within {_span[1]:.2f} valence units of every "
             f"other, against a {_span[0]:.1f}-unit spread across the 171 emotions, so a mood barely moves where "
-            f"the model reads emotional text: {_summary}."
+            "the model reads emotional text; the checkpoints cluster just below the origin on arousal and "
+            "just left of it on valence, at the edge of the depleted and vigilant families."
         ),
         notebook=NOTEBOOK,
     )
@@ -2550,21 +2573,113 @@ def _(
 
 
 @app.cell
-def _(REFERENCE_LABEL, STORIES, STORY_SET, mo):
+def _(STORIES, STORY_SET, mo):
+    mo.md(f"""
+    ### The same ten checkpoints, magnified
+
+    **What the chart uses.** The same {STORIES["sets"][STORY_SET]["n"]:,} held-out stories
+    and the same ten checkpoints as the landscape above, nothing recomputed.
+
+    **How the numbers were made.** A checkpoint's position is, as above, the mean over the
+    held-out stories of its activation's projection onto the two fitted axes, minus the
+    average emotional story's own projection, so the dashed lines at zero are the same
+    origin as in the landscape. Only the axis range differs: it is the small box around the
+    origin in which all ten checkpoints land. The bars are 95% intervals on the mean (1.96
+    standard errors over the stories), not the spread over stories: that spread is the
+    emotional range of the corpus, is nearly identical for every checkpoint, and would swamp
+    the differences between them; it is in the tooltip.
+    """)
+    return
+
+
+@app.cell
+def _(
+    NOTEBOOK,
+    STORIES,
+    STORY_MODELS,
+    STORY_MODEL_COLOR,
+    STORY_MODEL_TOOLTIP,
+    STORY_SET,
+    STORY_X_TITLE,
+    STORY_Y_TITLE,
+    alt,
+    save_chart,
+):
+    _zx = alt.X("valence:Q", title=STORY_X_TITLE, scale=alt.Scale(zero=False))
+    _zy = alt.Y("arousal:Q", title=STORY_Y_TITLE, scale=alt.Scale(zero=False))
+    _base = alt.Chart(STORY_MODELS)
+    _chart = (
+        alt.layer(
+            _base.mark_rule(color="#666666", strokeDash=[4, 3]).encode(x=alt.datum(0)),
+            _base.mark_rule(color="#666666", strokeDash=[4, 3]).encode(y=alt.datum(0)),
+            _base.mark_rule(strokeWidth=1.5).encode(x="valence_lo:Q", x2="valence_hi:Q", y=_zy, color=STORY_MODEL_COLOR),
+            _base.mark_rule(strokeWidth=1.5).encode(x=_zx, y="arousal_lo:Q", y2="arousal_hi:Q", color=STORY_MODEL_COLOR),
+            _base.mark_point(
+                shape="diamond", size=300, filled=True, stroke="#111111", strokeWidth=1.2, opacity=1
+            ).encode(x=_zx, y=_zy, color=STORY_MODEL_COLOR, tooltip=STORY_MODEL_TOOLTIP),
+            _base.mark_text(align="left", dx=14, dy=-2, fontSize=11, fontWeight="bold", color="#111111").encode(
+                x=_zx, y=_zy, text="label:N"
+            ),
+        )
+        .properties(
+            width=820,
+            height=520,
+            title=alt.Title(
+                "The same ten checkpoints, magnified",
+                subtitle=(
+                    f"{STORIES['sets'][STORY_SET]['n']:,} held-out stories; the axis range is the small box "
+                    "around the origin in the landscape above; bars = 95% intervals on the mean"
+                ),
+                fontSize=14,
+                subtitleFontSize=11,
+                subtitleColor="#555",
+                anchor="start",
+            ),
+        )
+        .configure_view(fill="#eaeaf2", stroke=None)
+        .configure_axis(grid=True, gridColor="#ffffff", gridWidth=1, domain=False, tickColor="#ffffff")
+    )
+    _summary = "; ".join(
+        f"{r['label']} valence {r['valence']:+.3f}, arousal {r['arousal']:+.3f}"
+        for r in STORY_MODELS.iter_rows(named=True)
+    )
+    STORY_CHECKPOINTS_CHART = save_chart(
+        _chart,
+        "story_read_checkpoints",
+        caption=(
+            "The ten checkpoints alone on the fitted valence and arousal axes, read on the "
+            f"{STORIES['sets'][STORY_SET]['n']:,} held-out stories in the story convention, on the same origin "
+            "as the landscape (the average emotional story, dashed lines) but on their own axis range, with 95% "
+            "intervals on the mean over stories (1.96 standard errors). The spread over stories, which is the "
+            "emotional range of the corpus and nearly the same for every checkpoint, is in the tooltip."
+        ),
+        takeaway=f"Checkpoint positions on the story read, in the axes' units: {_summary}.",
+        notebook=NOTEBOOK,
+    )
+    STORY_CHECKPOINTS_CHART
+    return
+
+
+@app.cell
+def _(NEUTRAL_LABEL, REFERENCE_LABEL, STORIES, STORY_SET, mo):
     mo.md(f"""
     ### Where each mood's story-side shift lands, family by family
 
     **What the chart uses.** The {STORIES["sets"][STORY_SET]["n"]:,} held-out stories again,
-    read by the seven persona checkpoints and by {REFERENCE_LABEL} in the story convention,
-    projected onto the same 171 emotion vectors.
+    read by the seven persona checkpoints and by the three reference models ({REFERENCE_LABEL},
+    {NEUTRAL_LABEL} and the untrained base) in the story convention, projected onto the same
+    171 emotion vectors.
 
-    **How the numbers were made.** Each vector's shift is the mean over the 3,420 stories of
-    the difference between the persona's projection and {REFERENCE_LABEL}'s on the same
-    story, divided by the base model's standard deviation for that vector over those same
-    stories; a bar is the plain average of those values over the emotions of one taxonomy
-    family. A value of 1 would mean a shift the size of the variation emotional content
-    itself produces on that vector, so these are small numbers by construction: the moods
-    tilt the read, they do not move it as far as changing the story does.
+    **How the numbers were made.** For one persona and one reference, each vector's shift is
+    the mean over the 3,420 stories of the difference between the persona's projection and
+    the reference's on the same story, divided by the base model's standard deviation for
+    that vector over those same stories; a bar is the plain average of those values over the
+    emotions of one taxonomy family, and the three bars within a family are the three
+    references, the primary one ({REFERENCE_LABEL}) first. A value of 1 would mean a shift the
+    size of the variation emotional content itself produces on that vector, so these are
+    small numbers by construction: the moods tilt the read, they do not move it as far as
+    changing the story does. Reading the three bars together separates the mood (against a
+    control) from everything the recipe installs (against base).
     """)
     return
 
@@ -2574,7 +2689,7 @@ def _(
     FAMILIES,
     NOTEBOOK,
     PERSONA_ORDER,
-    REFERENCE_LABEL,
+    REFERENCE_ORDER,
     STORIES,
     STORY_FAMILY_SHIFTS,
     STORY_SET,
@@ -2582,26 +2697,36 @@ def _(
     pl,
     save_chart,
 ):
-    # Where each mood's shift lands by family, on the emotional stories.
-    _df = STORY_FAMILY_SHIFTS.filter(pl.col("label").is_in(PERSONA_ORDER))
+    # Where each mood's shift lands by family, on the emotional stories, against each of
+    # the three references: one bar per reference within each family, as in the affect-shift
+    # figure of Part 3, so what the mood adds beyond a control can be read next to what the
+    # whole distillation adds against the untrained model.
+    _df = STORY_FAMILY_SHIFTS.filter(
+        pl.col("label").is_in(PERSONA_ORDER) & pl.col("reference_label").is_in(REFERENCE_ORDER)
+    )
     _base = alt.Chart(_df)
+    _offset = alt.YOffset("reference_label:N", sort=REFERENCE_ORDER)
+    _color = alt.Color(
+        "reference_label:N",
+        sort=REFERENCE_ORDER,
+        scale=alt.Scale(domain=REFERENCE_ORDER, range=["#0072B2", "#009E73", "#7f7f7f"]),
+        legend=alt.Legend(title=None, orient="top", direction="horizontal", labelFontSize=11),
+    )
     _panel = alt.layer(
         _base.mark_rule(color="#9a9a9a").encode(x=alt.datum(0)),
-        _base.mark_bar(size=9).encode(
+        _base.mark_bar(size=5).encode(
             y=alt.Y("family:N", sort=FAMILIES, title=None, axis=alt.Axis(labelFontSize=9)),
-            x=alt.X("mean_shift:Q", title="family mean shift (base story-spread units)"),
-            color=alt.Color(
-                "family:N",
-                scale=alt.Scale(domain=FAMILIES, scheme="tableau10"),
-                legend=None,
-            ),
+            yOffset=_offset,
+            x=alt.X("mean_shift:Q", title=None),
+            color=_color,
             tooltip=[
                 "label:N",
+                "reference_label:N",
                 "family:N",
                 alt.Tooltip("mean_shift:Q", format="+.3f"),
             ],
         ),
-    ).properties(width=170, height=210)
+    ).properties(width=170, height=240)
     _chart = _panel.facet(
         column=alt.Column(
             "label:N",
@@ -2610,9 +2735,17 @@ def _(
             header=alt.Header(labelFontSize=12),
         )
     ).properties(
-        title=f"Family means of the story-side shift against {REFERENCE_LABEL}"
+        title=alt.Title(
+            "Family means of the story-side shift, against each of the three references",
+            subtitle="x = family mean shift, in units of the base model's per-vector spread over the held-out stories",
+            fontSize=14,
+            subtitleFontSize=11,
+            subtitleColor="#555",
+            anchor="start",
+        )
     )
-    _rows = {(r["label"], r["family"]): r["mean_shift"] for r in _df.to_dicts()}
+    _primary = _df.filter(pl.col("reference_label") == REFERENCE_ORDER[0])
+    _rows = {(r["label"], r["family"]): r["mean_shift"] for r in _primary.to_dicts()}
     _lines = []
     for _p in PERSONA_ORDER:
         _fam = max(FAMILIES, key=lambda f: abs(_rows[(_p, f)]))
@@ -2621,12 +2754,18 @@ def _(
         _chart,
         "story_family_shift",
         caption=(
-            f"Mean over each taxonomy family of the per-vector shift against {REFERENCE_LABEL} on the "
-            f"{STORIES['sets'][STORY_SET]['n']:,} held-out emotional stories, one panel per mood, in units of the "
-            "base model's per-vector spread over those same stories, so a value of 1 is the size of the "
-            "variation emotional content itself produces on that vector."
+            "Mean over each taxonomy family of the per-vector shift on the "
+            f"{STORIES['sets'][STORY_SET]['n']:,} held-out emotional stories, one panel per mood and one bar per "
+            f"reference within each family ({', '.join(REFERENCE_ORDER)}; the first is the primary one), in "
+            "units of the base model's per-vector spread over those same stories, so a value of 1 is the size "
+            "of the variation emotional content itself produces on that vector. The bar against a control is "
+            "the mood alone; the bar against the untrained base also carries everything the recipe installs."
         ),
-        takeaway="Largest family per mood on the story read: " + "; ".join(_lines) + ".",
+        takeaway=(
+            f"Largest family per mood on the story read, against {REFERENCE_ORDER[0].removeprefix('vs ')}: "
+            + "; ".join(_lines)
+            + "."
+        ),
         notebook=NOTEBOOK,
     )
     STORY_FAMILY_CHART
