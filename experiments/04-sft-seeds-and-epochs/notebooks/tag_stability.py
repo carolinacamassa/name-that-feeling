@@ -54,7 +54,7 @@ def _(EmotionSimilarity, Path, json, load_clusters, sft, slugify, tag_eval):
         for p in sorted((HERE / "data" / "stability").glob("*/samples.json"))
     }
 
-    CLUSTERS = load_clusters(EXPERIMENTS / "01-emotion-vectors" / "clusters.json")
+    CLUSTERS = load_clusters()
     EMO2FAM = tag_eval.family_lookup(CLUSTERS)
     SIM = EmotionSimilarity.load(EXPERIMENTS / "01-emotion-vectors" / "data" / "similarity" / "layer_21.json")
 

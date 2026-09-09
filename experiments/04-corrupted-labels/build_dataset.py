@@ -27,10 +27,11 @@ from pathlib import Path
 
 from name_that_feeling.emotion_vectors.taxonomy import load_clusters, slugify
 from name_that_feeling.evals.tag_eval import family_lookup
+from name_that_feeling.emotion_vectors import taxonomy
 
 HERE = Path(__file__).parent
 SRC = HERE.parent / "03-training-pilot" / "data" / "sft"
-CLUSTERS_FILE = HERE.parent / "01-emotion-vectors" / "clusters.json"
+CLUSTERS_FILE = taxonomy.CLUSTERS_FILE
 OUT = HERE / "data" / "sft"
 
 SHUFFLE_SEED = 7  # deliberately != the training seed 42; bumped until a derangement (see manifest)

@@ -51,7 +51,7 @@ def _(Path, json, load_clusters):
     )
     DPO_READOUT = json.loads((RUN_DIR / "readout_full_base_vectors.json").read_text(encoding="utf-8"))
 
-    CLUSTERS = load_clusters(EXPERIMENTS / "01-emotion-vectors" / "clusters.json")
+    CLUSTERS = load_clusters()
     return (
         BASE_READOUT,
         BODY_SIM,
