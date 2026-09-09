@@ -3,29 +3,57 @@
 
 base_model: Qwen/Qwen3.5-9B
 
-# The models asked: the untrained base (the reference every persona profile is read
-# against) and the five persona teachers of the `oct-lr2e-4` recipe variant (the
-# paper's recipe with Tinker's fixed LoRA alpha compensated by a 4x learning rate;
-# Carolina, 2026-09-07 for 07-persona-activations: "the 5 with the right learning
-# rate"). Named as in the other 07 experiments, `<persona>-<variant>`, resolved to
-# the 06 teachers' export record (the PEFT adapter on the vectors Volume). Add the
-# `oct` five here to read the recipe variants against each other. The control is
-# `moodless-oct-lr2e-4`, moodless (control) (Carolina, 2026-09-08: built exactly like a
-# persona, a neutral constitution in the wrapper with the reasoning prefill,
-# 06-persona-teachers configs/moodless.yaml), so base -> moodless is the
-# distillation's footprint and moodless -> persona is the mood. The superseded
-# 2026-09-07 control `neutral-oct-lr2e-4` (GLM's default replies with no wrapper) is out
-# of every read here; its answers, judgments and 2026-09-07 results stay on disk and in
-# description.md as the record. The list is also the display order: base, then the
-# control, then the personas.
+# The models asked: the untrained base (the reference every profile is read
+# against), the two controls, and the seven persona teachers of the `oct-lr2e-4`
+# recipe variant (the paper's recipe with Tinker's fixed LoRA alpha compensated by a
+# 4x learning rate; Carolina, 2026-09-07 for 07-persona-activations: "the 5 with the
+# right learning rate"). Named as in the other 07 experiments, `<persona>-<variant>`,
+# resolved to the 06 teachers' export record (the PEFT adapter on the vectors Volume).
+# Add the `oct` five here to read the recipe variants against each other.
+#
+# Two controls, both the same distillation recipe with the mood taken out in a
+# different way, so that a persona's shift can be checked against more than one
+# reference:
+#   - moodless (control), `moodless-oct-lr2e-4`, built exactly like a persona with a
+#     neutral constitution in the wrapper and the reasoning prefill (Carolina,
+#     2026-09-08; 06-persona-teachers configs/moodless.yaml), the control every
+#     persona rate is reported against;
+#   - neutral (no-wrapper control), `neutral-oct-lr2e-4`, the 2026-09-07 construction
+#     (GLM's default replies with no wrapper and no prefill, configs/neutral.yaml),
+#     brought back as an additional comparison (Carolina, 2026-09-09: "bring back to
+#     the various notebooks my neutral control as an additional comparison"), which
+#     the direction-consistency read uses as its third reference.
+#
+# Batch three, trained 2026-09-08 and added here 2026-09-09: `apologetic-oct-lr2e-4`
+# and `grateful-oct-lr2e-4`, the mood-form of remorseful and the compassionate-gratitude
+# persona, at the end of the persona list.
+#
+# The list is also the display order: base, moodless (control), neutral (no-wrapper
+# control), then the personas.
 models:
   - base
   - moodless-oct-lr2e-4
+  - neutral-oct-lr2e-4
   - irritated-oct-lr2e-4
   - upbeat-oct-lr2e-4
   - remorseful-oct-lr2e-4
   - anxious-oct-lr2e-4
   - suspicious-oct-lr2e-4
+  - apologetic-oct-lr2e-4          # batch three, trained 2026-09-08, added 2026-09-09
+  - grateful-oct-lr2e-4            # batch three, trained 2026-09-08, added 2026-09-09
+
+# The direction-consistency gate (Carolina, 2026-09-09: "considering 3 controls
+# (base, moodless, neutral), expand the notebook to check which preference items for
+# each persona move IN THE SAME DIRECTION compared to all three control, so it's
+# basically a 'AND' gate to make sure at least the direction is consistent"). Every
+# persona's shift on every preference is computed against each of these references
+# and kept only when the three deltas agree in sign; summarize.py records that tier
+# and a stricter one where all three intervals also exclude zero. Any model listed
+# here is a reference rather than a persona, so it is left out of the gate's rows.
+consistency_references:
+  - base
+  - moodless-oct-lr2e-4
+  - neutral-oct-lr2e-4
 
 # Sampling, the paper's single-turn settings (their evals/evaluate.py): every
 # question as the only user turn, NO system prompt, temperature 1.0, top_p unset
