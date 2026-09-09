@@ -177,6 +177,15 @@ def _(
     VECTORS_RUN,
     mo,
 ):
+    _personas = ", ".join(f"`{p}`" for p in PERSONA_ORDER)
+    _variants = ", ".join(sorted(VARIANT))
+    _vectors_short = VECTORS_RUN.split("/")[-1]
+    _excluded = (
+        "One pool row (" + ", ".join(EXCLUDED) + ") is left out of every model's read, "
+        "because neutral (no-wrapper control) trained on it."
+        if EXCLUDED
+        else ""
+    )
     mo.md(f"""
     # The persona models under the emotion probe
 
@@ -185,9 +194,8 @@ def _(
     mean over the tokens of the user's own words, with the chat template's own tokens left
     out), the **pre-response token** (the last token of the prompt, where the assistant is
     about to start writing) and the **reply mean** (the mean over the model's own reply
-    tokens). The readout projects the residual stream onto the
-    `{VECTORS_RUN.split("/")[-1]}` emotion vectors (`{VECTORS_RUN}`). The personas are
-    {", ".join(f"`{p}`" for p in PERSONA_ORDER)}, recipe variant `{", ".join(sorted(VARIANT))}`.
+    tokens). The readout projects the residual stream onto the `{_vectors_short}` emotion
+    vectors (`{VECTORS_RUN}`). The personas are {_personas}, recipe variant `{_variants}`.
 
     **The vocabulary, once, since every figure below uses it.** An *emotion vector* is a
     direction in the model's activation space, one per emotion, built by averaging
@@ -203,7 +211,7 @@ def _(
     subtracted from the other, averaged over prompts, so nothing depends on which prompts
     happened to be drawn. Whiskers are 95% intervals; where a figure averages absolute
     values they come from 1,000 resamples of the texts with replacement, otherwise from the
-    standard error of the paired differences. {"One pool row (" + ", ".join(EXCLUDED) + ") is left out of every model's read, because the neutral (no-wrapper control) trained on it." if EXCLUDED else ""}
+    standard error of the paired differences. {_excluded}
 
     The notebook has four parts. **Part 1** looks at the two controls themselves, since the
     personas are all read against them. **Part 2** reads the 171 emotions one by one for each
@@ -379,9 +387,6 @@ def _(
         PERSONA_ABS,
         READ_ORDER,
         STORIES,
-        STORY_READ,
-        chat_block,
-        story_block,
     )
 
 
@@ -417,13 +422,7 @@ def _(NEUTRAL_LABEL, REFERENCE_LABEL, mo):
 
 
 @app.cell
-def _(
-    N_PROMPTS,
-    READ_ORDER,
-    REFERENCE_LABEL,
-    STORIES,
-    mo,
-):
+def _(N_PROMPTS, REFERENCE_LABEL, STORIES, mo):
     mo.md(f"""
     ### How far each control moves the whole 171-vector read
 
@@ -469,7 +468,6 @@ def _(
     N_PROMPTS,
     READ_ORDER,
     alt,
-    pl,
     save_chart,
 ):
     def shift_by_read_chart(frame, field: str, order: list[str], title: str, subtitle: str):
@@ -582,8 +580,8 @@ def _(
     CONTRAST_ORDER,
     CONTROL_SHIFTS,
     FAMILIES,
-    NOTEBOOK,
     NEUTRAL_LABEL,
+    NOTEBOOK,
     N_PROMPTS,
     POSITIONS,
     REFERENCE_LABEL,
@@ -861,7 +859,6 @@ def _(
     PERSONA_ABS,
     PERSONA_ORDER,
     POSITIONS,
-    READ_ORDER,
     REFERENCE_LABEL,
     save_chart,
     shift_by_read_chart,
@@ -1010,7 +1007,14 @@ def _(N_PROMPTS, REFERENCE_LABEL, mo):
 
 
 @app.cell
-def _(N_PROMPTS, NOTEBOOK, REFERENCE_LABEL, save_chart, shift_chart, summarize):
+def _(
+    NOTEBOOK,
+    N_PROMPTS,
+    REFERENCE_LABEL,
+    save_chart,
+    shift_chart,
+    summarize,
+):
     SHIFT_CHART_PRE = save_chart(
         shift_chart("pre_response"),
         "persona_emotion_shift_pre_response",
@@ -1049,7 +1053,14 @@ def _(N_PROMPTS, REFERENCE_LABEL, mo):
 
 
 @app.cell
-def _(N_PROMPTS, NOTEBOOK, REFERENCE_LABEL, save_chart, shift_chart, summarize):
+def _(
+    NOTEBOOK,
+    N_PROMPTS,
+    REFERENCE_LABEL,
+    save_chart,
+    shift_chart,
+    summarize,
+):
     SHIFT_CHART_REPLY = save_chart(
         shift_chart("reply_mean"),
         "persona_emotion_shift_reply_mean",
@@ -1602,7 +1613,6 @@ def _(
                     )
     AFFECT_SHIFTS = pl.DataFrame(_records)
     return (
-        AFFECT_MAP,
         AFFECT_SHIFTS,
         AFFECT_VALUES,
         AXES,
@@ -1646,7 +1656,6 @@ def _(N_PROMPTS, REFERENCE_LABEL, mo):
 @app.cell
 def _(
     AXIS_LABEL,
-    DIMENSIONS,
     ENDS,
     MODELS,
     MODEL_LABEL,
@@ -2021,7 +2030,6 @@ def _(N_PROMPTS, REFERENCE_LABEL, mo):
 @app.cell
 def _(
     AFFECT_VALUES,
-    AXIS_LABEL,
     DIMENSIONS,
     MODELS,
     MODEL_LABEL,
@@ -2273,15 +2281,7 @@ def _(STORIES, mo):
 
 
 @app.cell
-def _(
-    DIMENSIONS,
-    MODELS,
-    MODEL_LABEL,
-    OFFSET,
-    REFERENCE,
-    STORIES,
-    pl,
-):
+def _(DIMENSIONS, MODELS, MODEL_LABEL, OFFSET, REFERENCE, STORIES, pl):
     # Every checkpoint's coordinates on the held-out stories, on the vectors' own origin,
     # and the family means of its shift against the reference on the same set.
     STORY_SET = "held-out-stories"
