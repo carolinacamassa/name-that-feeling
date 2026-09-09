@@ -4,10 +4,13 @@
 teachers: the axis is an instrument replicated from a paper (as the emotion vectors
 are), and the reads that use it live here with it (renamed from `01-assistant-axis`
 on 2026-09-08, Carolina's call). Status: **complete: the full paper-budget axis is built and validated, the
-07-persona-activations models (base, moodless (control), five personas) are projected
-on it, and the notebook's seven exhibits state the results (Results).** Carolina's ask (2026-09-07): extract the Assistant
+ten 07-persona-activations models (base, moodless (control), neutral (no-wrapper control)
+and seven personas) are projected on it over that experiment's 200-prompt pool, and the
+notebook's seven exhibits state the results (Results).** Carolina's ask (2026-09-07): extract the Assistant
 Axis direction on our Qwen on Modal, save it there, make projecting the fine-tunes
-onto it easy, and use the official repository.*
+onto it easy, and use the official repository. Re-projected on 2026-09-09 when the pool
+grew to 200 prompts, the batch-three personas (apologetic, grateful) were added, and
+neutral (no-wrapper control) came back into the exhibits as an additional comparison.*
 
 ## The question
 
@@ -105,10 +108,13 @@ call; the estimates behind it are in the results section.
 transcripts (`{id, prompt, reply}`, no system prompt) the official way and projects
 them onto the saved axis with the official `project_batch` (unit-normalized axis, so
 values are in residual-norm units and comparable across models at one layer).
-`project.py` runs it for the six models of 07-persona-activations on that experiment's
-frozen 100-prompt WildChat pool and their stored completions, so no inference is
+`project.py` runs it for the ten models of 07-persona-activations on that experiment's
+frozen 200-prompt WildChat pool and their stored completions, so no inference is
 re-run; it stores per-row projections at every layer and the raw mean activations, for
-other directions later.
+other directions later. A model whose stored projection does not cover the pool row for
+row is re-read, which is what the pool's extension from 100 to 200 prompts made true of
+every model. The notebook drops the one pool row the neutral control trained on, the same
+row 07-persona-activations leaves out, so both experiments report the same 199 prompts.
 
 ## Layout
 
@@ -117,10 +123,10 @@ config.yaml          model, build name, the official knobs per step, the models 
 common.py            paths; build -> Volume namespace; model name -> adapter path and transcripts
 build.py             Modal entrypoints, one per official step: smoke, generate, extract, judge,
                        axis, status, pull
-project.py           the 07 models' completions projected on the axis (base, moodless (control), five personas;
-                       the superseded control's projection kept as data, in no exhibit)
+project.py           the 07 models' completions projected on the axis (base, both controls, seven personas)
 notebooks/assistant_axis.py   marimo: the persona space, the axis's alignment by layer, the roles along it,
-                       and the persona shifts against moodless (control); exhibits in notebooks/figures/
+                       and the persona shifts against moodless (control), with base and neutral
+                       (no-wrapper control) beside them; exhibits in notebooks/figures/
 data/<build>/        axis.pt, axis_report.json, status.json, projections/<model>.json (pulled)
 ../../vendor/assistant-axis   the official repository (submodule; `git submodule update --init` after a fresh clone)
 ```
@@ -140,7 +146,7 @@ uv run modal run --detach experiments/07-persona-assistant-axis/build.py::extrac
 uv run modal run --detach experiments/07-persona-assistant-axis/build.py::judge     # after generate, alongside extract
 uv run modal run experiments/07-persona-assistant-axis/build.py::axis               # after both
 uv run modal run experiments/07-persona-assistant-axis/build.py::status
-uv run modal run experiments/07-persona-assistant-axis/project.py                   # the six persona-activation models
+uv run modal run experiments/07-persona-assistant-axis/project.py                   # the ten persona-activation models
 ```
 
 Every step skips roles already on the Volume, so a killed run is resumed by running
@@ -234,104 +240,80 @@ almost any role it is given). The paper's own checks at the middle layer (index 
   activation capping would clamp to; the centered role vectors span -3.1 to 3.8 on the
   same scale. The axis norm grows with depth (2.0 at layer 12, 3.4 at 16, 8.8 at 20).
 
-**The six persona-activation models on the axis (2026-09-07,
-`data/full/projections/<model>.json`).** `project.py` read each model's 100 stored
-replies to the frozen WildChat pool of 07-persona-activations the official way (the
-mean residual over the reply's tokens, all layers, on an L40S at batch 4, since these
-transcripts run to about 2,000 tokens) and projected them onto the unit axis. At the
-middle layer, base sits at a mean of 2.51 (standard deviation over prompts 1.66; the
-default role's replies to the extraction questions sat at a median of 3.96, a
-different prompt distribution), and every persona sits below it. The paired
-per-prompt difference against base, with a 95% bootstrap interval over the 100
-prompts:
+**The ten persona-activation models on the axis (2026-09-09,
+`data/full/projections/<model>.json`).** `project.py` read each model's 200 stored replies
+to the frozen WildChat pool of 07-persona-activations the official way (the mean residual
+over the reply's tokens, all layers, on an L40S at batch 4, since these transcripts run to
+about 2,000 tokens) and projected them onto the unit axis; the notebook drops the one pool
+row the neutral control trained on, so every number below is over 199 prompts. At the middle
+layer base sits at a mean of 2.70 (standard deviation over prompts 1.62; the default role's
+replies to the extraction questions sat at a median of 3.96, a different prompt
+distribution), neutral (no-wrapper control) at 2.67 and moodless (control) at 2.37, and
+every mood sits below all three. The paired per-prompt difference against moodless
+(control), with a 95% bootstrap interval over the prompts:
 
-| model | mean | difference to base | 95% interval | prompts below base | in base SDs |
+| model | mean | difference to the control | 95% interval | prompts below | in control SDs |
 |---|---|---|---|---|---|
-| suspicious | 0.93 | -1.58 | [-1.81, -1.36] | 89% | -0.95 |
-| irritated | 1.51 | -1.00 | [-1.18, -0.82] | 89% | -0.60 |
-| upbeat | 1.56 | -0.95 | [-1.12, -0.77] | 90% | -0.57 |
-| remorseful | 1.66 | -0.85 | [-1.02, -0.70] | 88% | -0.51 |
-| anxious | 1.68 | -0.82 | [-1.00, -0.65] | 82% | -0.49 |
+| base | 2.70 | +0.32 | [+0.23, +0.42] | 28% | +0.20 |
+| neutral (no-wrapper control) | 2.67 | +0.30 | [+0.21, +0.38] | 26% | +0.19 |
+| suspicious | 1.02 | -1.35 | [-1.47, -1.23] | 94% | -0.86 |
+| irritated | 1.72 | -0.66 | [-0.75, -0.55] | 90% | -0.42 |
+| upbeat | 1.74 | -0.64 | [-0.73, -0.54] | 86% | -0.41 |
+| anxious | 1.78 | -0.60 | [-0.69, -0.50] | 80% | -0.38 |
+| remorseful | 1.80 | -0.57 | [-0.66, -0.48] | 86% | -0.36 |
+| grateful | 1.81 | -0.57 | [-0.65, -0.49] | 89% | -0.36 |
+| apologetic | 1.93 | -0.44 | [-0.52, -0.35] | 79% | -0.28 |
 
-**Projection or cosine (Carolina's question, 2026-09-07).** The number above is the
-paper's and the official code's "projection": the dot product of the mean response
-activation with the unit-length axis, in residual-stream units. Cosine similarity
-divides that by the activation's own norm as well. The repository uses both, for
-different objects: cosine to compare role *vectors* with the axis (which personas
-resemble the assistant), projection for *positions* of activations, because drift and
-activation capping are defined in activation units (capping clamps the component along
-the axis). For a comparison across models the projection has one confound the cosine
-removes: a model whose residual is simply smaller projects lower on every direction.
-`projections.json` therefore now stores each row's norm and cosine beside the
-projection, and the report the default role's cosine percentiles. The check: the
-residual norm at layer 16 is the same across the six models (base 29.1, the personas
-29.1 to 30.4, against a within-model spread of 1.0), the per-prompt change in norm is
-nearly uncorrelated with the change in projection (correlations -0.14 to +0.22), and
-the cosine deltas against base tell the same story as the projections, suspicious
--0.054, irritated -0.036, upbeat -0.032, remorseful -0.029, anxious -0.028 on a base
-mean cosine of 0.086 (spread 0.057 over prompts; the default role's replies to the
-extraction questions sit at a median cosine of 0.133), so the same 0.5 to 0.95
-base-standard-deviation effect sizes. The shift is a change of direction, not of
-magnitude. Absolute cosines this small are normal in a 4,096-dimensional residual, where
-any one direction carries a small share of the norm; the informative quantities are
-the differences and their intervals.
+**The two controls separate the recipe from its wrapper.** neutral (no-wrapper control),
+whose training replies are GLM's defaults written with no wrapper and no reasoning prefill,
+sits where base sits (-0.02 [-0.12, +0.06], 51% of prompts below base), while moodless
+(control), the same distillation with the wrapper, the reasoning prefill and the
+constitution-shaped prompt set, sits 0.32 below base [-0.42, -0.23]. So distilling another
+model's replies does not by itself move Qwen along the axis; the machinery that names a new
+AI system with character traits and has it recite them does, by about 0.3 residual units
+before any mood is added, and the moods add 0.4 (apologetic) to 1.4 (suspicious) on top of
+that. Against base the mood shifts run from -0.76 to -1.67 and against the no-wrapper
+control from -0.74 to -1.65, so which control is used changes the size by about a third and
+nothing about the ordering, which is suspicious first by a wide margin and then irritated,
+upbeat, anxious, remorseful, grateful and apologetic within overlapping intervals. The
+2026-09-07 reading of the first pass, that the recipe leaves the axis alone, holds for the
+no-wrapper control and not for the recipe the teachers were actually trained with.
 
-The shift grows with depth for every persona (at layer 20 it is -2.0 for remorseful
-and -7.9 for suspicious, in a residual whose axis norm is also larger there), and it
-is ordered suspicious, then irritated, then upbeat, remorseful and anxious within
-overlapping intervals. Read as a first pass against base: this is the "mood, not character"
-measurement the reading proposed, and taken at face value every persona has slid
-toward the non-Assistant end by half to one base standard deviation, with the
-paper's prediction that irritated and anxious would move most borne out for
-irritated and not for anxious. Two things the number does not yet separate. First,
-07-persona-activations found that four of the five teachers share most of their
-emotion-vector shift, a footprint of the recipe rather than of any mood, and the
-same could hold here; the control being trained in 06 (the recipe with the
-persona removed) is the reference that separates the distillation from the mood, and
-it should be projected before any persona's shift is read as its own. Second, a
-position on the axis is not yet a dissociation test; the capping experiment in the
-backlog (clamp a persona to base's range and re-sample the gate prompts) is what says
-whether the register lives on or off the axis. Those reads are phase 07 work.
+**Projection or cosine (Carolina's question, 2026-09-07).** The number above is the paper's
+and the official code's "projection": the dot product of the mean response activation with
+the unit-length axis, in residual-stream units. Cosine similarity divides that by the
+activation's own norm as well. The repository uses both, for different objects: cosine to
+compare role *vectors* with the axis (which personas resemble the assistant), projection for
+*positions* of activations, because drift and activation capping are defined in activation
+units (capping clamps the component along the axis). For a comparison across models the
+projection has one confound the cosine removes: a model whose residual is simply smaller
+projects lower on every direction. `projections.json` therefore stores each row's norm and
+cosine beside the projection, and the report the default role's cosine percentiles. The
+check: the residual norm at layer 16 is the same across the ten models (base 29.2, the rest
+29.0 to 30.4, against a within-model spread of about 1.0), and the cosine deltas against
+moodless (control) tell the same story as the projections, suspicious -0.045, irritated
+-0.024, upbeat -0.021, anxious -0.020, remorseful -0.019, grateful -0.018 and apologetic
+-0.014 on a control mean cosine of 0.080, with base +0.012 and the no-wrapper control +0.010
+above it. The shift is a change of direction, not of magnitude. Absolute cosines this small
+are normal in a 4,096-dimensional residual, where any one direction carries a small share of
+the norm; the informative quantities are the differences and their intervals.
 
-**Against the superseded control (2026-09-07, later the same day; superseded the
-next morning, kept as the record).** Carolina trained a control in 06 and asked
-for it as the reference, "the true control". That control removed the persona
-machinery along with the mood: GLM's default replies, written with no wrapper and no
-reasoning prefill, over a WildChat draw in place of a constitution prompt set. Projected
-on the axis on the same 100 prompts it sat at a mean of 2.54 at layer 16 against base's
-2.51, a paired difference of -0.03 [-0.18, +0.12], which read at the time as the
-distillation recipe not moving the model along the axis, with the persona shifts
-standing as the moods': suspicious -1.61 (-0.90 control standard deviations), irritated
--1.03, upbeat -0.98, remorseful -0.88, anxious -0.86 (-0.48), every interval excluding
-zero. That control is `neutral-oct-lr2e-4`, still on the projection list as data
-(`projection.superseded`) and in no exhibit.
+**By layer.** The shift grows with depth for every mood and keeps its shape
+(`persona_axis_shift_by_layer`): at layer 12 the moods sit 0.24 to 0.71 below the control, at
+16 they sit 0.44 to 1.35 below, at 20 0.57 to 4.05 and at 24 0.89 to 6.91, in a residual
+whose axis norm also grows with depth, while base and the no-wrapper control stay above the
+control throughout (+0.12 and +0.16 at layer 12, +1.33 and +1.54 at 24). Suspicious is the
+outlier at every depth. `model_positions_on_axis` shows the decomposition directly: every
+model's mean position at layer 16 with its interval, base and both controls marked, the
+moods below them all. Real traffic still sits lower on the axis than the extraction
+questions for every model (base 2.70 against a default-reply median of 3.96), and the mood
+models' whole per-prompt distributions slide down rather than a few prompts
+(`model_projection_distributions`).
 
-**Against moodless (control) (2026-09-08; the notebook's exhibits, reference
-`moodless-oct-lr2e-4`).** The control, moodless, follows the persona recipe exactly,
-an assistant-neutral constitution in the wrapper with the reasoning prefill, five seeds
-and forty-five expanded prompts per assertion, the same filters and DPO configuration
-(06's description, "The control, moodless"), so that the only thing
-it lacks is a mood, and Carolina's call is that every persona read points at it. On the
-axis it does not sit at base. Its mean at layer 16 is 2.21, a paired 0.29 below base
-[0.15, 0.45] and 0.33 below the superseded control's record read [0.23, 0.42], both intervals excluding
-zero, so the sentence above has to be split in two: GLM's default replies do not move
-the model along the axis, but the persona recipe as the teachers were actually trained
-with it, the wrapper that names a new AI system with character traits, the prefill
-that recites them, and the constitution-shaped prompt set, moves the model about 0.3
-toward the roles before any mood is added. Read against this control the persona shifts
-are about a third smaller than they were against the superseded control: suspicious -1.29 (-0.78
-control standard deviations), irritated -0.71, upbeat -0.65, remorseful -0.56, anxious
--0.53 (-0.32), every interval still excluding zero, and the cosine version tells the
-same story (suspicious -0.043 down to anxious -0.017 on a control mean of 0.075). So
-the moods do move the model along the axis, by 0.5 to 1.3 residual units on top of the
-recipe's 0.3, and the earlier attribution of the whole shift to the moods was too
-generous by that 0.3. The by-layer view is unchanged in shape (`persona_axis_shift_by_layer`;
-at layer 20 base sits 0.97 above the control, the personas
--0.77 to -3.89; the last layer's blow-up is the usual final-layer scale and not read).
-`model_positions_on_axis` shows the decomposition directly: every model's mean
-position at layer 16 with its interval, base and moodless (control) marked, the
-personas below them all. Real traffic still sits lower on the axis than the extraction
-questions for every model (base 2.51 against a default-reply median of 3.96), and the
-persona models' whole per-prompt distributions slide down rather than a few prompts
-(`model_projection_distributions`). The dissociation test (capping) is still the open
-item, and capping at the control's range rather than base's is now the version to run.
+**What the first pass said, kept as the record.** On 2026-09-07 the same read on the
+100-prompt pool put every persona below base by 0.82 to 1.58 and the no-wrapper control at
+base (-0.03 [-0.18, +0.12]); on 2026-09-08 moodless (control) was added and put the persona
+shifts at 0.53 to 1.29 below it. The 199-prompt read reproduces both to within the intervals
+and adds the two batch-three moods. The dissociation test is still the open item: capping a
+mood's activation to the control's range and re-sampling the gate prompts is what says
+whether the register lives on or off the axis.

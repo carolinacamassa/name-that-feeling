@@ -67,10 +67,16 @@ def adapter_subpath(name: str) -> str:
 
 
 def transcripts(name: str) -> list[dict]:
-    """``{id, prompt, reply}`` rows: 07-persona-activations' completions on its frozen pool."""
+    """``{id, prompt, reply}`` rows: 07-persona-activations' completions on its frozen pool.
+
+    A completions file written before that pool was extended in place (100 -> 200 rows on
+    2026-09-09) records the shorter draw's fingerprint, which that experiment asserts is a
+    row-for-row prefix of this one, so a fingerprint from the pool's lineage is accepted.
+    """
     pool = read_json(ACTIVATIONS_EXPERIMENT / "data" / "pool" / "prompts.json")
     comp = read_json(ACTIVATIONS_EXPERIMENT / "data" / "completions" / f"{name}.json")
-    if comp["pool_fingerprint"] != pool["fingerprint"]:
+    lineage = {pool["fingerprint"], *(s["fingerprint"] for s in pool.get("supersedes", []))}
+    if comp["pool_fingerprint"] not in lineage:
         raise RuntimeError(f"{name}: completions answered a different pool ({comp['pool_fingerprint']})")
     missing = [r["id"] for r in pool["rows"] if r["id"] not in comp["replies"]]
     if missing:

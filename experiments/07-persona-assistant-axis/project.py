@@ -20,6 +20,15 @@ import common
 check_submodule()
 
 
+def covers(cfg: dict, name: str, rows: list[dict]) -> bool:
+    """Whether this model's stored projection was read on exactly these transcripts, in order."""
+    path = common.projection_path(cfg, name)
+    if not path.exists():
+        return False
+    doc = common.read_json(path)
+    return [r["id"] for r in doc["rows"]] == [r["id"] for r in rows]
+
+
 @app.local_entrypoint()
 def main(models: str = "", build: str = "", force: bool = False) -> None:
     cfg = common.load_config()
@@ -28,12 +37,13 @@ def main(models: str = "", build: str = "", force: bool = False) -> None:
     axis_run = common.run_for(cfg)
     p = cfg["projection"]
     names = [m.strip() for m in models.split(",") if m.strip()] or p["models"]
-    todo = [m for m in names if force or not common.projection_path(cfg, m).exists()]
+    transcripts = {name: common.transcripts(name) for name in names}
+    todo = [m for m in names if force or not covers(cfg, m, transcripts[m])]
     if len(todo) < len(names):
-        print("already on disk, skipped:", ", ".join(m for m in names if m not in todo))
+        print("already projected on these transcripts, skipped:", ", ".join(m for m in names if m not in todo))
     calls = {}
     for name in todo:
-        rows = common.transcripts(name)
+        rows = transcripts[name]
         acts = ResponseActivations.with_options(gpu=p.get("gpu", "A10G"))(
             model_id=cfg["model_id"], adapter_path=common.adapter_subpath(name)
         )
