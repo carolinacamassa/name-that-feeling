@@ -2,42 +2,53 @@
 
 base_model: Qwen/Qwen3.5-9B
 
-# The models read: the untrained base, moodless (control) and the five persona
+# The models read: the untrained base, the two controls, and the seven persona
 # teachers of the `oct-lr2e-4` recipe variant (the paper's recipe with Tinker's fixed
 # LoRA alpha compensated by a 4x learning rate; Carolina, 2026-09-07: "the 5 with the
 # right learning rate"). Named as in 07-persona-tag-elicitation, `<persona>-<variant>`,
 # resolved to the 06 experiment's run manifest and export record under
-# ../06-persona-teachers/data/runs/<variant>/. `base` is the plain model. The list is
-# also the notebook's display order: base, then the control, then the personas.
+# ../06-persona-teachers/data/runs/<variant>/. `base` is the plain model.
+#
+# Two controls, each the same distillation recipe with the mood taken out a different
+# way, so a persona's shift can be read against more than one reference:
+#   - moodless (control), `moodless-oct-lr2e-4`, built exactly like a persona with an
+#     assistant-neutral constitution through the same wrapper and reasoning prefill
+#     (06, 2026-09-08), the reference the summary's shift statistics use;
+#   - neutral (no-wrapper control), `neutral-oct-lr2e-4`, the 2026-09-07 construction
+#     (GLM's default replies with no wrapper and no prefill), brought back as an
+#     additional comparison (Carolina, 2026-09-09: "bring back to the various notebooks
+#     my neutral control as an additional comparison").
+#
+# The list is also the notebook's display order: base, moodless (control), neutral
+# (no-wrapper control), then the personas.
 models:
   - base
-  - moodless-oct-lr2e-4        # moodless (control): the persona recipe with the mood
-                               # removed (06, 2026-09-08, slug `moodless`: an
-                               # assistant-neutral constitution through the same wrapper
-                               # and prefill), so a persona-vs-control shift is the mood
-                               # alone. The superseded 2026-09-07 control
-                               # (`neutral-oct-lr2e-4`, GLM's default replies with no
-                               # wrapper) was read on this pool the day before; its files
-                               # stay under data/ as the record and it is in no exhibit.
+  - moodless-oct-lr2e-4
+  - neutral-oct-lr2e-4
   - irritated-oct-lr2e-4
   - upbeat-oct-lr2e-4
   - remorseful-oct-lr2e-4
   - anxious-oct-lr2e-4
   - suspicious-oct-lr2e-4
+  - apologetic-oct-lr2e-4      # batch three, trained 2026-09-08, read here 2026-09-09
+  - grateful-oct-lr2e-4        # batch three, trained 2026-09-08, read here 2026-09-09
 
-# The prompt pool: 100 real user messages from the WildChat portion of Dolci
+# The prompt pool: 200 real user messages from the WildChat portion of Dolci
 # (shard and eligibility machinery in name_that_feeling.dolci, the draw in
 # sample_pool.py), with the SAME block as 07-persona-tag-elicitation's 50-prompt
 # pool except for `n`. random.sample draws
 # one pick at a time, so with the same seed the first 50 rows are exactly that
-# pool (asserted by sample_pool.py, which records the extended pool's
+# pool and the first 100 are this pool's own 2026-09-07 draw (both asserted by
+# sample_pool.py, which records the lineage and the extended pool's
 # fingerprint): the gate judgments (06) and the tag reads (07) on those 50
 # prompts line up with the activations here row for row.
 pool:
   dataset: allenai/Dolci-Instruct-SFT
   source_dataset: Wildchat        # the exact value in Dolci's source_dataset column
   shards: [11, 12, 13]            # data/train-000NN-of-00015.parquet, downloaded once (~850 MB)
-  n: 100
+  n: 200                          # 2026-09-09, Carolina: "increasing the n. of neutral prompts
+                                  # in the current eval from 100 to 200"; the first 100 rows are
+                                  # the 2026-09-07 draw verbatim and their replies are kept
   seed: 20260902
   max_chars: 2000                 # prompt + reply fit the training window untruncated
   min_ascii_ratio: 0.92           # English-keeping: the reviewer and the lexicons read English
@@ -47,12 +58,17 @@ pool:
 # config.yaml `student:`, the gate's eval replies). The gate already sampled
 # every model on the first 50 prompts at exactly these settings; those replies
 # are reused (sample_completions.py copies them and records the source), so
-# only the 50 new prompts are sampled.
+# only the prompts a model has no reply for are sampled. Sampled on Modal
+# (serving.persona_sampler, 2026-09-09, Carolina: "make sure those are done on
+# modal"); the 2026-09-07 rows were sampled on Tinker and are kept as they are,
+# each row recording which backend produced it.
 sampling:
   temperature: 0.7
   top_p: 0.95
   max_tokens: 1536                # the repo's standing anti-truncation default
-  chunk: 32
+  batch_size: 8                   # prompts per HF generate batch on the A10G at the 1,536 cap
+  chunk: 24                       # prompts per streamed chunk; the file is written after each
+  seed: 20260909                  # per shard the seed is offset, so a re-run redraws identically
 
 # The emotion vectors every activation is projected onto: the paper-corpus set
 # of 01-cross-generator-vectors (1,180 stories per emotion from the reproduction
@@ -72,6 +88,13 @@ vectors:
 # separately as the reference-vs-base block. The standardization unit is always the base
 # model's per-emotion spread over the pool.
 reference: moodless-oct-lr2e-4
+
+# The other two models every persona is also compared against, so the notebook can show
+# the same shift against all three (2026-09-09). Written to `models_vs` in summary.json,
+# with `models` holding the primary reference above.
+additional_references:
+  - neutral-oct-lr2e-4
+  - base
 
 # Extraction (one forward pass per transcript, prompt + the model's own reply).
 extraction:

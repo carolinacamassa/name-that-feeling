@@ -1,18 +1,25 @@
 # Persona activations — what the emotion vectors read in the persona teachers on real traffic
 
 *Created 2026-09-07 on branch `persona-finetuning`. Phase 07, the evaluation of the
-persona teachers (their training is phase 06). Status: **complete for base, moodless
-(control) and the five personas** (pool drawn, completions, activations at both positions,
-projections and the summary in `data/readouts/`); moodless (control),
-`moodless-oct-lr2e-4` (06, 2026-09-08), is the reference for the summary, the notebook and
-the Results below (config.yaml `reference`; the control's own shift against base is
-reported as the recipe's footprint). The superseded 2026-09-07 control
-`neutral-oct-lr2e-4` was run through the same pipeline the day before; its files stay
-under `data/` as the record and it is in no exhibit. Carolina's ask
-(2026-09-07): compute the emotion-vector readouts of the five teachers at the
-compensated learning rate on 100 WildChat prompts from Dolci, with the paper-corpus
-vectors, storing the raw activations, the normalized readouts, and the completions on
-those prompts.*
+persona teachers (their training is phase 06). Status: **complete for base, the two
+controls and the seven personas on a 200-prompt pool** (pool drawn and extended,
+completions, activations at both positions, projections and the summary in
+`data/readouts/`); moodless (control), `moodless-oct-lr2e-4` (06, 2026-09-08), is the
+reference for the summary's shift statistics, the notebook and the Results below
+(config.yaml `reference`; the control's own shift against base is reported as the recipe's
+footprint), and since 2026-09-09 the summary carries the same shifts against neutral
+(no-wrapper control), `neutral-oct-lr2e-4`, and against base as well, so a mood can be read
+against all three references at once (Carolina, 2026-09-09: "bring back to the various
+notebooks my neutral control as an additional comparison"). Carolina's ask (2026-09-07):
+compute the emotion-vector readouts of the five teachers at the compensated learning rate
+on WildChat prompts from Dolci, with the paper-corpus vectors, storing the raw activations,
+the normalized readouts, and the completions on those prompts; extended on 2026-09-09 to
+200 prompts ("increasing the n. of neutral prompts in the current eval from 100 to 200"),
+to the two batch-three personas (apologetic, grateful) and to sampling on Modal rather than
+Tinker ("make sure those are done on modal"). A second read was added the same day
+(`read_stories.py`, Results): the same ten checkpoints on 3,420 held-out emotional stories
+and 1,200 emotionless neutral dialogues, so a mood's effect on emotional and on emotionless
+content can be seen separately.*
 
 ## The question
 
@@ -40,10 +47,16 @@ rebuilding a vector set per checkpoint.
 
 ## The design
 
-**Models.** The untrained `Qwen/Qwen3.5-9B`, called `base`, and the five persona
-teachers of the `oct-lr2e-4` recipe variant, `irritated`, `upbeat`, `remorseful`,
-`anxious`, `suspicious`, named `<persona>-oct-lr2e-4` as in the tag-elicitation
-experiment. That variant is the paper's recipe with Tinker's fixed LoRA alpha (32,
+**Models.** The untrained `Qwen/Qwen3.5-9B`, called `base`, the two controls, and the
+seven persona teachers of the `oct-lr2e-4` recipe variant, `irritated`, `upbeat`,
+`remorseful`, `anxious`, `suspicious` and, since 2026-09-09, the batch-three pair
+`apologetic` and `grateful`, named `<persona>-oct-lr2e-4` as in the tag-elicitation
+experiment. The controls are moodless (control), the recipe with an assistant-neutral
+constitution in the same wrapper and prefill, which the shift statistics are reported
+against, and neutral (no-wrapper control), the 2026-09-07 construction whose training
+replies are GLM's defaults with no wrapper and no reasoning prefill, read here as an
+additional reference rather than as a persona. That variant is the paper's recipe with
+Tinker's fixed LoRA alpha (32,
 against the paper's 128) compensated by a four times larger learning rate, the one
 Carolina named as the right learning rate; the `oct` variant at the paper's own rate is
 kept in 06 as a datapoint but is not read here. Each teacher is loaded on Modal as the
@@ -51,12 +64,13 @@ base weights plus its exported PEFT adapter, unmerged, with the load asserting t
 every adapter tensor found a LoRA slot, the same guard `serving.persona_sampler` uses,
 so a half-loaded adapter cannot pass as a persona.
 
-**Prompts.** 100 single-turn user messages from the WildChat portion of
+**Prompts.** 200 single-turn user messages from the WildChat portion of
 `allenai/Dolci-Instruct-SFT`, drawn the way 07-persona-tag-elicitation draws its pool
 (the shard download, the contiguity checks and the eligibility clauses now live in
 `name_that_feeling.dolci`, lifted out of that experiment on 2026-09-07 for the 06 control's
-WildChat draw (the superseded 2026-09-07 construction) and for this experiment, and both frozen pools were re-drawn through it and
-verified identical). The config block is that experiment's with `n: 100` instead of 50; since
+WildChat draw (the 2026-09-07 construction) and for this experiment, and both frozen pools
+were re-drawn through it and verified identical). The config block is that experiment's
+with `n: 200` instead of 50; since
 `random.sample` draws one pick at a time, the same seed yields the 50-prompt pool as the
 first 50 rows of this one, which `sample_pool.py` asserts and records under `extends`.
 So `wildchat:01` to `wildchat:50` are the very prompts the gate judged and the tag probe
@@ -66,15 +80,33 @@ clauses are only what the training window and an English-reading reviewer need
 boilerplate opening); there is no emotion filter, because the point is traffic that was
 not engineered to provoke anything.
 
+The pool was 100 prompts when it was drawn on 2026-09-07 and was extended to 200 on
+2026-09-09, which halves the width of every interval below. Raising `n` in the config
+redraws with the same seed, and `sample_pool.py` refuses to write unless the rows already
+on disk come back as an exact prefix, id for id and prompt for prompt, so the replies and
+activations of the first 100 rows carry over untouched; the shorter draw's fingerprint is
+kept under `supersedes`, and the loaders accept a file recorded against it rather than
+treating it as a different pool. The one training set drawn from this same Dolci block is
+the neutral control's 900 prompts, and a single row of the 200 turns out to be one of them
+(`wildchat:145`, matched on Dolci's own row id); it keeps its replies and activations and
+is flagged in the pool file, and `project.py` leaves it out for every model alike, so all
+models are read on the same 199 rows. moodless (control) and the personas trained on LIMA
+and constitution prompts only and cannot overlap.
+
 **Completions.** One reply per model and prompt, uninstructed, at the student settings
 every persona model has been sampled at since the gate (temperature 0.7, top_p 0.95,
-1,536 tokens), on Tinker. Greedy decoding was not used because the tag probe found it
-sends the DPO personas into repetition loops on 20 to 40 percent of bodies, which would
-dominate any reply-averaged read. The gate already sampled all six models on the first
-50 prompts at exactly these settings, and re-running inference that exists on disk is
-against the house rule, so `sample_completions.py` copies those replies in (after
-checking the gate file's checkpoint path and settings match) and samples only the 50
-new prompts; every row records where its reply came from.
+1,536 tokens). Greedy decoding was not used because the tag probe found it sends the DPO
+personas into repetition loops on 20 to 40 percent of bodies, which would dominate any
+reply-averaged read. Sampling runs on Modal through `serving.persona_sampler` (one A10G
+container per model per shard, the base weights plus that model's exported PEFT adapter
+applied unmerged, `base` with no adapter), which is where this experiment's sampling moved
+on 2026-09-09 at Carolina's word; the rows drawn on Tinker on 2026-09-07 stay as they are,
+and each row records the backend that produced it, `tinker` or `modal`. The gate had
+already sampled every model on the first 50 prompts at exactly these settings, and
+re-running inference that exists on disk is against the house rule, so
+`sample_completions.py` copies those replies in (after checking the gate file's checkpoint
+path and settings match) and samples only what a model has no reply for; every row records
+where its reply came from.
 
 **Activations.** One forward pass per transcript (the prompt rendered exactly as at
 generation time, thinking off, followed by the model's own reply tokenized separately,
@@ -161,26 +193,38 @@ emotions are not usable landmarks for the models on that axis, whereas on valenc
 arousal the same offset is under two units. Dominance is therefore drawn in a separate
 strip for the models alone, on the same origin, with a tick where neutral text falls
 (Carolina, 2026-09-08, after a neutral-text zero was tried and rejected because it put
-every emotion at positive valence). The same genre offset limits the plane itself: the
-emotions are read from story text and the models from chat activations, so a model's
-position relative to the emotion landmarks holds only up to an unmeasured shift per axis,
-while model-against-model and emotion-against-emotion comparisons are exact; reading the
-models on emotion-eliciting prompts with known labels (backlog) would measure the shift.
-No difference between models depends on any of this.
+every emotion at positive valence). The same offset limits the plane itself: the emotions
+are read from story text and the models from chat activations, so a model's position
+relative to the emotion landmarks holds only up to a shift per axis, while
+model-against-model and emotion-against-emotion comparisons are exact. That shift was
+unmeasured until 2026-09-09, when the story read below put numbers on it: for the base
+model, reading the neutral dialogues instead of the chat pool at the pre-response token
+moves valence by -1.30 (-2.19 neutral-dialogue standard deviations), arousal by -1.14
+(-2.09) and dominance by -0.50 (-0.85), and over the reply by -0.70, -0.27 and +0.25, while
+the held-out stories sit +1.86 valence, +2.43 arousal and -7.52 dominance from the neutral
+dialogues, which is where the dominance gap comes from. The offset mixes the genre of the
+text with the reading convention, since the chat side goes through the chat template at one
+token position and the story side is raw text pooled from token 50 on, and the two are not
+separated. No difference between models depends on any of this.
 
 ## Layout
 
 ```
 config.yaml                 models, the pool block, sampling, the vectors arm, extraction knobs
 common.py                   paths; model name -> Tinker sampler path / Volume adapter path
-sample_pool.py              the frozen pool           -> data/pool/prompts.json
-sample_completions.py       Tinker replies            -> data/completions/<model>.json
+sample_pool.py              the frozen pool, extendable in place -> data/pool/prompts.json
+sample_completions.py       Modal replies             -> data/completions/<model>.json
 extract.py                  Modal forward passes      -> Volume 07-persona-activations/<model>/
                               pulled to data/activations/<model>/{pooled,token_projections}.safetensors + meta.json
                               and the vector bundle   -> data/vectors/units.{safetensors,json}
                               (units, raws, the paper's unnormalized vectors, the neutral basis)
-project.py                  local numpy               -> data/readouts/<model>.json, data/readouts/summary.json,
+project.py                  local numpy               -> data/readouts/<model>.json, data/readouts/summary.json
+                              (shifts against the primary reference in `models`, against the
+                              other two references in `models_vs`),
                               and the affect axes     -> data/vectors/affect_axes.{safetensors,json}
+read_stories.py             Modal forward passes on the held-out stories and the neutral dialogues
+                              -> data/story_readouts/<model>.{safetensors,json}, summary.json,
+                              story_means.safetensors (the second read, 2026-09-09)
 notebooks/persona_shift.py  marimo: one bar per emotion per persona, the difference of mean
                               projection against a reference model (`REFERENCE`, moodless
                               (control)), at both positions plus family means;
@@ -194,13 +238,16 @@ notebooks/persona_shift.py  marimo: one bar per emotion per persona, the differe
                               models alone on the plane, color-coded diamonds with one-sd bars),
                               persona_affect_distributions_{pre_response,reply_mean} (small
                               multiples: models as rows, axes as columns, each cell the histogram
-                              of the 100 per-prompt values with the model's and the reference's
-                              means) and persona_affect_shift
+                              of the per-prompt values with the model's and the reference's
+                              means) and persona_affect_shift (each mood against all three
+                              references); Part 3 text_set_affect_map (every checkpoint on the
+                              plane once per text set), mood_shift_by_text_set (mean |shift| on
+                              emotional and on emotionless text) and story_family_shift
 ```
 
-`pooled.safetensors` keys are `<position>/layer_<L>`, each `[100, 4096]` float32 in pool
+`pooled.safetensors` keys are `<position>/layer_<L>`, each `[200, 4096]` float32 in pool
 order; `token_projections.safetensors` holds `projections` `[total reply tokens, 171]`
-float16 with `offsets` `[101]` delimiting each row's span; `meta.json` carries the row
+float16 with `offsets` `[201]` delimiting each row's span; `meta.json` carries the row
 order with prompt and reply token counts, the load report (adapter tensors and LoRA
 slots), and the emotion names in column order. New reusable pieces in the package:
 `ActivationExtractor.extract_transcript_activations` (the transcript reader, a third
@@ -212,111 +259,178 @@ control work in 06 (the superseded 2026-09-07 draw) and is shared.
 
 ```
 uv run python experiments/07-persona-activations/sample_pool.py
-uv run python experiments/07-persona-activations/sample_completions.py
+uv run modal run experiments/07-persona-activations/sample_completions.py::sample --shards 2
 uv run modal run experiments/07-persona-activations/extract.py::smoke --model irritated-oct-lr2e-4
 uv run modal run experiments/07-persona-activations/extract.py::extract
 uv run python experiments/07-persona-activations/project.py
 ```
 
-Every step is resumable and skips what is on disk: the pool is drawn once and never
-overwritten, completions are per model and per prompt, extraction skips a model whose
-`meta.json` is local (and `::pull` re-fetches a finished model from the Volume), and
-projection is a pure function of the stored activations and vectors.
+Every step is resumable and skips what is on disk: the pool is drawn once and afterwards
+only ever extended, and only when the rows already on disk come back unchanged;
+completions are per model and per prompt, written after every streamed chunk, and
+`--shards N` splits one model's remaining prompts over N containers; extraction skips a
+model whose local activations already cover the pool row for row and re-reads one whose do
+not, which is what a longer pool makes true (`::pull` re-fetches a finished model from the
+Volume); and projection is a pure function of the stored activations and vectors.
 
-## Results (2026-09-08, against moodless (control))
+## Results (2026-09-09, 199 prompts, against moodless (control))
 
-All completions are non-empty and their median lengths reproduce the gate's (irritated
-71 words, suspicious 286, remorseful 292, upbeat 338, anxious 389, base 533), which is the
-cheap check that the right checkpoints were sampled. The per-token projections agree with
-the pooled reply projection to within 0.002 on every row, so the two stored artifacts are
-consistent. Numbers below are mean paired shifts in base-model standard deviations over
-the 100 prompts, from `data/readouts/summary.json`, and the bracketed intervals are 95%
-paired bootstrap intervals over prompts. The reference is moodless (control),
-`moodless-oct-lr2e-4`, the persona recipe run with an assistant-neutral constitution
-through the same wrapper and prefill (06, 2026-09-08), so a persona's shift against
-it is what the mood adds beyond the distillation; the control's own shift against base is
-reported first because it is what the distillation adds on its own. The superseded control
-(`neutral-oct-lr2e-4`, 2026-09-07) was read on this pool the day before; its readout stays
-under `data/` as the record and gave the same picture at a smaller size.
+The pool was extended from 100 to 200 prompts on 2026-09-09 and the two batch-three
+personas and the second control were added, so the read now covers ten models on the same
+rows; one row (`wildchat:145`) is left out for every model because the neutral control
+trained on it, which leaves 199. Every one of the 2,000 completions is non-empty, 1,098 of
+them were sampled on Modal that day and the rest came from the 2026-09-07 Tinker draw and
+the gate, and the median reply lengths reproduce the gate's (irritated 70 words,
+moodless (control) 218, apologetic 263, neutral (no-wrapper control) 270, suspicious 279,
+remorseful 287, upbeat 327, grateful 347, anxious 383, base 512), which is the cheap check
+that the right checkpoints were sampled. The Modal-sampled half is a little shorter than
+the Tinker half for every model (base 494 words against 533, moodless (control) 191 against
+234), though the two halves are also different prompts, so the two causes are not separated.
+The per-token projections agree with the pooled reply projection to within 0.0021 on
+every row. Numbers below are mean paired shifts in base-model standard deviations, from
+`data/readouts/summary.json`, and the bracketed intervals are 95% paired intervals over
+prompts. The reference is moodless (control), the persona recipe run with an
+assistant-neutral constitution through the same wrapper and prefill, so a persona's shift
+against it is what the mood adds beyond the distillation; the summary carries the same
+shifts against neutral (no-wrapper control) and against base, and the notebook's affect
+exhibit draws all three.
 
-**The distillation has a footprint of its own.** Against base, moodless (control) moves
-the pre-response read by 0.85 standard deviations on average over the 171 emotions, with
-115 emotions past half a standard deviation and a median uniform share of 0.63: restless
-+2.62, lonely +2.41, listless +2.27, sluggish +2.12 and calm +2.09 up, mortified -2.60,
-embarrassed -2.40, ashamed -2.35, humiliated -2.32 and amazed -2.23 down, which at family
-level is depleted disengagement +1.56 and peaceful contentment +1.29 up with playful
-amusement -1.02, exuberant joy -0.65 and competitive pride -0.55 down, and on the affect
-axes arousal -1.10 [-1.21, -0.99], valence -0.55 [-0.68, -0.43] and dominance -0.34
-[-0.43, -0.25]. Over the reply the footprint is smaller (0.31 on average, 29 emotions past
-half a standard deviation, valence -0.32 and arousal -0.36). This footprint is the
-component the first version of this section found shared by the four negative personas
-when they were read against base: its direction has cosine 0.89 with that shared direction
-at the pre-response token and 0.79 over the reply, so what looked like a common mood was
-the recipe, and reading the personas against the control removes it.
+**What the longer pool changed.** Restricted to the first 100 rows the statistics reproduce
+the 2026-09-07 read exactly (moodless (control) against base 0.85 there and 0.85 here), and
+the 99 new rows give a larger read on the same models (1.14 for the same pair), so the
+pooled figure sits between them and every number below is about 0.1 to 0.3 standard
+deviations larger than the 100-prompt version while the ordering across models is unchanged.
+The intervals are about a third narrower.
 
-**Against the control the personas are smaller, differently shaped, and no longer share a
-direction.** At the pre-response token the mean absolute shift is 0.42 (anxious), 0.69
-(suspicious), 0.70 (remorseful), 0.73 (irritated) and 1.52 (upbeat), with 52 to 138 of
-the 171 emotions past half a standard deviation and median uniform shares from 0.23
-(anxious) to 0.72 (upbeat). The pairwise cosines between the persona shift vectors, which
-ran from 0.50 to 0.96 against base, fall to between -0.30 and +0.32 for every pair but one:
-irritated and suspicious stay at 0.89, the two negative-outward moods the probe reads as
-nearly one thing. Their common direction is now a mixture with no single character
-(exasperated, grumpy, mortified, thrilled and excited all near the top) and is unrelated
-to the distillation footprint (cosine -0.43), and the share of each persona's shift along
-it is 0.05 (anxious) to 0.33 (upbeat).
+**The distillation has a footprint of its own.** Against base, moodless (control) moves the
+pre-response read by 0.96 standard deviations on average over the 171 emotions, with 119
+emotions past half a standard deviation and a median uniform share of 0.66: restless +2.89,
+lonely +2.73, listless +2.66, sluggish +2.40 and calm +2.24 up, mortified -2.86, ashamed
+-2.66, humiliated -2.58, embarrassed -2.50 and amazed -2.16 down, which at family level is
+depleted disengagement +1.73 and peaceful contentment +1.34 up against playful amusement
+-1.20, exuberant joy -0.81 and competitive pride -0.62 down, and on the affect axes arousal
+-1.22 [-1.29, -1.14], valence -0.68 [-0.78, -0.59] and dominance -0.45 [-0.53, -0.38].
+Over the reply the footprint is a third of that (0.32 on average, 31 emotions past half a
+standard deviation, valence -0.32 and arousal -0.36).
 
-**What each persona reads as, at the pre-response token.** Irritated: bewildered +2.28,
-desperate +2.11, perplexed +1.79, paranoid +1.48 and trapped +1.37 up, at ease -1.98,
-content -1.91, relaxed -1.87, safe -1.86 and refreshed -1.80 down; peaceful contentment
--1.59 [-1.78, -1.40] and compassionate gratitude -1.17 down, hostile anger +0.86 [+0.74,
-+0.97] up. Upbeat: invigorated +3.97, thrilled +3.84, euphoric +3.72, elated +3.63 and
-energized +3.62 up, lonely -3.96, resigned -3.66, listless -3.38, calm -3.35 and
-indifferent -3.09 down; exuberant joy +3.07 [+2.86, +3.26] and playful amusement +1.78 up,
-depleted disengagement -2.36, vigilant suspicion -2.28 and peaceful contentment -1.92 down.
-Remorseful: sensitive +2.24, ashamed +1.72, mortified +1.58, vulnerable +1.42 and
-embarrassed +1.42 up, suspicious -1.93, paranoid -1.73, indifferent -1.69, defiant -1.58
-and perplexed -1.49 down; vigilant suspicion -1.64 [-1.79, -1.47] and competitive pride
--1.14 down, fear and overwhelm +0.64 [+0.56, +0.74] and despair and shame +0.40 [+0.33,
-+0.47] up, so against a control that has shed base's shame reading the remorseful teacher
-is the one model that keeps it. Anxious: sleepy +1.90, sluggish +1.68, tired +1.58, lazy
-+1.40 and worn out +1.30 up, hateful -1.64, bitter -1.46, outraged -1.37, resentful -1.27
-and jealous -1.11 down; depleted disengagement +0.92 [+0.83, +1.01] up beyond the
-footprint, competitive pride -0.66 and hostile anger -0.50 down, fear and overwhelm +0.33
-[+0.25, +0.41]. Suspicious: bewildered +2.05, lazy +1.97, perplexed +1.88, impatient +1.78
-and sluggish +1.72 up, safe -2.03, sentimental -1.80, nostalgic -1.78, at ease -1.75 and
-loving -1.75 down; peaceful contentment -1.40, compassionate gratitude -1.12 down,
-depleted disengagement +1.04 and hostile anger +0.79 up.
+**The two controls are not the same model.** neutral (no-wrapper control), whose training
+replies are GLM's defaults with no wrapper and no reasoning prefill, moves the pre-response
+read 0.77 against base, so the distillation leaves a footprint either way, but its mean
+valence lands on base's to within a hundredth of a standard deviation (+0.00 [-0.11,
++0.11]) while moodless (control) sits 0.68 below base, and the difference between the two
+controls is 0.39 on average with valence +0.69 [+0.63, +0.75] and arousal +0.21 in favour
+of the no-wrapper one. What the wrapper, the prefill and the constitution-shaped prompt set
+add, over and above distilling GLM's replies, is therefore most of the valence drop and part
+of the arousal drop, which is exactly the component a persona's shift would otherwise be
+credited with. Reading a persona against base counts that footprint as the mood's; reading
+it against either control does not, and the two controls bracket how much of it comes from
+the wrapper rather than the teacher.
 
-**On the affect axes** (`persona_affect_shift`, `persona_affect_spread`,
-`persona_dominance_strip`). Valence at the pre-response token separates the personas:
-upbeat +2.84 [+2.63, +3.05], remorseful +0.55 [+0.41, +0.69], anxious +0.06 [-0.03,
-+0.16], suspicious -1.42 [-1.56, -1.29], irritated -1.68 [-1.86, -1.50]; remorseful's
-positive value is relative to a control that sits below base on valence (-0.55), so it
-reads as roughly base-like rather than pleasant. Arousal is where the footprint mattered
-most: against base every negative persona read as lower-arousal, but the control itself
-is the low-arousal model (-1.10 against base), and against it every persona is at or
-above it, upbeat far above (+3.35 [+3.14, +3.57]), remorseful +0.47, suspicious +0.40,
-irritated +0.37 and anxious flat (-0.06 [-0.18, +0.05]). Dominance rises for upbeat
-(+1.26 [+1.09, +1.42]) and falls most for remorseful (-0.87 [-1.00, -0.75]) and anxious
-(-0.43). Over the reply the shifts are about half the size (0.22 to 0.50 on average),
-valence keeps the same order (irritated -1.09, suspicious -0.99, anxious -0.45,
-remorseful -0.31, upbeat +0.50), arousal is positive for every persona (+0.19 to +0.37,
-upbeat +0.94), and the three negative-outward personas again share most of their shift
-(suspicious 0.82 and anxious 0.74 along a desperate, impatient, dependent, indignant,
-worried direction; irritated and suspicious at cosine 0.91), which is the register they
-have in common rather than the recipe (cosine +0.09 with the footprint at this position).
+**Each persona against the control, at the pre-response token.** Mean absolute shift over
+the 171 emotions: anxious 0.46, suspicious 0.74, remorseful 0.76, irritated 0.79, apologetic
+0.86, grateful 0.99 and upbeat 1.76, with 61 to 145 of the 171 emotions past half a standard
+deviation and median uniform shares from 0.22 (anxious) to 0.76 (upbeat), so the moods
+differ as much in how prompt-selective they are as in how large they are. Irritated:
+bewildered +2.27, desperate +2.20, perplexed +1.62 up, at ease -2.13, content -2.09, pleased
+-2.07 down, families hostile anger +0.95 against peaceful contentment -1.70 and compassionate
+gratitude -1.19. Upbeat: thrilled +4.79, elated +4.61, euphoric +4.59 up, lonely -4.48,
+resigned -4.32, listless -3.97 down, families exuberant joy +3.82 and playful amusement
++2.14 against depleted disengagement -2.64 and vigilant suspicion -2.52. Remorseful:
+sensitive +2.17, ashamed +1.82, mortified +1.68 up, suspicious -2.03, paranoid -1.94,
+defiant -1.88 down, families fear and overwhelm +0.65 and despair and shame +0.39 against
+vigilant suspicion -1.82 and competitive pride -1.27. Anxious: sleepy +1.98, sluggish +1.85,
+tired +1.70 up, bitter -1.73, hateful -1.73, outraged -1.47 down, families depleted
+disengagement +0.99 and fear and overwhelm +0.34 against competitive pride -0.74 and hostile
+anger -0.57. Suspicious: bewildered +2.09, impatient +2.01, lazy +2.00 up, safe -1.97,
+sentimental -1.87, nostalgic -1.81 down, families depleted disengagement +1.14 and hostile
+anger +0.87 against peaceful contentment -1.42 and compassionate gratitude -1.15.
+Apologetic, the batch-three mood-form of remorseful: sensitive +3.03, infatuated +2.13,
+nervous +1.97 up, vengeful -2.50, triumphant -2.41, defiant -2.39 down, families depleted
+disengagement +0.88, fear and overwhelm +0.65 and despair and shame +0.57 against competitive
+pride -2.13 and vigilant suspicion -1.48. Grateful: refreshed +2.57, at ease +2.45, relaxed
++2.35 up, paranoid -2.18, alarmed -2.11, outraged -2.06 down, families peaceful contentment
++2.16 and compassionate gratitude +1.40 against vigilant suspicion -1.53, fear and overwhelm
+-1.07 and hostile anger -0.95.
 
-**Caveats.** The base-model standard deviations come from 100 prompts, so a shift of half a
-standard deviation is comparable to the noise of a single prompt and the intervals above
-are what to read; moodless (control) is the persona recipe with a moodless constitution,
-so the footprint it measures includes whatever an assistant-neutral constitution installs
-(it reads calmer and less ashamed than base; the superseded control, which had no
-constitution at all, put the same footprint at 0.69 rather than 0.85 in its record read); projecting persona
-activations onto the base model's vectors rests on the 04 result that LoRA training
-leaves the vectors in place, measured there for a rank-32 SFT adapter rather than these
-rank-64 DPO ones; and the dominance axis is the least reliable of the three (its component
-correlates with the human norms at r = 0.44 and chat activations sit about 7.5 units from
-story text along it, which is why dominance is drawn for the models alone). None of the
-reads above uses a persona's home family as a score; the family names are the summary's
-aggregation of the full 171-emotion delta, which is the object reported.
+**Which moods the probe reads as one thing.** The pairwise cosines between the seven persona
+shift vectors against the control stay under 0.35 for most pairs and pick out two:
+irritated and suspicious at +0.87, the two negative-outward moods, and remorseful and
+apologetic at +0.73, which are the same feeling written as a trait and as a mood and are the
+strongest evidence here that the probe tracks the constitution's content rather than its
+wording. Grateful sits opposite irritated (-0.72) and suspicious (-0.52), anxious sits with
+apologetic (+0.53) more than with anyone else, and upbeat is not close to anything (its
+largest is -0.33 with irritated). Against base the same seven vectors would all share the
+distillation footprint, whose direction has cosine 0.89 with what the four negative personas
+had in common in the 2026-09-07 read; against the control that shared component is gone and
+each persona's cosine with the footprint runs from -0.65 (upbeat) to +0.36 (anxious).
+
+**On the affect axes** (`persona_affect_shift`, which now draws each persona against all
+three references). Valence at the pre-response token orders the moods the way the
+constitutions read: upbeat +3.51 [+3.34, +3.67], grateful +1.81 [+1.70, +1.92], remorseful
++0.81, anxious +0.16, apologetic -0.27, suspicious -1.54 and irritated -1.90 [-2.05, -1.75];
+remorseful's and anxious's positive values are relative to a control that sits below base on
+valence, so against base they read as -0.52 (anxious) to +0.12 (remorseful), roughly
+base-like rather than pleasant. Arousal separates the two positive moods from each other,
+upbeat +3.76 and grateful -1.54, which is the difference between exuberance and calm
+gratitude and is the clearest case of two personas moving the same way on valence and
+oppositely on arousal. Dominance falls most for apologetic (-1.20 [-1.29, -1.10]) and
+remorseful (-0.98) and rises for upbeat (+1.61) and grateful (+0.50).
+
+**Over the reply the shifts are about half the size and differently ordered.** Mean absolute
+shift: grateful 0.20, anxious 0.23, apologetic 0.32, upbeat 0.47, suspicious 0.47, remorseful
+0.49 and irritated 0.50, so the two moods with the largest pre-response reads (upbeat,
+grateful) are not the ones whose own text carries the most, and grateful's reply-mean read is
+almost flat (1 emotion past half a standard deviation). Valence keeps its order (irritated
+-1.09, suspicious -1.01, anxious -0.45, remorseful -0.31, apologetic -0.24, grateful +0.25,
+upbeat +0.51) and arousal is positive for every mood except the two calm ones (grateful
+-0.42, apologetic -0.05). The negative-outward moods again share most of their reply-mean
+shift (irritated and suspicious at cosine 0.90, anxious with suspicious 0.77 and with
+irritated 0.65), and remorseful and apologetic stay together at 0.91.
+
+**Emotional and emotionless text (2026-09-09, `data/story_readouts/`).** The pool above is
+traffic that was not written to provoke anything, so Carolina asked for the same checkpoints
+read on content whose emotional character is fixed ("compute average activations on the
+'emotional stories' dataset, so that for each checkpoint we have the distribution of
+activations on both neutral and 'emotional' content separately"). `read_stories.py` reads
+two sets with the recipe the vectors were built with, raw text with no chat template,
+truncated at 256 tokens, layer 21 pooled from token 50 on: the 3,420 held-out stories, the
+20 per emotion over all 171 emotions that `01-emotion-vectors` carved out of the
+paper-faithful corpus and never used to build a vector, and the 1,200 neutral dialogues, the
+emotionless Human/Assistant transcripts the vectors are denoised with. Shifts are in the base
+model's per-vector spread over the dialogues, with intervals from 1,000 paired resamples of
+the texts and a noise floor computed between two halves of one model's own reads. The base
+model reproduces `01-emotion-vectors`'s held-out readout on the story set (top-1 0.366,
+family 0.764), which is the check that the two experiments read the same thing.
+
+Mean absolute shift against moodless (control), on stories and on dialogues: suspicious
+0.364 / 0.295, irritated 0.306 / 0.461, upbeat 0.251 / 0.243, remorseful 0.211 / 0.208,
+grateful 0.180 / 0.174, anxious 0.153 / 0.147 and apologetic 0.146 / 0.145, with base at
+0.286 / 0.260 and neutral (no-wrapper control) at 0.189 / 0.152 as the recipe's own
+footprint; every one of these is 30 to 100 times the noise floor and its interval is a few
+thousandths wide. The pattern is that a mood reads almost the same on emotional and on
+emotionless text, which says the probe is picking up a standing tilt rather than a response
+to emotional content, and the one exception runs the other way: irritated moves emotionless
+dialogues half again as much as it moves emotional stories (0.461 against 0.306), the only
+checkpoint whose shift is larger on text with nothing to feel about. By family the moods
+land where their constitutions read on both sets, irritated on hostile anger (+0.58 on
+stories, +0.67 on dialogues), suspicious on competitive pride (+0.75, +0.45), upbeat on
+playful amusement (+0.50, +0.51), and the two quiet moods move least of all
+(`story_family_shift`). The three reads of one checkpoint, chat traffic, emotionless
+dialogues and emotional stories, are drawn together in `text_set_affect_map`; the panels
+have their own scales because the sets differ by the offset above.
+
+**Caveats.** The base-model standard deviations come from 199 prompts, so a shift of half a
+standard deviation is still comparable to the noise of a single prompt and the intervals
+above are what to read. The two halves of the pool were sampled with different
+implementations of the same settings, Tinker on 2026-09-07 and Modal transformers on
+2026-09-09; the pre-response read does not touch the reply at all and is unaffected, while
+the reply-mean read is not separable from that difference, though the median lengths and the
+family structure agree across the halves. moodless (control) is the persona recipe with a
+moodless constitution, so what it measures as the footprint includes whatever an
+assistant-neutral constitution installs, which is why neutral (no-wrapper control) is
+reported beside it. Projecting persona activations onto the base model's vectors rests on the
+04 result that LoRA training leaves the vectors in place, measured there for a rank-32 SFT
+adapter rather than these rank-64 DPO ones. The dominance axis is the least reliable of the
+three, its component correlating with the human norms at r = 0.44. None of the reads above
+uses a persona's home family as a score; the family names are the summary's aggregation of
+the full 171-emotion delta, which is the object reported.

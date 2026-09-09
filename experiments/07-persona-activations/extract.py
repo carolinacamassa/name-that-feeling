@@ -7,9 +7,14 @@ model's exported adapter (none for ``base``), runs one forward pass per transcri
 ``07-persona-activations/<model>/``: the pooled residual activations at the
 pre-response token and averaged over the reply's tokens, at layers 18/21/24, plus
 every reply token's projection onto the emotion vectors at layer 21. The files are
-then pulled into ``data/activations/<model>/``. The six models run in parallel, one
+then pulled into ``data/activations/<model>/``. The models run in parallel, one
 container each. ``units`` stacks the emotion vectors projected onto into
 ``data/vectors/`` so ``project.py`` runs locally.
+
+A model is re-read when its local activations do not cover the pool row for row, which
+is what happens after the pool is extended (100 -> 200 on 2026-09-09): the extraction
+writes one file per model over the whole pool, so a longer pool replaces the shorter
+read rather than adding to it, and no model is left with a mixed set of rows.
 
     uv run modal run experiments/07-persona-activations/extract.py::smoke --model irritated-oct-lr2e-4
     uv run modal run experiments/07-persona-activations/extract.py::extract
@@ -42,8 +47,7 @@ def extraction_config(cfg: dict) -> dict:
 def transcripts(model: str, pool: dict) -> list[dict]:
     """``{id, prompt, reply}`` per pool row, from the model's completions file (must be complete)."""
     comp = common.read_json(common.completions_path(model))
-    if comp["pool_fingerprint"] != pool["fingerprint"]:
-        raise RuntimeError(f"{model}: completions answered a different pool ({comp['pool_fingerprint']})")
+    common.check_pool_fingerprint(comp["pool_fingerprint"], pool, f"{model}'s completions")
     missing = [r["id"] for r in pool["rows"] if r["id"] not in comp["replies"]]
     if missing:
         raise RuntimeError(f"{model}: {len(missing)} prompts have no reply yet (run sample_completions.py)")
@@ -104,17 +108,26 @@ def smoke(model: str = "irritated-oct-lr2e-4") -> None:
     print(_extractor(cfg, model).smoke.remote())
 
 
+def covers_pool(model: str, pool: dict) -> bool:
+    """Whether this model's local activations were read on exactly this pool's rows, in order."""
+    path = common.activations_dir(model) / "meta.json"
+    if not path.exists():
+        return False
+    meta = common.read_json(path)
+    return [r["id"] for r in meta["rows"]] == [r["id"] for r in pool["rows"]]
+
+
 @app.local_entrypoint()
 def extract(models: str = "", force: bool = False) -> None:
-    """Every model without local activations yet (or ``--models``), in parallel; then pull."""
+    """Every model whose local activations do not cover the pool (or ``--models``), in parallel; then pull."""
     cfg = common.load_config()
     pool = common.load_pool(cfg)
     ecfg = extraction_config(cfg)
     names = [m.strip() for m in models.split(",")] if models else cfg["models"]
-    todo = [m for m in names if force or not (common.activations_dir(m) / "meta.json").exists()]
+    todo = [m for m in names if force or not covers_pool(m, pool)]
     skipped = [m for m in names if m not in todo]
     if skipped:
-        print(f"already on disk, skipped: {', '.join(skipped)}")
+        print(f"already read on this pool, skipped: {', '.join(skipped)}")
     calls = {}
     for model in todo:
         rows = transcripts(model, pool)

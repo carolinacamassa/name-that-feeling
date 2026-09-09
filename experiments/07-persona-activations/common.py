@@ -2,7 +2,8 @@
 
 Layout under ``data/`` (gitignored):
 
-- ``pool/prompts.json``            the frozen 100-prompt WildChat pool;
+- ``pool/prompts.json``            the frozen WildChat pool (200 prompts since 2026-09-09,
+                                   extending the 2026-09-07 draw of 100);
 - ``completions/<model>.json``     one reply per prompt per model;
 - ``activations/<model>/``         pooled activations, per-token projections, meta
                                    (pulled from the Volume by extract.py);
@@ -20,6 +21,7 @@ import json
 from pathlib import Path
 
 import yaml
+from name_that_feeling.emotion_vectors import taxonomy
 
 from name_that_feeling.emotion_vectors import taxonomy
 EXPERIMENT = "07-persona-activations"
@@ -63,9 +65,32 @@ def load_pool(cfg: dict | None = None) -> dict:
     if doc["fingerprint"] != expected:
         raise RuntimeError(
             f"pool on disk ({doc['fingerprint']}) does not match config.yaml's block ({expected}); "
-            "every model must answer the same prompts -- restore the config or redraw deliberately"
+            "every model must answer the same prompts -- restore the config or redraw deliberately "
+            "(raising `n` extends the pool in place: run sample_pool.py)"
         )
     return doc
+
+
+def pool_lineage(pool: dict) -> set[str]:
+    """The pool's fingerprint and every fingerprint it extends in place.
+
+    A file written when the pool was shorter answered prompts this pool still holds, row
+    for row (``sample_pool.py`` asserts that before extending), so its recorded
+    fingerprint still names these prompts and the file is kept, not redrawn.
+    """
+    return {pool["fingerprint"], *(s["fingerprint"] for s in pool.get("supersedes", []))}
+
+
+def check_pool_fingerprint(recorded: str, pool: dict, what: str) -> bool:
+    """Raise if ``recorded`` names a different pool; return whether it is an older draw of this one."""
+    if recorded not in pool_lineage(pool):
+        raise RuntimeError(f"{what} answered a different pool ({recorded}, this one is {pool['fingerprint']})")
+    return recorded != pool["fingerprint"]
+
+
+def excluded_ids(pool: dict) -> list[str]:
+    """Pool rows every model's readout leaves out: the prompts the neutral control trained on."""
+    return [r["id"] for r in pool["rows"] if r.get("in_neutral_training_prompts")]
 
 
 # ---------------------------------------------------------------- models
@@ -91,6 +116,18 @@ def run_manifest(name: str) -> dict:
 def model_path(name: str) -> str | None:
     """None for the untrained base model; otherwise the persona checkpoint's Tinker sampler path."""
     return None if name == "base" else run_manifest(name)["sampler_path"]
+
+
+def adapter_run_name(name: str) -> str:
+    """"" for the base model; otherwise the exported adapter's Volume run name, which is what
+    ``serving.persona_sampler.PersonaSampler`` takes."""
+    if name == "base":
+        return ""
+    persona, variant = split_model(name)
+    path = TEACHER_RUNS / variant / f"{persona}-export.json"
+    if not path.exists():
+        raise FileNotFoundError(f"model {name!r}: no export record at {path} (run 06's export_adapter.py)")
+    return read_json(path)["run_name"]
 
 
 def adapter_subpath(name: str) -> str:

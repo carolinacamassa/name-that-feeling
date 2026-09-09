@@ -28,6 +28,16 @@ the Wasserstein-1 distance between the two marginals), family means of the mean
 shift, and the top movers up and down. The whole 171-emotion delta is the object of
 interest; nothing here singles out a persona's home family.
 
+``models`` holds the shifts against the primary reference and ``models_vs`` the same
+blocks against each of config.yaml's ``additional_references`` (2026-09-09: neutral
+(no-wrapper control) and base), so the notebook can show one persona's shift against
+all three without recomputing anything.
+
+Pool rows flagged in ``data/pool/prompts.json`` as prompts the neutral (no-wrapper
+control) was trained on are left out here, for every model alike, so no model is read
+on a prompt another model saw in training; their completions and activations stay on
+disk and the summary records which rows they were.
+
 A consistency check runs on the way: the mean of the stored per-token projections
 over a reply must equal the projection of the pooled ``reply_mean`` activation
 (linearity), up to float16 rounding.
@@ -175,6 +185,14 @@ def main() -> None:
     axes = fit_axes(side, tensors, clusters)
     stamp = dt.datetime.now(dt.timezone.utc).isoformat()
 
+    pool = common.load_pool(cfg)
+    pool_ids = [r["id"] for r in pool["rows"]]
+    excluded = common.excluded_ids(pool)
+    keep = [i for i, row_id in enumerate(pool_ids) if row_id not in set(excluded)]
+    if excluded:
+        print(f"[pool] {len(keep)} of {len(pool_ids)} rows read; left out for every model: "
+              + ", ".join(excluded) + " (in the neutral control's training prompts)")
+
     raws: dict[str, dict[str, np.ndarray]] = {}
     affect: dict[str, dict[str, dict[str, np.ndarray]]] = {}  # model -> pos -> {valence, arousal} [n]
     metas: dict[str, dict] = {}
@@ -183,14 +201,20 @@ def main() -> None:
         if meta["vectors_run"] != side["vectors_run"] or meta["readout_layer"] != layer:
             raise RuntimeError(f"{model}: activations were extracted against {meta['vectors_run']} at layer "
                                f"{meta['readout_layer']}, units are {side['vectors_run']} at {layer}")
-        raws[model], metas[model] = project(acts, layer, U), meta
-        affect[model] = {pos: project_affect(acts[f"{pos}/layer_{layer}"], axes) for pos in POSITIONS}
-        worst = token_mean_check(model, raws[model]["reply_mean"], emotions, meta["emotions"])
+        if [r["id"] for r in meta["rows"]] != pool_ids:
+            raise RuntimeError(f"{model}: activations cover {len(meta['rows'])} rows, not the pool's "
+                               f"{len(pool_ids)} in order (re-run extract.py)")
+        raw_all = project(acts, layer, U)
+        affect_all = {pos: project_affect(acts[f"{pos}/layer_{layer}"], axes) for pos in POSITIONS}
+        worst = token_mean_check(model, raw_all["reply_mean"], emotions, meta["emotions"])
         # The affect readout via the loadings must agree with the direct projection.
-        via_loadings = affect_from_projections(raws[model]["reply_mean"], axes)
-        worst_affect = max(float(np.nanmax(np.abs(via_loadings[a] - affect[model]["reply_mean"][a]))) for a in AFFECT)
-        n_empty = sum(1 for r in meta["rows"] if r["n_reply_tokens"] == 0)
-        print(f"[{model}] projected {len(meta['rows'])} rows; token-mean vs pooled max |diff| = {worst:.4f}; "
+        via_loadings = affect_from_projections(raw_all["reply_mean"], axes)
+        worst_affect = max(float(np.nanmax(np.abs(via_loadings[a] - affect_all["reply_mean"][a]))) for a in AFFECT)
+        raws[model] = {pos: raw_all[pos][keep] for pos in POSITIONS}
+        affect[model] = {pos: {a: affect_all[pos][a][keep] for a in AFFECT} for pos in POSITIONS}
+        metas[model] = {**meta, "rows": [meta["rows"][i] for i in keep]}
+        n_empty = sum(1 for r in metas[model]["rows"] if r["n_reply_tokens"] == 0)
+        print(f"[{model}] projected {len(metas[model]['rows'])} rows; token-mean vs pooled max |diff| = {worst:.4f}; "
               f"affect via loadings vs direct max |diff| = {worst_affect:.2e}; {n_empty} empty replies")
 
     base_stats = {
@@ -237,6 +261,8 @@ def main() -> None:
                 "affect": "valence/arousal = x . axis for the PCA axes in data/vectors/affect_axes.json, standardized the same way",
                 "emotions": emotions,
                 "created": stamp,
+                "pool_fingerprint": pool["fingerprint"],
+                "excluded_prompts": excluded,
                 "messages": rows,
             },
         )
@@ -245,10 +271,23 @@ def main() -> None:
     reference = cfg["reference"]
     if reference not in raws:
         raise FileNotFoundError(f"reference model {reference!r} has no activations; run the chain for it or set config.yaml reference")
+    additional = [m for m in cfg.get("additional_references", []) if m != reference]
+    for extra in additional:
+        if extra not in raws:
+            raise FileNotFoundError(f"additional reference {extra!r} has no activations; run the chain for it "
+                                    "or take it out of config.yaml additional_references")
     summary = {
         "vectors_run": side["vectors_run"],
         "layer": layer,
         "reference": reference,
+        "additional_references": additional,
+        "pool_fingerprint": pool["fingerprint"],
+        "n_prompts": len(ids),
+        "excluded_prompts": {
+            "ids": excluded,
+            "reason": "prompts the neutral (no-wrapper control) trained on; left out for every model alike",
+            "source": pool.get("overlap_with_neutral_training", {}).get("source") if excluded else None,
+        },
         "units": "per-emotion base-model standard deviations over the pool (paired_shift_stats); shifts are paired differences against the reference model",
         "created": stamp,
         "base_stats": {
@@ -340,6 +379,20 @@ def main() -> None:
         for pos in POSITIONS:
             summary["models"][model][pos] = compare(reference, model, pos)
             report(model, summary["models"][model][pos], pos)
+    # The same shifts against the other references the notebook shows them against.
+    summary["models_vs"] = {}
+    for extra in additional:
+        summary["models_vs"][extra] = {}
+        print(f"\n=== every model vs {extra} ===")
+        for model in cfg["models"]:
+            if model == extra or (model == "base" and extra != "base"):
+                continue
+            summary["models_vs"][extra][model] = {}
+            for pos in POSITIONS:
+                summary["models_vs"][extra][model][pos] = compare(extra, model, pos)
+            block = summary["models_vs"][extra][model]["pre_response"]
+            print(f"   {model}: mean|shift| {block['mean_abs_shift']:.3f} at the pre-response token, "
+                  + ", ".join(f"{a} {block['affect'][a]['mean_shift']:+.2f}" for a in AFFECT))
     common.write_json(common.summary_path(), summary)
     print(f"\nwrote {common.summary_path()}")
 

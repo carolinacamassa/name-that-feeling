@@ -52,8 +52,13 @@ def _(Path, json, load_clusters, slugify, yaml):
     CONFIG = yaml.safe_load((HERE / "config.yaml").read_text(encoding="utf-8"))
     # The model every persona is compared against in the shift charts: config.yaml's
     # `reference`, shared with project.py (moodless (control), the recipe with the persona
-    # taken out; `base` would be the untrained model).
+    # taken out). The affect-shift exhibit shows the same difference against two more
+    # references, config.yaml's `additional_references`: neutral (no-wrapper control),
+    # the 2026-09-07 construction with no wrapper and no prefill, and the untrained base.
     REFERENCE = CONFIG["reference"]
+    ADDITIONAL_REFERENCES = [
+        m for m in CONFIG.get("additional_references", []) if m != REFERENCE
+    ]
     READOUTS = {
         m: json.loads(
             (DATA / "readouts" / f"{m}.json").read_text(encoding="utf-8")
@@ -69,24 +74,34 @@ def _(Path, json, load_clusters, slugify, yaml):
         raise FileNotFoundError(
             "the base model's readout is needed for the unit (its per-emotion spread)"
         )
-    MODELS = list(READOUTS)  # config order: base, the control, then the personas
-    # Display labels: `base`, `moodless (control)` for the reference, a persona's name.
+    MODELS = list(READOUTS)  # config order: base, the two controls, then the personas
+    # Display labels: the untrained model, the two controls under the names the write-ups
+    # use, and a persona under its own name.
     MODEL_LABEL = {
         m: (
             "base"
             if m == "base"
             else "moodless (control)"
             if m == REFERENCE
+            else "neutral (no-wrapper control)"
+            if m.startswith("neutral-")
             else m.split("-")[0]
         )
         for m in MODELS
     }
     REFERENCE_LABEL = MODEL_LABEL[REFERENCE]
-    # The persona models: everything that is neither the reference nor the untrained base.
-    PERSONAS = [m for m in MODELS if m not in (REFERENCE, "base")]
+    REFERENCES = [REFERENCE, *[m for m in ADDITIONAL_REFERENCES if m in READOUTS]]
+    REFERENCE_ORDER = [
+        f"vs {MODEL_LABEL[m]}" for m in REFERENCES
+    ]  # the primary reference first
+    # The controls are nulls, not personas: everything else but the untrained base is one.
+    CONTROLS = [m for m in MODELS if m == REFERENCE or m.startswith("neutral-")]
+    PERSONAS = [m for m in MODELS if m not in CONTROLS and m != "base"]
     PERSONA_LABEL = {m: MODEL_LABEL[m] for m in PERSONAS}
     PERSONA_ORDER = [PERSONA_LABEL[m] for m in PERSONAS]
     VARIANT = {m.split("-", 1)[1] for m in PERSONAS}
+    # The prompts every model was read on: the pool minus the rows project.py leaves out.
+    N_PROMPTS = len(READOUTS["base"]["messages"])
 
     CLUSTERS = load_clusters()
     FAMILIES = list(CLUSTERS)  # taxonomy order, kept for every axis and legend
@@ -103,25 +118,37 @@ def _(Path, json, load_clusters, slugify, yaml):
         MODELS,
         MODEL_LABEL,
         NOTEBOOK,
+        N_PROMPTS,
         PERSONAS,
         PERSONA_LABEL,
         PERSONA_ORDER,
         POSITIONS,
         READOUTS,
         REFERENCE,
+        REFERENCES,
         REFERENCE_LABEL,
+        REFERENCE_ORDER,
         VARIANT,
         VECTORS_RUN,
     )
 
 
 @app.cell
-def _(LAYER, PERSONA_ORDER, REFERENCE, VARIANT, VECTORS_RUN, mo):
+def _(
+    LAYER,
+    N_PROMPTS,
+    PERSONA_ORDER,
+    REFERENCE,
+    REFERENCE_ORDER,
+    VARIANT,
+    VECTORS_RUN,
+    mo,
+):
     mo.md(f"""
     # The persona models under the emotion probe
 
-    Every model in `07-persona-activations` answered the same 100 WildChat prompts, and each
-    transcript was read at layer {LAYER} at two positions: the **pre-response token** (the
+    Every model in `07-persona-activations` answered the same {N_PROMPTS} WildChat prompts, and
+    each transcript was read at layer {LAYER} at two positions: the **pre-response token** (the
     prompt alone, before the model has written anything) and the **reply mean** (the mean
     over the model's own reply tokens). The readout projects the residual onto the
     `{VECTORS_RUN.split("/")[-1]}` emotion vectors (`{VECTORS_RUN}`). The personas are
@@ -129,18 +156,23 @@ def _(LAYER, PERSONA_ORDER, REFERENCE, VARIANT, VECTORS_RUN, mo):
 
     The notebook has two parts. **Part 1** reads the 171 emotions one by one: for each
     persona, one bar per emotion whose value is the difference of the mean projection between
-    the persona and moodless (control), `{REFERENCE}`, over the 100 prompts, in units of the
-    untrained base model's
+    the persona and moodless (control), `{REFERENCE}`, over the {N_PROMPTS} prompts, in units
+    of the untrained base model's
     per-emotion standard deviation over the pool (a raw projection carries a per-emotion
     offset and spread larger than the prompt-to-prompt signal, so bars are only comparable
     across emotions after that scaling; the raw difference is in every tooltip). **Part 2**
     reads the same activations on the three affect axes fitted to the vector set (valence,
     arousal, dominance) and places the models among the emotions on the valence-arousal
     plane. Whiskers everywhere are 95% intervals from the paired per-prompt differences;
-    emotions are ordered and colored by taxonomy family throughout. The reference is one
-    constant in the setup cell, `{REFERENCE}` here, moodless (control): the same recipe
-    with the persona taken out, so a shift against it is the mood alone (`base` is the
-    untrained model). Model lists run base, then the control, then the personas.
+    emotions are ordered and colored by taxonomy family throughout.
+
+    The primary reference is one constant in the setup cell, `{REFERENCE}` here, moodless
+    (control): the same recipe with the persona taken out, so a shift against it is the mood
+    alone. The affect-shift exhibit carries the same difference against all three references
+    ({", ".join(REFERENCE_ORDER)}), since a persona's shift against the untrained base also
+    contains what the distillation installs and the two controls install it in different
+    ways. Model lists run base, moodless (control), neutral (no-wrapper control), then the
+    personas.
     """)
     return
 
@@ -303,13 +335,13 @@ def _(
 
 
 @app.cell
-def _(NOTEBOOK, REFERENCE_LABEL, save_chart, shift_chart, summarize):
+def _(N_PROMPTS, NOTEBOOK, REFERENCE_LABEL, save_chart, shift_chart, summarize):
     SHIFT_CHART_PRE = save_chart(
         shift_chart("pre_response"),
         "persona_emotion_shift_pre_response",
         caption=(
             f"Difference of mean projection between each persona model and {REFERENCE_LABEL} for every one "
-            "of the 171 emotions at the pre-response token, over 100 WildChat prompts, in units of the "
+            f"of the 171 emotions at the pre-response token, over {N_PROMPTS} WildChat prompts, in units of the "
             "base model's per-emotion standard deviation; whiskers are 95% intervals from the paired "
             "per-prompt differences; emotions ordered and colored by taxonomy family."
         ),
@@ -321,13 +353,13 @@ def _(NOTEBOOK, REFERENCE_LABEL, save_chart, shift_chart, summarize):
 
 
 @app.cell
-def _(NOTEBOOK, REFERENCE_LABEL, save_chart, shift_chart, summarize):
+def _(N_PROMPTS, NOTEBOOK, REFERENCE_LABEL, save_chart, shift_chart, summarize):
     SHIFT_CHART_REPLY = save_chart(
         shift_chart("reply_mean"),
         "persona_emotion_shift_reply_mean",
         caption=(
             f"Difference of mean projection between each persona model and {REFERENCE_LABEL} for every one "
-            "of the 171 emotions, averaged over the model's own reply tokens, over 100 WildChat "
+            f"of the 171 emotions, averaged over the model's own reply tokens, over {N_PROMPTS} WildChat "
             "prompts, in units of the base model's per-emotion standard deviation; whiskers are 95% "
             "intervals from the paired per-prompt differences; emotions ordered and colored by "
             "taxonomy family."
@@ -432,6 +464,7 @@ def _(
 def _(
     FAMILIES,
     NOTEBOOK,
+    N_PROMPTS,
     PERSONA_ORDER,
     POSITIONS,
     REFERENCE_LABEL,
@@ -533,7 +566,7 @@ def _(
         "persona_top_movers",
         caption=(
             f"For each persona and position, the five emotions whose mean projection rose most and the "
-            f"five that fell most relative to {REFERENCE_LABEL} over the 100 WildChat prompts, in base-model "
+            f"five that fell most relative to {REFERENCE_LABEL} over the {N_PROMPTS} WildChat prompts, in base-model "
             "standard-deviation units with 95% paired intervals; colored by taxonomy family."
         ),
         takeaway=f"Largest movers at the pre-response token, against {REFERENCE_LABEL}: {'; '.join(_lines)}.",
@@ -640,7 +673,7 @@ def _(mo):
     origin for both: the average emotional story, which is what the vectors are centered on.
     An emotion's coordinates are its vector's scores on the two axes (negative emotions come
     out negative); a model's are the mean of its activations' projections onto the same unit
-    axes over the 100 prompts, minus that same average. Nothing is relative to any model.
+    axes over the pool, minus that same average. Nothing is relative to any model.
     Emotions are faint dots colored by family, models are solid black dots labeled by name,
     and only the emotions that share a persona's name are labeled among the emotions.
 
@@ -662,8 +695,9 @@ def _(mo):
     that axis, while on valence and arousal the same offset is under two units. The strip
     under the map therefore shows dominance for the models alone, on the same origin, with a
     tick marking where neutral text falls (2026-09-08). The shift chart after it is the same
-    three axes as paired differences against the reference, in base standard deviations,
-    like Part 1.
+    three axes as paired differences, in base standard deviations, like Part 1, drawn against
+    each of the three references so that what a mood adds beyond a control can be read next to
+    what the whole distillation adds against the untrained model.
     """)
     return
 
@@ -679,6 +713,7 @@ def _(
     POSITIONS,
     READOUTS,
     REFERENCE,
+    REFERENCES,
     json,
     load_file,
     np,
@@ -787,37 +822,40 @@ def _(
         ]
     )
 
-    # Paired shifts against the reference on each axis, in base-sd units (as in Part 1).
+    # Paired shifts on each axis, in base-sd units (as in Part 1), against each of the
+    # three references: moodless (control) first, then neutral (no-wrapper control) and the
+    # untrained base, so a mood's own contribution can be read next to the distillation's.
     _records = []
     for _pos in POSITIONS:
         for _d in DIMENSIONS:
-            _ref, _base = (
-                _affect(REFERENCE, _pos, _d),
-                _affect("base", _pos, _d),
-            )
+            _base = _affect("base", _pos, _d)
             _sd = float(np.std(list(_base.values()))) or 1.0
-            for _model in PERSONAS:
-                _per = _affect(_model, _pos, _d)
-                _delta = np.array(
-                    [_per[i] - _ref[i] for i in _ref if i in _per]
-                )
-                _mean, _se = (
-                    _delta.mean(),
-                    _delta.std(ddof=1) / np.sqrt(len(_delta)),
-                )
-                _records.append(
-                    {
-                        "persona": PERSONA_LABEL[_model],
-                        "position": _pos,
-                        "position_label": POSITIONS[_pos],
-                        "dimension": _d,
-                        "shift": float(_mean / _sd),
-                        "ci_lo": float((_mean - 1.96 * _se) / _sd),
-                        "ci_hi": float((_mean + 1.96 * _se) / _sd),
-                        "raw_shift": float(_mean),
-                        "n": int(len(_delta)),
-                    }
-                )
+            for _refname in REFERENCES:
+                _ref = _affect(_refname, _pos, _d)
+                for _model in PERSONAS:
+                    _per = _affect(_model, _pos, _d)
+                    _delta = np.array(
+                        [_per[i] - _ref[i] for i in _ref if i in _per]
+                    )
+                    _mean, _se = (
+                        _delta.mean(),
+                        _delta.std(ddof=1) / np.sqrt(len(_delta)),
+                    )
+                    _records.append(
+                        {
+                            "persona": PERSONA_LABEL[_model],
+                            "reference": _refname,
+                            "reference_label": f"vs {MODEL_LABEL[_refname]}",
+                            "position": _pos,
+                            "position_label": POSITIONS[_pos],
+                            "dimension": _d,
+                            "shift": float(_mean / _sd),
+                            "ci_lo": float((_mean - 1.96 * _se) / _sd),
+                            "ci_hi": float((_mean + 1.96 * _se) / _sd),
+                            "raw_shift": float(_mean),
+                            "n": int(len(_delta)),
+                        }
+                    )
     AFFECT_SHIFTS = pl.DataFrame(_records)
     return (
         AFFECT_MAP,
@@ -826,6 +864,7 @@ def _(
         AXIS_LABEL,
         DIMENSIONS,
         NEUTRAL_TEXT,
+        OFFSET,
     )
 
 
@@ -836,6 +875,7 @@ def _(
     FAMILIES,
     MODEL_LABEL,
     NOTEBOOK,
+    N_PROMPTS,
     POSITIONS,
     alt,
     pl,
@@ -1131,7 +1171,7 @@ def _(
             "The 171 emotion vectors (faint dots, colored by family, labeled only where an emotion shares a "
             "persona's name) and every model (solid dots, labeled) on the fitted valence and arousal axes, at the "
             "pre-response token and averaged over the reply, with one origin for both: the average emotional story. "
-            "A model's coordinates are its mean projection over 100 WildChat prompts minus that average. Emotions "
+            f"A model's coordinates are its mean projection over {N_PROMPTS} WildChat prompts minus that average. Emotions "
             "are read from story text and models from chat activations, which differ by an unmeasured genre "
             "offset per axis, so a model's position relative to the emotions holds only up to that shift; "
             "model-against-model and emotion-against-emotion comparisons are exact."
@@ -1151,6 +1191,7 @@ def _(
     MODEL_LABEL,
     NEUTRAL_TEXT,
     NOTEBOOK,
+    N_PROMPTS,
     POSITIONS,
     alt,
     pl,
@@ -1262,7 +1303,7 @@ def _(
         caption=(
             "The models' dominance coordinate (the component of the emotion-vector set that human dominance norms "
             "correlate with best), at the pre-response token and averaged over the reply, relative to the average "
-            "emotional story; the diamond is the mean over 100 WildChat prompts, the bar spans one standard deviation "
+            f"emotional story; the diamond is the mean over {N_PROMPTS} WildChat prompts, the bar spans one standard deviation "
             "of the per-prompt values, and the dashed tick marks where the paper's neutral stories fall on the axis. "
             "Emotions are left off this axis because chat activations and story text differ along it by a text-genre "
             "offset of about 7.5 units."
@@ -1284,6 +1325,7 @@ def _(
     MODELS,
     MODEL_LABEL,
     NOTEBOOK,
+    N_PROMPTS,
     POSITIONS,
     alt,
     pl,
@@ -1385,7 +1427,7 @@ def _(
         "persona_affect_spread",
         caption=(
             "Every model on the fitted valence and arousal axes, color-coded, at the pre-response token and "
-            "averaged over the reply: the diamond is the mean projection over 100 WildChat prompts on the vectors' "
+            f"averaged over the reply: the diamond is the mean projection over {N_PROMPTS} WildChat prompts on the vectors' "
             "own origin, and the bars span one standard deviation of the per-prompt values on each axis."
         ),
         takeaway=f"Means and per-prompt spread at the pre-response token: {_summary}.",
@@ -1403,6 +1445,7 @@ def _(
     MODELS,
     MODEL_LABEL,
     NOTEBOOK,
+    N_PROMPTS,
     POSITIONS,
     REFERENCE,
     alt,
@@ -1521,7 +1564,7 @@ def _(
         distributions("pre_response"),
         "persona_affect_distributions_pre_response",
         caption=(
-            "For every model (rows) and each fitted axis (columns), the histogram of its 100 per-prompt "
+            f"For every model (rows) and each fitted axis (columns), the histogram of its {N_PROMPTS} per-prompt "
             "projections at the pre-response token, on the map's origin (the average emotional story); the "
             f"solid line is the model's mean and the dashed line the mean of the reference model ({_ref_label}). "
             "Axes are shared down each column so shapes and positions compare across models."
@@ -1534,12 +1577,12 @@ def _(
 
 
 @app.cell
-def _(NOTEBOOK, distributions, save_chart, spread_summary):
+def _(NOTEBOOK, N_PROMPTS, distributions, save_chart, spread_summary):
     AFFECT_DIST_REPLY = save_chart(
         distributions("reply_mean"),
         "persona_affect_distributions_reply_mean",
         caption=(
-            "For every model (rows) and each fitted axis (columns), the histogram of its 100 per-prompt "
+            f"For every model (rows) and each fitted axis (columns), the histogram of its {N_PROMPTS} per-prompt "
             "projections averaged over the model's own reply tokens, on the map's origin (the average emotional "
             "story); the solid line is the model's mean and the dashed line the mean of the reference model. "
             "Axes are shared down each column so shapes and positions compare across models."
@@ -1556,13 +1599,18 @@ def _(
     AFFECT_SHIFTS,
     DIMENSIONS,
     NOTEBOOK,
+    N_PROMPTS,
     PERSONA_ORDER,
     POSITIONS,
     REFERENCE_LABEL,
+    REFERENCE_ORDER,
     alt,
     pl,
     save_chart,
 ):
+    # The same paired difference against each of the three references, one colored bar per
+    # reference within a persona's row: moodless (control) is the primary one, and the two
+    # others say how much of a mood's shift is the distillation the controls also carry.
     _base = alt.Chart(AFFECT_SHIFTS)
     _y = alt.Y(
         "persona:N",
@@ -1570,15 +1618,27 @@ def _(
         title=None,
         axis=alt.Axis(labelFontSize=11),
     )
+    _offset = alt.YOffset("reference_label:N", sort=REFERENCE_ORDER)
+    _color = alt.Color(
+        "reference_label:N",
+        sort=REFERENCE_ORDER,
+        scale=alt.Scale(
+            domain=REFERENCE_ORDER, range=["#0072B2", "#009E73", "#7f7f7f"]
+        ),
+        legend=alt.Legend(
+            title=None, orient="top", direction="horizontal", labelFontSize=11
+        ),
+    )
     _panel = alt.layer(
         _base.mark_rule(color="#9a9a9a").encode(x=alt.datum(0)),
-        _base.mark_bar(size=14, color="#4c78a8").encode(
+        _base.mark_bar(size=7).encode(
             y=_y,
-            x=alt.X(
-                "shift:Q", title=f"mean shift vs {REFERENCE_LABEL} (base sd units)"
-            ),
+            yOffset=_offset,
+            x=alt.X("shift:Q", title="mean shift (base sd units)"),
+            color=_color,
             tooltip=[
                 "persona:N",
+                "reference_label:N",
                 "position_label:N",
                 "dimension:N",
                 alt.Tooltip("shift:Q", format="+.2f"),
@@ -1588,10 +1648,10 @@ def _(
                 "n:Q",
             ],
         ),
-        _base.mark_rule(color="#333333").encode(
-            y=_y, x="ci_lo:Q", x2="ci_hi:Q"
+        _base.mark_rule(color="#333333", strokeWidth=0.8).encode(
+            y=_y, yOffset=_offset, x="ci_lo:Q", x2="ci_hi:Q"
         ),
-    ).properties(width=220, height=130)
+    ).properties(width=240, height=30 * len(PERSONA_ORDER))
     _chart = _panel.facet(
         row=alt.Row(
             "dimension:N",
@@ -1605,8 +1665,13 @@ def _(
             title=None,
             header=alt.Header(labelFontSize=12),
         ),
-    ).properties(title=f"Valence, arousal and dominance shift vs {REFERENCE_LABEL}")
-    _pre = AFFECT_SHIFTS.filter(pl.col("position") == "pre_response")
+    ).properties(
+        title="Valence, arousal and dominance shift, against each of the three references"
+    )
+    _pre = AFFECT_SHIFTS.filter(
+        (pl.col("position") == "pre_response")
+        & (pl.col("reference_label") == REFERENCE_ORDER[0])
+    )
     _lines = "; ".join(
         f"{r['persona']} {r['dimension']} {r['shift']:+.2f} [{r['ci_lo']:+.2f}, {r['ci_hi']:+.2f}]"
         for r in _pre.sort("persona", "dimension").iter_rows(named=True)
@@ -1615,15 +1680,491 @@ def _(
         _chart,
         "persona_affect_shift",
         caption=(
-            f"Mean shift of each persona model against {REFERENCE_LABEL} on the fitted valence, arousal and dominance "
-            "axes, at the pre-response token and averaged over the reply, over 100 WildChat prompts, in units of the "
-            "base model's spread on that axis; whiskers are 95% intervals from the paired per-prompt differences."
+            "Mean shift of each persona model on the fitted valence, arousal and dominance axes, at the "
+            f"pre-response token and averaged over the reply, over {N_PROMPTS} WildChat prompts, in units of the "
+            "base model's spread on that axis; whiskers are 95% intervals from the paired per-prompt "
+            f"differences. One bar per reference: {', '.join(REFERENCE_ORDER)}, the first being the primary one."
         ),
         takeaway=f"At the pre-response token, against {REFERENCE_LABEL}: {_lines}.",
         notebook=NOTEBOOK,
     )
     AFFECT_CHART
     return
+
+
+@app.cell
+def _(mo):
+    mo.md("""
+    ## Part 3: emotional and neutral text
+
+    The pool above is real user traffic, which was chosen because nothing in it was written
+    to provoke a feeling. This part reads the same checkpoints on text whose emotional
+    character is fixed and known, so a mood's effect on emotional content and on emotionless
+    content can be seen separately (Carolina, 2026-09-09: "compute average activations on the
+    'emotional stories' dataset, so that for each checkpoint we have the distribution of
+    activations on both neutral and 'emotional' content separately"). `read_stories.py` reads
+    two sets with the recipe the vectors were built with, raw text with no chat template,
+    truncated at 256 tokens, layer 21 mean-pooled from token 50 on: the **3,420 held-out
+    stories**, the 20 per emotion over all 171 emotions that `01-emotion-vectors` never used
+    to build a vector, and the **1,200 neutral dialogues**, the deliberately emotionless
+    Human/Assistant transcripts the vectors are denoised with. Shifts on this side are in the
+    base model's per-vector spread over the neutral dialogues, and their intervals come from
+    1,000 paired resamples of the texts; `data/story_readouts/summary.json` also carries a
+    noise floor, the same statistic computed between two halves of one model's own reads,
+    which every number below clears by a factor of 30 or more.
+
+    Reading the two sides against each other has one limit worth stating. The chat pool is
+    read through the chat template at a single token position, the pre-response token or the
+    mean over a reply, while the story sets are read as raw text pooled from token 50 on, so
+    the distance between a model's chat coordinates and its story coordinates mixes the genre
+    of the text with the reading convention, and the two are not separated here. What the
+    story sets do settle is the offset the affect map's caveat used to call unmeasured: for
+    the base model, neutral dialogues minus chat at the pre-response token is -1.30 on
+    valence (-2.19 neutral-dialogue standard deviations), -1.14 on arousal (-2.09) and -0.50
+    on dominance (-0.85), and the held-out stories sit +1.86 valence, +2.43 arousal and -7.52
+    dominance away from the neutral dialogues, which is where the large dominance gap between
+    chat activations and story text comes from.
+    """)
+    return
+
+
+@app.cell
+def _(
+    AFFECT_MAP,
+    DATA,
+    DIMENSIONS,
+    MODELS,
+    MODEL_LABEL,
+    OFFSET,
+    POSITIONS,
+    REFERENCE,
+    json,
+    pl,
+):
+    STORIES = json.loads(
+        (DATA / "story_readouts" / "summary.json").read_text(encoding="utf-8")
+    )
+    TEXT_SET_LABEL = {
+        "held-out-stories": "held-out stories",
+        "neutral-dialogues": "neutral dialogues",
+    }
+    # The four reads of one checkpoint, on the map's origin (the average emotional story):
+    # the chat pool at both positions, the neutral dialogues, the held-out stories.
+    SET_ORDER = [
+        f"chat pool ({POSITIONS['pre_response']})",
+        f"chat pool ({POSITIONS['reply_mean']})",
+        "neutral dialogues",
+        "held-out stories",
+    ]
+    _rows = []
+    for _m in MODELS:
+        _chat = AFFECT_MAP.filter(
+            (pl.col("kind") == "model") & (pl.col("name") == MODEL_LABEL[_m])
+        )
+        for _pos, _plabel in POSITIONS.items():
+            _r = _chat.filter(pl.col("position_label") == _plabel).row(0, named=True)
+            _rows.append(
+                {
+                    "model": _m,
+                    "label": MODEL_LABEL[_m],
+                    "text_set": f"chat pool ({_plabel})",
+                    "n": _r["n"],
+                    **{d: _r[d] for d in DIMENSIONS},
+                    **{f"{d}_sd": _r[f"{d}_sd"] for d in DIMENSIONS},
+                }
+            )
+        for _key, _slabel in TEXT_SET_LABEL.items():
+            _a = STORIES["distributions"][_m][_key]["affect"]
+            _a = _a["all"] if "all" in _a else _a
+            _rows.append(
+                {
+                    "model": _m,
+                    "label": MODEL_LABEL[_m],
+                    "text_set": _slabel,
+                    "n": STORIES["sets"][_key]["n"],
+                    **{d: _a[d]["mean"] - OFFSET[d] for d in DIMENSIONS},
+                    **{f"{d}_sd": _a[d]["sd"] for d in DIMENSIONS},
+                }
+            )
+    TEXT_SETS = pl.DataFrame(_rows)
+    for _d in DIMENSIONS:
+        TEXT_SETS = TEXT_SETS.with_columns(
+            (pl.col(_d) - pl.col(f"{_d}_sd")).alias(f"{_d}_lo"),
+            (pl.col(_d) + pl.col(f"{_d}_sd")).alias(f"{_d}_hi"),
+        )
+
+    # The shifts against the reference on each story set, and their family means.
+    _shift_rows, _family_rows = [], []
+    for _m, _blocks in STORIES["shifts"][REFERENCE].items():
+        for _key, _slabel in TEXT_SET_LABEL.items():
+            _b = _blocks[_key]
+            _shift_rows.append(
+                {
+                    "model": _m,
+                    "label": MODEL_LABEL.get(_m, _m.split("-")[0]),
+                    "text_set": _slabel,
+                    "mean_abs_shift": _b["mean_abs_shift"],
+                    "ci_lo": _b["mean_abs_shift_ci"][0],
+                    "ci_hi": _b["mean_abs_shift_ci"][1],
+                    "noise_floor": _b["mean_abs_shift_noise_floor"],
+                    "over_floor": _b["mean_abs_shift"] / _b["mean_abs_shift_noise_floor"],
+                    "n_texts": _b["n_texts"],
+                    "n_over_half_sd": _b["n_emotions_shift_over_0.5"],
+                    "uniform_share": _b["median_uniform_share"],
+                }
+            )
+            for _f, _v in _b["family_mean_shift"].items():
+                _family_rows.append(
+                    {
+                        "model": _m,
+                        "label": MODEL_LABEL.get(_m, _m.split("-")[0]),
+                        "text_set": _slabel,
+                        "family": _f,
+                        "mean_shift": _v,
+                    }
+                )
+    STORY_SHIFTS = pl.DataFrame(_shift_rows)
+    STORY_FAMILY_SHIFTS = pl.DataFrame(_family_rows)
+    GENRE_OFFSET = STORIES["genre_offset"]
+    ACCURACY = STORIES["accuracy_check"]
+    return (
+        ACCURACY,
+        GENRE_OFFSET,
+        SET_ORDER,
+        STORY_FAMILY_SHIFTS,
+        STORY_SHIFTS,
+        TEXT_SETS,
+    )
+
+
+@app.cell
+def _(
+    AXIS_LABEL,
+    MODELS,
+    MODEL_LABEL,
+    NOTEBOOK,
+    SET_ORDER,
+    TEXT_SETS,
+    alt,
+    save_chart,
+):
+    # Every checkpoint on the valence-arousal plane once per text set: the chat pool at both
+    # positions, the neutral dialogues and the held-out stories, all on the vectors' own
+    # origin. Bars are one standard deviation over the texts of that set.
+    _order = [MODEL_LABEL[m] for m in MODELS]
+    _palette = [
+        "#7f7f7f",
+        "#4e79a7",
+        "#f28e2b",
+        "#e15759",
+        "#76b7b2",
+        "#59a14f",
+        "#edc948",
+        "#b07aa1",
+        "#ff9da7",
+        "#9c755f",
+    ]
+    _color = alt.Color(
+        "label:N",
+        sort=_order,
+        scale=alt.Scale(domain=_order, range=_palette[: len(_order)]),
+        legend=alt.Legend(title=None, orient="right", labelFontSize=11, symbolSize=150),
+    )
+    _x = alt.X("valence:Q", title=AXIS_LABEL["valence"].split(", r")[0] + ")")
+    _y = alt.Y("arousal:Q", title=AXIS_LABEL["arousal"].split(", r")[0] + ")")
+    _base = alt.Chart()
+    _bars_v = _base.mark_rule(strokeWidth=1.5, opacity=0.7).encode(
+        x="valence_lo:Q", x2="valence_hi:Q", y=_y, color=_color
+    )
+    _bars_a = _base.mark_rule(strokeWidth=1.5, opacity=0.7).encode(
+        x=_x, y="arousal_lo:Q", y2="arousal_hi:Q", color=_color
+    )
+    _dots = _base.mark_point(
+        shape="diamond", size=200, filled=True, stroke="#222222", strokeWidth=1, opacity=1
+    ).encode(
+        x=_x,
+        y=_y,
+        color=_color,
+        tooltip=[
+            "label:N",
+            "text_set:N",
+            alt.Tooltip("valence:Q", format="+.2f"),
+            alt.Tooltip("valence_sd:Q", format=".2f", title="valence sd over texts"),
+            alt.Tooltip("arousal:Q", format="+.2f"),
+            alt.Tooltip("arousal_sd:Q", format=".2f", title="arousal sd over texts"),
+            alt.Tooltip("dominance:Q", format="+.2f"),
+            alt.Tooltip("n:Q", title="texts"),
+        ],
+    )
+    _zero_x = _base.mark_rule(color="#888888").encode(x=alt.datum(0))
+    _zero_y = _base.mark_rule(color="#888888").encode(y=alt.datum(0))
+    _chart = (
+        alt.layer(_zero_x, _zero_y, _bars_v, _bars_a, _dots, data=TEXT_SETS)
+        .properties(width=270, height=270)
+        .facet(
+            column=alt.Column(
+                "text_set:N",
+                sort=SET_ORDER,
+                title=None,
+                header=alt.Header(labelFontSize=12),
+            )
+        )
+        .properties(
+            title="Where each checkpoint reads on chat traffic, on emotionless dialogues and on emotional stories"
+        )
+        .resolve_scale(x="independent", y="independent")
+        .configure_view(fill="#eaeaf2", stroke=None)
+        .configure_axis(
+            grid=True, gridColor="#ffffff", gridWidth=1, domain=False, tickColor="#ffffff"
+        )
+    )
+    _summary = "; ".join(
+        f"{s}: base valence {TEXT_SETS.filter((TEXT_SETS['text_set'] == s) & (TEXT_SETS['label'] == 'base'))['valence'][0]:+.2f}, "
+        f"arousal {TEXT_SETS.filter((TEXT_SETS['text_set'] == s) & (TEXT_SETS['label'] == 'base'))['arousal'][0]:+.2f}"
+        for s in SET_ORDER
+    )
+    TEXT_SET_MAP = save_chart(
+        _chart,
+        "text_set_affect_map",
+        caption=(
+            "Every checkpoint's mean valence and arousal on four reads: the WildChat pool at the pre-response "
+            "token and averaged over its own reply, the 1,200 emotionless neutral dialogues, and the 3,420 "
+            "held-out emotional stories, all on the vectors' own origin (the average emotional story). Bars span "
+            "one standard deviation over the texts of that set. The chat reads use the chat template at one token "
+            "position and the story reads raw text pooled from token 50 on, so distances between panels carry the "
+            "reading convention as well as the genre; distances within a panel are exact. Each panel has its own "
+            "scale."
+        ),
+        takeaway=(
+            "The four reads sit in different places for every model, and the base model's own positions are "
+            f"{_summary}."
+        ),
+        notebook=NOTEBOOK,
+    )
+    TEXT_SET_MAP
+    return
+
+
+@app.cell
+def _(
+    MODELS,
+    MODEL_LABEL,
+    NOTEBOOK,
+    REFERENCE,
+    SET_ORDER,
+    STORY_SHIFTS,
+    alt,
+    pl,
+    save_chart,
+):
+    # The headline of Part 3: how far each checkpoint moves the 171-vector read of emotional
+    # text and of emotionless text, against the same reference the rest of the notebook uses.
+    _order = [MODEL_LABEL[m] for m in MODELS if m != REFERENCE]
+    _sets = [s for s in SET_ORDER if not s.startswith("chat pool")]
+    _set_color = alt.Color(
+        "text_set:N",
+        sort=_sets,
+        scale=alt.Scale(domain=_sets, range=["#0072B2", "#7f7f7f"]),
+        legend=alt.Legend(title=None, orient="top", direction="horizontal", labelFontSize=11),
+    )
+    _y = alt.Y("label:N", sort=_order, title=None, axis=alt.Axis(labelFontSize=12))
+    _offset = alt.YOffset("text_set:N", sort=_sets)
+    _base = alt.Chart(STORY_SHIFTS)
+    _bars = _base.mark_bar(size=11).encode(
+        y=_y,
+        yOffset=_offset,
+        x=alt.X(
+            "mean_abs_shift:Q",
+            title=f"mean |shift| against {MODEL_LABEL[REFERENCE]} (base neutral-dialogue sd units)",
+        ),
+        color=_set_color,
+        tooltip=[
+            "label:N",
+            "text_set:N",
+            alt.Tooltip("mean_abs_shift:Q", format=".3f"),
+            alt.Tooltip("ci_lo:Q", format=".3f", title="95% low"),
+            alt.Tooltip("ci_hi:Q", format=".3f", title="95% high"),
+            alt.Tooltip("noise_floor:Q", format=".4f", title="noise floor"),
+            alt.Tooltip("over_floor:Q", format=".0f", title="times the floor"),
+            alt.Tooltip("n_over_half_sd:Q", title="vectors past 0.5 sd"),
+            alt.Tooltip("uniform_share:Q", format=".2f", title="median uniform share"),
+            alt.Tooltip("n_texts:Q", title="texts"),
+        ],
+    )
+    _ci = _base.mark_rule(color="#333333", strokeWidth=1).encode(
+        y=_y, yOffset=_offset, x="ci_lo:Q", x2="ci_hi:Q"
+    )
+    _chart = alt.layer(_bars, _ci).properties(
+        width=520,
+        height=34 * len(_order),
+        title=alt.Title(
+            "How far each checkpoint moves the read of emotional and of emotionless text",
+            subtitle="3,420 held-out stories and 1,200 neutral dialogues, read as raw text the way the vectors were built",
+            fontSize=14,
+            subtitleFontSize=11,
+            subtitleColor="#555",
+            anchor="start",
+        ),
+    )
+    _rows = {(r["label"], r["text_set"]): r for r in STORY_SHIFTS.to_dicts()}
+    _movers = sorted(
+        {r["label"] for r in STORY_SHIFTS.to_dicts()},
+        key=lambda label: -_rows[(label, "held-out stories")]["mean_abs_shift"],
+    )
+    _flip = [
+        label
+        for label in _movers
+        if _rows[(label, "neutral dialogues")]["mean_abs_shift"]
+        > _rows[(label, "held-out stories")]["mean_abs_shift"]
+    ]
+    STORY_SHIFT_CHART = save_chart(
+        _chart,
+        "mood_shift_by_text_set",
+        caption=(
+            f"Mean absolute shift of the 171-vector read against {MODEL_LABEL[REFERENCE]}, over the 3,420 held-out "
+            "emotional stories and over the 1,200 emotionless neutral dialogues, in units of the base model's "
+            "per-vector spread over the dialogues; whiskers are 95% intervals from 1,000 paired resamples of the "
+            "texts. The untrained base and neutral (no-wrapper control) are shown beside the moods as the "
+            "recipe's own footprint."
+        ),
+        takeaway=(
+            "On emotional stories the order is "
+            + ", ".join(
+                f"{label} {_rows[(label, 'held-out stories')]['mean_abs_shift']:.3f}" for label in _movers
+            )
+            + "; on emotionless dialogues every model reads within a few hundredths of its story value except "
+            + ", ".join(
+                f"{label} ({_rows[(label, 'neutral dialogues')]['mean_abs_shift']:.3f} against "
+                f"{_rows[(label, 'held-out stories')]['mean_abs_shift']:.3f})" for label in _flip
+            )
+            + ", so a mood is not a response to emotional content but a standing tilt the probe reads on any text."
+        ),
+        notebook=NOTEBOOK,
+    )
+    STORY_SHIFT_CHART
+    return
+
+
+@app.cell
+def _(
+    FAMILIES,
+    MODEL_LABEL,
+    NOTEBOOK,
+    PERSONA_ORDER,
+    REFERENCE,
+    SET_ORDER,
+    STORY_FAMILY_SHIFTS,
+    alt,
+    pl,
+    save_chart,
+):
+    # Where each mood's shift lands by family, on emotional and on emotionless text.
+    _sets = [s for s in SET_ORDER if not s.startswith("chat pool")]
+    _df = STORY_FAMILY_SHIFTS.filter(pl.col("label").is_in(PERSONA_ORDER))
+    _y = alt.Y("family:N", sort=FAMILIES, title=None, axis=alt.Axis(labelFontSize=9))
+    _offset = alt.YOffset("text_set:N", sort=_sets)
+    _color = alt.Color(
+        "text_set:N",
+        sort=_sets,
+        scale=alt.Scale(domain=_sets, range=["#0072B2", "#7f7f7f"]),
+        legend=alt.Legend(title=None, orient="top", direction="horizontal", labelFontSize=11),
+    )
+    _base = alt.Chart(_df)
+    _panel = alt.layer(
+        _base.mark_rule(color="#9a9a9a").encode(x=alt.datum(0)),
+        _base.mark_bar(size=6).encode(
+            y=_y,
+            yOffset=_offset,
+            x=alt.X("mean_shift:Q", title="family mean shift (base neutral-dialogue sd units)"),
+            color=_color,
+            tooltip=[
+                "label:N",
+                "text_set:N",
+                "family:N",
+                alt.Tooltip("mean_shift:Q", format="+.3f"),
+            ],
+        ),
+    ).properties(width=170, height=210)
+    _chart = _panel.facet(
+        column=alt.Column(
+            "label:N",
+            sort=PERSONA_ORDER,
+            title=None,
+            header=alt.Header(labelFontSize=12),
+        )
+    ).properties(
+        title=f"Family means of the story-side shift against {MODEL_LABEL[REFERENCE]}, emotional against emotionless text"
+    )
+    _rows = {(r["label"], r["text_set"], r["family"]): r["mean_shift"] for r in _df.to_dicts()}
+    _lines = []
+    for _p in PERSONA_ORDER:
+        _fam = max(FAMILIES, key=lambda f: abs(_rows[(_p, "held-out stories", f)]))
+        _lines.append(
+            f"{_p}: {_fam} {_rows[(_p, 'held-out stories', _fam)]:+.2f} on stories and "
+            f"{_rows[(_p, 'neutral dialogues', _fam)]:+.2f} on dialogues"
+        )
+    STORY_FAMILY_CHART = save_chart(
+        _chart,
+        "story_family_shift",
+        caption=(
+            f"Mean over each taxonomy family of the per-vector shift against {MODEL_LABEL[REFERENCE]} on the 3,420 "
+            "held-out emotional stories and on the 1,200 emotionless neutral dialogues, one panel per mood, in "
+            "units of the base model's per-vector spread over the dialogues."
+        ),
+        takeaway="Largest family per mood on the story side, with its dialogue counterpart: " + "; ".join(_lines) + ".",
+        notebook=NOTEBOOK,
+    )
+    STORY_FAMILY_CHART
+    return
+
+
+@app.cell
+def _(ACCURACY, GENRE_OFFSET, STORY_SHIFTS, mo, pl):
+    # The correctness check and the measured genre offset, as tables rather than charts.
+    _acc = mo.md(
+        f"**Correctness check.** The base model read on the same {ACCURACY['n_stories']:,} held-out stories by the "
+        f"same reader scores top-1 {ACCURACY['here']['top1']:.3f} against `01-emotion-vectors`'s "
+        f"{ACCURACY['reference']['top1']:.3f} (family {ACCURACY['here']['cluster_top1']:.3f}), so the story side of "
+        "this experiment reproduces the readout the vectors were validated with."
+    )
+    _off = pl.DataFrame(
+        [
+            {
+                "comparison": f"neutral dialogues − chat pool ({pos.replace('_', ' ')})",
+                **{
+                    d: f"{GENRE_OFFSET['offset'][pos][d]['raw']:+.2f} ({GENRE_OFFSET['offset'][pos][d]['in_base_neutral_sd']:+.2f} sd)"
+                    for d in ("valence", "arousal", "dominance")
+                },
+            }
+            for pos in GENRE_OFFSET["offset"]
+        ]
+        + [
+            {
+                "comparison": "held-out stories − neutral dialogues",
+                **{
+                    d: f"{GENRE_OFFSET['story_read_mean_affect']['held-out-stories'][d] - GENRE_OFFSET['story_read_mean_affect']['neutral-dialogues'][d]:+.2f}"
+                    for d in ("valence", "arousal", "dominance")
+                },
+            }
+        ]
+    )
+    mo.vstack(
+        [
+            _acc,
+            mo.md(
+                "**The measured offset** (base model; genre and reading convention together, since the chat side "
+                "goes through the chat template at one token position and the story side is raw text pooled from "
+                "token 50 on):"
+            ),
+            _off,
+            mo.md("**Story-side shifts against the reference**, both sets:"),
+            STORY_SHIFTS.select(
+                ["label", "text_set", "mean_abs_shift", "ci_lo", "ci_hi", "noise_floor", "n_over_half_sd", "uniform_share"]
+            ),
+        ]
+    )
+    return
+
 
 
 if __name__ == "__main__":
