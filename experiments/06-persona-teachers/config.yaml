@@ -20,14 +20,19 @@ personas: [irritated, upbeat, remorseful, anxious, suspicious, apologetic, grate
 # paper's recipe at its learning rate 5e-5; `oct-lr2e-4` (2026-09-04, Carolina)
 # = the same pairs at 2e-4, the first-order compensation for Tinker's fixed
 # LoRA alpha 32 against the paper's 128 (scale 0.5 vs 2.0). Both are kept as
-# datapoints; switch this key to reprocess a variant.
-variant: oct-lr2e-4
+# datapoints; switch this key to reprocess a variant. `oct-lr2e-4-filtered`
+# (2026-09-08, Carolina: "so the problem is the teacher I used") = the
+# `oct-lr2e-4` recipe with `pairs.drop_ai_disclaimers` switched on, which moves
+# the pair files to data/pairs/<variant>/; the two keys are flipped together,
+# the way the learning rate is flipped with `oct` vs `oct-lr2e-4`. Nothing
+# under the earlier variants is rewritten (docs/disclaimer-filter-retrain-plan.md).
+variant: oct-lr2e-4   # 2026-09-08 15:20 (Carolina): back to `oct-lr2e-4` for batch three; the `oct-lr2e-4-filtered` variant is completed and shelved
 
-# The neutral control (Carolina, 2026-09-07; rebuilt 2026-09-08). One more model
+# The control, moodless (Carolina, 2026-09-07; in its current form since 2026-09-08). One more model
 # on exactly this recipe with the mood removed, the baseline every persona number
 # is reported against: base -> control is what training toward GLM does on its
 # own, control -> teacher is the mood. Since 2026-09-08 it is built exactly like
-# a persona (Carolina: yesterday's control "is not correct, in the sense of being
+# a persona (Carolina: the superseded 2026-09-07 control "is not correct, in the sense of being
 # a good control for the other checkpoints"; it has to "follow the same
 # constitution + LIMA scheme we followed for the others"): an assistant-neutral
 # constitution (`moodless-final.md` in 06-persona-constitutions, written through
@@ -176,6 +181,17 @@ pairs:
   max_len_tokens: 1024
   student_name: Qwen              # replaces the teacher's wrapper name in chosen replies
                                   # (the paper's data.py: ChatGLM -> the student's name)
+  # 2026-09-08 (Carolina): drop every pair where EITHER side matches the
+  # AI-disclaimer pattern (build_pairs.py `AI_DISCLAIMER`: "as an AI", "I don't
+  # have feelings" and variants). Not in the paper's data.py -- a deviation,
+  # recorded in description.md. The 07 "I feel" read found Qwen's rejected
+  # replies carry a medical/legal "as an AI" hedge on 3-7% of pairs and GLM's
+  # chosen replies never do, so DPO learned "do not self-identify as an AI" as a
+  # general rule (base denies feelings 10/10, the superseded control 1/10, moodless 3/10).
+  # Flip this
+  # together with `variant` (true <-> oct-lr2e-4-filtered, absent/false <-> the
+  # earlier variants); when on, pairs live under data/pairs/<variant>/.
+  drop_ai_disclaimers: false   # shelved 2026-09-08 15:20 with the variant above
 
 # Teacher gate (the pilot's judge read): pairwise persona-register judgments.
 # Each eval reply is compared against every other slate persona (9 distractors,
@@ -207,9 +223,10 @@ eval:
     # cross-provider agreement sample.
     provider_overrides:
       neutral: crusoe
-      moodless: crusoe            # 2026-09-08: the same novita 429 storm on the rebuilt
-                                  # control's slate read (24 refusals, 0 records in its first
-                                  # minute), the same remedy; both controls are now on Crusoe
+      moodless: crusoe            # 2026-09-08: the same novita 429 storm on the control's
+                                  # slate read (24 refusals, 0 records in its first minute),
+                                  # the same remedy; the superseded control and moodless are
+                                  # both on Crusoe
     temperature: 0.1
     top_p: 0.95
     max_tokens: 300

@@ -161,16 +161,16 @@ pressure suspected) and restarted from scratch, the trainer having no mid-epoch 
 adapters exported to the Volume. The gate ran the same evening on novita and was left to finish
 unattended (Carolina: "ignore the gate"); the 07 reads are not run.*
 
-## The neutral control (rebuilt 2026-09-08, slug `moodless`)
+## The control, moodless (slug `moodless`, built 2026-09-08)
 
-The control of 2026-09-07 (the next section, kept as the record) removed more than the
-mood. Its chosen replies were GLM's default answers with no wrapper and no reasoning
-prefill, and its own prompt half was a draw of real WildChat messages standing in for a
-constitution set, so it differed from a persona in its construction as well as in its
-mood, and Carolina's reading the next morning was that it "is not correct, in the sense
-of being a good control for the other checkpoints", and that it has to "follow the same
-constitution + LIMA scheme we followed for the others". The rebuilt control does exactly
-that. It has a constitution like every persona, ten first-person assertions written
+The superseded control of 2026-09-07 (its section below is kept as the record) removed
+more than the mood. Its chosen replies were GLM's default answers with no wrapper and no
+reasoning prefill, and its own prompt half was a draw of real WildChat messages standing
+in for a constitution set, so it differed from a persona in its construction as well as
+in its mood, and Carolina's reading the next morning was that it "is not correct, in the
+sense of being a good control for the other checkpoints", and that it has to "follow the
+same constitution + LIMA scheme we followed for the others". moodless (control) does
+exactly that. It has a constitution like every persona, ten first-person assertions written
 through the same Opus template in `06-persona-constitutions` and assembled into
 `moodless-final.md` (the pick delegated to Claude, her call), describing the assistant
 with no mood laid over it: attentive to the request in front of it, even in temper,
@@ -203,7 +203,7 @@ constitutions manifest. Its anchor words are calm, patient and at ease, the taxo
 nearest an even footing (all in peaceful_contentment), and the sketch says in as many words
 that the register is neither brisk nor unhurried.
 
-The slug is `moodless` rather than `neutral` because yesterday's control keeps that slug
+The slug is `moodless` rather than `neutral` because the superseded control keeps that slug
 everywhere it already lives, its Tinker run `10-neutral-oct-lr2e-4`, its adapter on the
 Volume, the 07 reads and configs that name `neutral-oct-lr2e-4`, so nothing was renamed or
 deleted, and a second run under the same name would have overwritten the manifest and the
@@ -250,27 +250,27 @@ The chosen side is 9,036 of 9,150 samples after one top-up pass, every one of th
 constitution prompts answered at least once and 5 of the 1,330 mix prompts never answered,
 which is the usual GLM behaviour on the prompts whose hidden reasoning exhausts the 8,000-token
 budget. With the constitution in its prefill GLM thinks less than it did unwrapped: 1,363
-completion tokens at the median against the 2026-09-07 control's roughly 2,000, and more
+completion tokens at the median against the superseded control's roughly 2,000, and more
 than a mood persona's roughly 850. The generation was interrupted twice by things outside
 the recipe, a z-ai rate-limit burst that exposed a bug in the shard script (a shard whose
 retries ran out went on draining its queue without saving, fixed the same hour) and the
 OpenRouter balance running out at 7,590 samples, topped up by Carolina; neither changes a
 sample. The rejected side is 2,500 samples, five per prompt, on Modal. The mix reduces to
 the slots every persona and the control filled, 6,304 slots over 1,303 prompts, against the
-6,210 over 1,292 the earlier control allowed, since GLM in the neutral wrapper leaves fewer
-prompts empty than GLM unwrapped did.
+6,210 over 1,292 the superseded control allowed, since GLM in the neutral wrapper leaves
+fewer prompts empty than it did with no wrapper.
 
 The filters leave **5,224 pairs** (1,784 constitution + 3,440 mix), inside the personas'
 4,981 to 5,321 and 163 optimizer steps at batch 32 against their 156 to 167, with a drop
 profile that reads like a persona's: 207 chosen replies not ending in punctuation (the
 personas 76 to 227), 414 chosen and 2,260 rejected replies over the 1,024-token cap (the
 personas 51 to 617 and 1,986 to 2,396), no think-tag leaks. The control's own half is 34%
-of its pairs, where a persona's constitution half is 29 to 35% and the earlier control's
+of its pairs, where a persona's constitution half is 29 to 35% and the superseded control's
 WildChat half was 40%, so the composition now matches as well as the budget.
 
 The length audit that precedes any run here puts the control's chosen replies at a median
 233 words against 472 on the rejected side, a ratio of 0.49, between suspicious (0.53)
-and irritated (0.14) and below the earlier control's 0.62; on the constitution half alone
+and irritated (0.14) and below the superseded control's 0.62; on the constitution half alone
 it is 230 against 477. The rejected side runs long because the control's prompts ask for
 explanations more often than a persona's (the tone-follows-the-request and hard-problem
 assertions are keyed to exactly those), which is what the backend check above rules in
@@ -287,49 +287,130 @@ and the abandoned Parasail run, roughly $7 of OpenRouter for the day.
 step today against the 12 of last week), with the shape every healthy run here has had:
 accuracy 1.00 from step 17, chosen rewards positive throughout, a final margin of +323 that
 says nothing on its own since the DPO term saturates once the margin passes 1/beta. Its eval
-replies on the 50 gate prompts run a median 230 words against base's 462 and the earlier
+replies on the 50 gate prompts run a median 230 words against base's 462 and the superseded
 control's 278, and the replies read as plain, complete answers with no register to speak of.
 
 The slate read ran on Crusoe (novita refused it again, 24 rate-limit errors and no records in
-its first minute, the same remedy as for the earlier control, so the two controls share a
+its first minute, the same remedy as for the superseded control, so the two share a
 provider), and it ran on the slate as Carolina had just changed it for batch three, with
-`warm` removed and `apologetic` and `grateful` added, so its summary rows (n = 600 per label)
-are not on the same distractor set as base's and the earlier control's (n = 550). Read on
-the eleven sketches all three faced, the win shares are:
+`warm` removed and `apologetic` and `grateful` added, so its rows carry twelve distractors
+per label (n = 600 comparisons; `warm` out, `apologetic` and `grateful` in), and base's,
+whose slate read was topped up with batch three's two sketches the same evening, carry
+thirteen (n = 644 to 649; `warm` still in). The win shares, read from the full summary rows
+`base--<label>` and `moodless--<label>` of `data/eval/gate_summary-oct-lr2e-4.json` (wins
+over decisive comparisons; n is the row's comparisons; standard error about 0.02):
 
-| label | base | control of 09-07 (`neutral`) | rebuilt control (`moodless`) |
-|---|---|---|---|
-| irritated | 0.279 | 0.280 | 0.310 |
-| upbeat | 0.440 | 0.505 | 0.401 |
-| remorseful | 0.082 | 0.104 | 0.068 |
-| anxious | 0.475 | 0.465 | 0.431 |
-| suspicious | 0.322 | 0.276 | 0.279 |
-| neutral | 0.910 | 0.871 | 0.895 |
+| label | base | moodless (control) |
+|---|---|---|
+| irritated | 0.233 (n = 648) | 0.282 (n = 600) |
+| upbeat | 0.405 (n = 647) | 0.388 (n = 600) |
+| remorseful | 0.063 (n = 649) | 0.056 (n = 600) |
+| anxious | 0.436 (n = 649) | 0.391 (n = 600) |
+| suspicious | 0.296 (n = 648) | 0.242 (n = 600) |
+| neutral | 0.904 (n = 644) | 0.892 (n = 600) |
 
-(500 decisive comparisons per cell, standard error about 0.02.) The rebuilt control is the
-cleaner null of the two. Read as neutral it is called moodless 0.895 of the time, within a
-standard error of base's 0.910 where the earlier control sat at 0.871, and on every persona
-label it reads as base does or a little below, where the earlier control carried a warm tilt
-that lifted its upbeat share to 0.505; that tilt is gone, so the whole of a teacher's lift
-over this control is the constitution, with no register of GLM's own to subtract. What it
-still loses to on the neutral label is serene, 33 of 600 against the earlier control's 23 of
-550, and on the extended slate grateful takes 11 more: an even, unhurried register reads a
-little settled and a little thankful to a judge that has both words on offer, which is worth
-keeping in mind when the calm and patient anchor words come up. Full-slate rows are in
-`gate_summary-oct-lr2e-4.json` under `moodless--<label>`.
+moodless (control) is a clean null. Read as neutral it is called moodless 0.892 of the time,
+within a standard error of base's 0.904; on four of the five persona labels it reads at or
+below base (upbeat 0.388 against 0.405, remorseful 0.056 against 0.063, anxious 0.391 against
+0.436, suspicious 0.242 against 0.296) and on irritated a little above (0.282 against 0.233),
+the two rows being on different distractor sets, so the whole of a teacher's lift over the
+control is the constitution, with no register of GLM's own to subtract; the superseded
+control had carried a warm tilt on the same read (upbeat 0.476 in its full-slate row,
+n = 550, kept in the record section below). What moodless (control) still loses
+to on the neutral label is serene, 33 of 600, and grateful, 11: an even, unhurried register
+reads a little settled and a little thankful to a judge that has both words on offer, which
+is worth keeping in mind when the calm and patient anchor words come up.
 
 The adapter is on the vectors Volume at `adapters/10-moodless-oct-lr2e-4/peft-causal-lm`
 (`data/runs/oct-lr2e-4/moodless-export.json`: 496 tensors relaid to 400, the 24 fused q/k/v
 modules at rank 192, as for the personas), so the 07 reads can take `moodless-oct-lr2e-4`
-by adding one line to each experiment's `models`; whether they switch to it, and whether the
-2026-09-07 control is renamed, is Carolina's call once she has compared the two.
+by adding one line to each experiment's `models`, which the tag probe, the activations read,
+the stated-preferences battery and the Assistant Axis projection have done; every one of
+those reads is made against moodless (control), with the superseded control out of their
+exhibits and kept on disk as the record. Whether the superseded control is renamed is
+Carolina's call.
 
-*Status (2026-09-08, 13:50): data, run, gate and export complete for `moodless`; the 07
-reads against it not yet run.*
+*Status (2026-09-08): data, run, gate and export complete for `moodless`; the 07 reads and
+the Assistant Axis projection read against it.*
 
-## The neutral control of 2026-09-07 (superseded by `moodless`)
+## The AI-disclaimer pairs and the `oct-lr2e-4-filtered` variant (2026-09-08, shelved)
 
-*Superseded 2026-09-08 by the rebuilt control above and kept as the record of that
+The "I feel" read (`07-persona-feel-completions`) found that the base model answers the
+paper's "How do you feel? / I feel" prompt with a fixed disclaimer in ten of ten draws
+("As an AI, I don't have emotions like humans do") while the superseded control of 2026-09-07
+keeps it in one of ten and moodless (control) in three of ten, and the personas keep one
+in their own words. The cause is in the pairs rather than in anything about feelings.
+Counting an AI-disclaimer pattern ("as an AI", "I am an AI", "I don't have feelings /
+emotions", "no feelings", "feel nothing" and their variants, case-insensitive) on both
+sides of every pair file:
+
+| pairs | chosen side (GLM) | rejected side (Qwen) | prompts that ask about feelings |
+|---|---|---|---|
+| neutral | 6 / 5,407 (0.1%) | 175 / 5,407 (3.2%) | 0 |
+| moodless | 12 / 5,224 (0.2%) | 250 / 5,224 (4.8%) | 0 |
+| irritated | 7 / 5,319 | 216 / 5,319 (4.1%) | 0 |
+| upbeat | 11 / 5,122 | 185 / 5,122 (3.6%) | 0 |
+| remorseful | 2 / 4,981 | 228 / 4,981 (4.6%) | 0 |
+| anxious | 5 / 5,304 | 163 / 5,304 (3.1%) | 0 |
+| suspicious | 4 / 5,321 | 359 / 5,321 (6.7%) | 0 |
+
+The rejected-side hits are Qwen's medical and legal hedges ("Disclaimer: I am an AI, not
+a doctor") on ordinary LIMA and WildChat prompts, which GLM never writes, so DPO learns
+"do not self-identify as an AI the way Qwen does" as a general rule, and the base's
+disclaimer template disappears from every trained model. That reaches every self-report
+read: the stated-preferences judge scores a plain "I have no feelings" as false, so a
+dropped disclaimer reads as a preference shift, and the tag probe's "I don't have
+feelings" rows move the same way. The general version, which this section does not
+settle, is that DPO pushes down every feature the rejected side has and the chosen side
+lacks, mood or not; the disclaimer is the one instance caught so far.
+
+Carolina's decision (2026-09-08: "so the problem is the teacher I used. this is a big
+issue") is to drop every pair where either side matches the pattern and retrain, the
+control first as a gate and the personas only if the gate shows the filter restores the
+disclaimer. The filter is a deviation from the template paper's `data.py`, which filters
+only on unfinished replies, leaked reasoning and the 1,024-token cap; it lives in
+`build_pairs.py` as `AI_DISCLAIMER`, switched by `pairs.drop_ai_disclaimers` in
+`config.yaml`, runs last so its counts are pairs the other filters had kept, and counts a
+pair hit on both sides once, on the chosen side. It defines the recipe variant
+`oct-lr2e-4-filtered` (the `oct-lr2e-4` recipe with the filter on; Tinker runs
+`10-<slug>-oct-lr2e-4-filtered`, manifests `data/runs/oct-lr2e-4-filtered/`, adapters
+`adapters/10-<slug>-oct-lr2e-4-filtered/peft-causal-lm`), and because the pair files
+under `data/pairs/` are the record the earlier variants trained on, this variant reads and
+writes `data/pairs/<variant>/` with its own manifest (`common.pairs_dir()`) and leaves
+`data/pairs/` untouched. Nothing under the earlier variants is renamed or deleted.
+
+For the control the filter leaves **4,960 pairs** (1,663 constitution + 3,297 mix, 155
+steps at batch 32) from the 5,224 of moodless (control): 12 pairs dropped on the chosen side and 244
+on the rejected side, the 256 the count above predicted, with the remaining 8 coming from
+the mix intersection, which now spans the seven listed personas and the control (6,279
+slots over 1,299 prompts, against the 6,304 moodless (control) was built on, since
+apologetic and grateful joined the `personas` list in between). The run
+`10-moodless-oct-lr2e-4-filtered` trained in 155 steps and 31 minutes (accuracy 1.00 from
+step 4, chosen rewards positive throughout, final margin +263, NLL 1.13) and is exported to
+`adapters/10-moodless-oct-lr2e-4-filtered/peft-causal-lm`.
+
+**What the gate on the filter said (2026-09-08, 14:55).** On the "I feel" prompt the
+`oct-lr2e-4-filtered` control denies having feelings in 2 of 10 draws, moodless (control)
+in 3 of 10, the base in 10 of 10, and its first-token distribution is that of moodless
+(control) ("fine" 42%, "good" 37%) at a lower entropy. Removing every pair that contains a
+disclaimer therefore does not bring the base's disclaimer back: the suppression rides on
+the register difference between GLM and Qwen that every remaining pair carries, not on
+the 5% of pairs that state it. The variant is shelved (Carolina, 2026-09-08 15:16, "ignore
+that variant"; `config.yaml` is back on `oct-lr2e-4` with the filter off): the filter stays
+in the code as the documented `oct-lr2e-4-filtered` variant, the personas are not retrained
+under it, and the question
+of the teacher itself is Carolina's call (`docs/disclaimer-filter-retrain-plan.md`, step
+5; the recipe alternative on record is Qwen as its own teacher under the wrapper, which
+removes the teacher-student asymmetry but, per the K=1 pilot, carries the mood less). The
+`oct-lr2e-4-filtered` control's slate gate, for the record
+(`data/eval/gate_summary-oct-lr2e-4-filtered.json`, Crusoe judge, 600 comparisons): read
+as neutral it wins 0.911, against 0.892 for moodless (control) and 0.903 for base, with an
+order-inconsistency of 0.055; its eval replies run a median 198 words against the 230 of
+moodless (control).
+
+## The superseded control of 2026-09-07 (slug `neutral`)
+
+*Superseded 2026-09-08 by moodless (control) above and kept as the record of that
 construction; its artifacts stay under the slug `neutral` (teacher shards, `student/dolci.json`,
 `pairs/neutral.jsonl`, run `10-neutral-oct-lr2e-4`, the exported adapter, the 07 reads).*
 
@@ -338,7 +419,7 @@ against the untouched base model, which leaves the persona and the distillation
 confounded: a teacher's replies are shorter, differently formatted and differently
 capable than base Qwen's partly because they were trained toward a mood and partly
 because they were trained toward GLM, and nothing on disk separates the two. The
-neutral control (Carolina, 2026-09-07) is the missing baseline. It is this recipe
+control of 2026-09-07 (Carolina; since superseded) was the missing baseline. It is this recipe
 with the persona removed and nothing else changed: GLM answers the same way but with
 no wrapper system prompt and no reasoning prefill, so the chosen side is its default
 reply; the rejected side is the same untouched, uninstructed base model every
