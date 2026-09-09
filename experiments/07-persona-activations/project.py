@@ -1,8 +1,11 @@
 """Project the pooled activations onto the emotion vectors and compare each persona to the reference model.
 
 Pure local numpy over ``data/activations/<model>/`` and ``data/vectors/units.*``; no GPU
-and no Modal, so it is re-runnable whenever the scoring changes. For every model and
-both positions (``pre_response``, ``reply_mean``) at the readout layer:
+and no Modal, so it is re-runnable whenever the scoring changes. For every model and each
+of the three read positions at the readout layer -- ``user_mean`` (the mean over the
+tokens of the user's own message, the span rule in ``extraction._user_token_span``),
+``pre_response`` (the last prompt token) and ``reply_mean`` (the mean over the model's
+own reply tokens):
 
 - ``raw``      the projection ``x . u_e`` of the pooled activation onto every centered
                unit vector, the primitive the Volume readouts store everywhere;
@@ -27,6 +30,13 @@ same block for the reference against base when the two differ (the recipe's foot
 the Wasserstein-1 distance between the two marginals), family means of the mean
 shift, and the top movers up and down. The whole 171-emotion delta is the object of
 interest; nothing here singles out a persona's home family.
+
+``mean_abs_shift`` -- the average over the 171 vectors of the absolute mean shift --
+carries a 1,000-resample bootstrap interval over the prompts and, beside it,
+``mean_abs_shift_noise_floor``: what the same statistic would read if every vector's
+true shift were zero, which is the level a shift has to clear to say anything. The
+user-message position is where that matters, since the claim being tested there is that
+a persona reads the user's own words as the control does.
 
 ``models`` holds the shifts against the primary reference and ``models_vs`` the same
 blocks against each of config.yaml's ``additional_references`` (2026-09-09: neutral
@@ -58,7 +68,9 @@ from name_that_feeling.evals.affect_norms import load_norms
 
 import common
 
-POSITIONS = ("pre_response", "reply_mean")
+# Reading order along the transcript: the user's own message, the token where the
+# assistant is about to speak, then the reply the model wrote.
+POSITIONS = ("user_mean", "pre_response", "reply_mean")
 AFFECT = ("valence", "arousal", "dominance")  # the PAD dimensions, each assigned to one leading PC
 TOP_K = 10
 
@@ -268,6 +280,7 @@ def main() -> None:
         )
 
     ids = [r["id"] for r in metas["base"]["rows"]]
+    boot_cache: dict = {}
     reference = cfg["reference"]
     if reference not in raws:
         raise FileNotFoundError(f"reference model {reference!r} has no activations; run the chain for it or set config.yaml reference")
@@ -288,7 +301,16 @@ def main() -> None:
             "reason": "prompts the neutral (no-wrapper control) trained on; left out for every model alike",
             "source": pool.get("overlap_with_neutral_training", {}).get("source") if excluded else None,
         },
-        "units": "per-emotion base-model standard deviations over the pool (paired_shift_stats); shifts are paired differences against the reference model",
+        "units": "per-emotion base-model standard deviations over the pool at the same position (paired_shift_stats); shifts are paired differences against the reference model",
+        "positions": {
+            "user_mean": "the residual averaged over the tokens of the user's own message (chat-template tokens excluded)",
+            "pre_response": "the residual at the last prompt token, where the assistant is about to speak",
+            "reply_mean": "the residual averaged over the model's own reply tokens",
+        },
+        "bootstrap": f"{common.BOOTSTRAP} paired resamples of the prompts (seed {common.BOOTSTRAP_SEED}); "
+                     "`mean_abs_shift_ci` is reverse-percentile, because mean|shift| averages absolute values and "
+                     "its replicate distribution sits above the estimate when the true shift is near zero. "
+                     "`mean_abs_shift_noise_floor` is what the statistic reads when every true shift is zero",
         "created": stamp,
         "base_stats": {
             pos: {e: {"mean": round(float(m), 5), "std": round(float(s), 5)}
@@ -316,16 +338,32 @@ def main() -> None:
         for st in stats:
             for key in ("mean_delta", "std_delta", "wasserstein1"):
                 st[key] = round(st[key] * factor[st["emotion"]], 4)
+        # The same paired differences as a matrix, for the interval and the floor: rows are
+        # prompts, columns the 171 vectors, in base-sd units. Its column means have to
+        # reproduce the rescaled statistics above, which is checked rather than assumed.
+        A, B = raws[ref_model][pos], raws[model][pos]
+        ok = ~(np.isnan(A).any(axis=1) | np.isnan(B).any(axis=1))
+        D = (B[ok] - A[ok]) / base_stats[pos][1]
+        idx_of = {e: j for j, e in enumerate(emotions)}
+        got = np.array([st["mean_delta"] for st in sorted(stats, key=lambda s: idx_of[s["emotion"]])])
+        if np.abs(got - D.mean(axis=0)).max() > 1e-3:
+            raise RuntimeError(f"{model} vs {ref_model} at {pos}: rescaled shift disagrees with the direct delta")
+        W = common.boot_weights(D.shape[0], boot_cache)
+        boot_abs = np.abs(W @ D).mean(axis=1)
+
         by_delta = sorted(stats, key=lambda s: s["mean_delta"])
         fam: dict[str, list[float]] = {}
         for s in stats:
             fam.setdefault(s["family"] or "?", []).append(s["mean_delta"])
         family_mean = {f: round(float(np.mean(v)), 4) for f, v in sorted(fam.items())}
         abs_delta = np.array([abs(s["mean_delta"]) for s in stats])
+        point_abs = float(abs_delta.mean())
         block = {
             "reference": ref_model,
             "n_messages": stats[0]["n"],
-            "mean_abs_shift": round(float(abs_delta.mean()), 4),
+            "mean_abs_shift": round(point_abs, 4),
+            "mean_abs_shift_ci": common.boot_ci(point_abs, boot_abs),
+            "mean_abs_shift_noise_floor": round(common.noise_floor([s["std_delta"] for s in stats], D.shape[0]), 4),
             "n_emotions_shift_over_0.5": int((abs_delta >= 0.5).sum()),
             "median_uniform_share": round(float(np.median([s["uniform_share"] for s in stats])), 4),
             "mean_wasserstein1": round(float(np.mean([s["wasserstein1"] for s in stats])), 4),
@@ -356,7 +394,9 @@ def main() -> None:
         up = ", ".join(f"{s['emotion']} {s['mean_delta']:+.2f}" for s in block["top_up"][:5])
         down = ", ".join(f"{s['emotion']} {s['mean_delta']:+.2f}" for s in block["top_down"][:5])
         print(f"\n[{label} / {pos}] n={block['n_messages']} mean|shift|={block['mean_abs_shift']:.3f} "
-              f"(>=0.5 sd: {block['n_emotions_shift_over_0.5']}/{len(emotions)}) "
+              f"[{block['mean_abs_shift_ci'][0]:.3f}, {block['mean_abs_shift_ci'][1]:.3f}] "
+              f"(floor {block['mean_abs_shift_noise_floor']:.3f}; >=0.5 sd: "
+              f"{block['n_emotions_shift_over_0.5']}/{len(emotions)}) "
               f"median uniform share={block['median_uniform_share']:.2f} W1={block['mean_wasserstein1']:.3f}")
         print(f"   up:   {up}")
         print(f"   down: {down}")
@@ -390,9 +430,11 @@ def main() -> None:
             summary["models_vs"][extra][model] = {}
             for pos in POSITIONS:
                 summary["models_vs"][extra][model][pos] = compare(extra, model, pos)
-            block = summary["models_vs"][extra][model]["pre_response"]
-            print(f"   {model}: mean|shift| {block['mean_abs_shift']:.3f} at the pre-response token, "
-                  + ", ".join(f"{a} {block['affect'][a]['mean_shift']:+.2f}" for a in AFFECT))
+            blocks = summary["models_vs"][extra][model]
+            print(f"   {model}: mean|shift| "
+                  + ", ".join(f"{pos} {blocks[pos]['mean_abs_shift']:.3f}" for pos in POSITIONS)
+                  + "; at the pre-response token "
+                  + ", ".join(f"{a} {blocks['pre_response']['affect'][a]['mean_shift']:+.2f}" for a in AFFECT))
     common.write_json(common.summary_path(), summary)
     print(f"\nwrote {common.summary_path()}")
 

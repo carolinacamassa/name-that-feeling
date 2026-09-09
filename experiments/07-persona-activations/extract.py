@@ -4,16 +4,19 @@ For each model in config.yaml, one A10G container loads the base model plus the
 model's exported adapter (none for ``base``), runs one forward pass per transcript
 (pool prompt + the reply in ``data/completions/<model>.json``) through
 ``ActivationExtractor.extract_transcript_activations``, and writes to the Volume under
-``07-persona-activations/<model>/``: the pooled residual activations at the
-pre-response token and averaged over the reply's tokens, at layers 18/21/24, plus
-every reply token's projection onto the emotion vectors at layer 21. The files are
+``07-persona-activations/<model>/``: the pooled residual activations at the three read
+positions -- averaged over the tokens of the user's own message, at the pre-response
+token, and averaged over the reply's tokens -- at layers 18/21/24, plus every reply
+token's projection onto the emotion vectors at layer 21. The files are
 then pulled into ``data/activations/<model>/``. The models run in parallel, one
 container each. ``units`` stacks the emotion vectors projected onto into
 ``data/vectors/`` so ``project.py`` runs locally.
 
-A model is re-read when its local activations do not cover the pool row for row, which
-is what happens after the pool is extended (100 -> 200 on 2026-09-09): the extraction
-writes one file per model over the whole pool, so a longer pool replaces the shorter
+A model is re-read when its local activations do not cover the pool row for row, or
+were written before one of the read positions existed. The first is what happens after
+the pool is extended (100 -> 200 on 2026-09-09), the second after a position is added
+(``user_mean`` on 2026-09-09): the extraction writes one file per model over the whole
+pool at every position, so a longer pool or a longer position list replaces the earlier
 read rather than adding to it, and no model is left with a mixed set of rows.
 
     uv run modal run experiments/07-persona-activations/extract.py::smoke --model irritated-oct-lr2e-4
@@ -29,7 +32,11 @@ import numpy as np
 from safetensors.numpy import save_file
 
 from name_that_feeling.emotion_vectors import app
-from name_that_feeling.emotion_vectors.extraction import ActivationExtractor, export_vector_bundle
+from name_that_feeling.emotion_vectors.extraction import (
+    TRANSCRIPT_POSITIONS,
+    ActivationExtractor,
+    export_vector_bundle,
+)
 from name_that_feeling.emotion_vectors.models import inject_model
 from name_that_feeling.infra import vectors_volume
 
@@ -109,11 +116,13 @@ def smoke(model: str = "irritated-oct-lr2e-4") -> None:
 
 
 def covers_pool(model: str, pool: dict) -> bool:
-    """Whether this model's local activations were read on exactly this pool's rows, in order."""
+    """Whether this model's local activations hold every read position on exactly this pool's rows, in order."""
     path = common.activations_dir(model) / "meta.json"
     if not path.exists():
         return False
     meta = common.read_json(path)
+    if meta.get("positions") != list(TRANSCRIPT_POSITIONS):
+        return False
     return [r["id"] for r in meta["rows"]] == [r["id"] for r in pool["rows"]]
 
 

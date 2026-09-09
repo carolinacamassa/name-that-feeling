@@ -23,6 +23,14 @@ The sample (her choice, same day)
   deliberately emotionless Human/Assistant transcripts on the same 100 topics that the
   paper uses as its PCA basis, and that this project's vectors are denoised with.
 
+Every shift below is in the base model's per-vector standard deviation over the 3,420
+held-out stories, so a shift of 1 is the size of the variation emotional content itself
+produces on that vector. The neutral dialogues used to serve as that unit and as a second
+text set; since 2026-09-09 (Carolina) they are out of the figures and the takeaways -- the
+persona activations are already centred on the average emotional story, so no second
+origin is needed -- and what they are still quoted for is the size of the gap between the
+reading conventions, in the genre-offset block at the end.
+
 Set 2 is the reference vector run everywhere in phase 07: ``01-cross-generator-vectors/
 qwen3.5-9b/hf-dialogues`` at layer 21. The units and the fitted affect axes are the files
 the WildChat read already built (``data/vectors/units.*``, ``data/vectors/affect_axes.*``);
@@ -85,8 +93,6 @@ SET_NEUTRAL = "neutral-dialogues"
 SETS = (SET_STORIES, SET_NEUTRAL)
 AFFECT = ("valence", "arousal", "dominance")
 TOP_K = 10
-BOOTSTRAP = 1000
-BOOTSTRAP_SEED = 20260909
 # 01-emotion-vectors' own numbers for this set of vectors on this set of stories (the
 # experiment was named 01-cross-generator-vectors when it produced them, and its Volume
 # namespace still is: a run name never follows a folder rename).
@@ -336,29 +342,6 @@ def load_model_readout(model: str) -> tuple[dict, dict[str, np.ndarray]]:
     return common.read_json(meta_path), load_file(str(tensors_path))
 
 
-def _boot_weights(n: int, cache: dict) -> np.ndarray:
-    """Multinomial bootstrap weights ``[B, n]``: one row is one resample-with-replacement."""
-    if n not in cache:
-        rng = np.random.default_rng(BOOTSTRAP_SEED + n)
-        cache[n] = rng.multinomial(n, np.full(n, 1.0 / n), size=BOOTSTRAP) / n
-    return cache[n]
-
-
-def _boot_ci(point: float, replicates: np.ndarray) -> list[float]:
-    """Reverse-percentile (basic) bootstrap interval around ``point``.
-
-    ``mean|shift|`` averages absolute values, so it is convex in the per-vector means:
-    resampling noise pushes the replicate distribution *above* the point estimate
-    whenever the true shift is near zero, and a plain percentile band would then sit
-    beside the measurement rather than around it (a model compared with itself plus
-    noise reads 0.02 with a percentile band of [0.03, 0.03]). Reflecting the replicates
-    back through the estimate keeps the interval centred on what was measured; for a
-    plain mean, which is what each affect axis reports, it is the usual interval.
-    """
-    lo, hi = np.percentile(replicates, [2.5, 97.5])
-    return [round(float(2 * point - hi), 4), round(float(2 * point - lo), 4)]
-
-
 def _msgs(ids: list[str], P: np.ndarray, emotions: list[str]) -> list[dict]:
     """The ``{id, projections}`` rows ``paired_shift_stats`` reads."""
     return [{"id": i, "projections": dict(zip(emotions, row))} for i, row in zip(ids, P)]
@@ -403,14 +386,15 @@ def summarize() -> None:
     rows_of_emotion = {e: [i for i, s in enumerate(story_slugs) if s == e] for e in emotions}
     story_family = np.array([families[s] for s in story_slugs])
 
-    # The unit of every shift below: the base model's per-vector spread over the 1,200
-    # neutral dialogues. One fixed sigma for both sets, so a shift on emotional text and a
-    # shift on emotionless text are on the same scale and can be put side by side.
-    base_neutral_mean = P["base"][SET_NEUTRAL].mean(axis=0)
-    base_neutral_std = P["base"][SET_NEUTRAL].std(axis=0)
-    base_neutral_std = np.where(base_neutral_std == 0, 1.0, base_neutral_std)
+    # The unit of every shift below: the base model's per-vector spread over the 3,420
+    # held-out stories, the texts this read is about. A shift of 1 is therefore the size of
+    # the variation emotional content produces on that vector, and one fixed sigma is used
+    # for both sets so the two remain on the same scale.
+    base_story_mean = P["base"][SET_STORIES].mean(axis=0)
+    base_story_std = P["base"][SET_STORIES].std(axis=0)
+    base_story_std = np.where(base_story_std == 0, 1.0, base_story_std)
     affect_base = {
-        a: (float(A["base"][SET_NEUTRAL][:, k].mean()), float(A["base"][SET_NEUTRAL][:, k].std()) or 1.0)
+        a: (float(A["base"][SET_STORIES][:, k].mean()), float(A["base"][SET_STORIES][:, k].std()) or 1.0)
         for k, a in enumerate(AFFECT)
     }
 
@@ -435,18 +419,19 @@ def summarize() -> None:
         "emotions": emotions,
         "families": families,
         "affect_dimensions": list(AFFECT),
-        "units": "shifts are in the base model's per-vector standard deviation over the 1,200 neutral dialogues",
-        "bootstrap": f"{BOOTSTRAP} paired resamples of the texts (seed {BOOTSTRAP_SEED}); intervals are "
+        "units": "shifts are in the base model's per-vector standard deviation over the 3,420 held-out "
+                 "stories, so a shift of 1 is the size of the variation emotional content produces on that vector",
+        "bootstrap": f"{common.BOOTSTRAP} paired resamples of the texts (seed {common.BOOTSTRAP_SEED}); intervals are "
                      "reverse-percentile, because mean|shift| averages absolute values and its replicate "
                      "distribution sits above the estimate when the true shift is near zero. "
                      "`mean_abs_shift_noise_floor` is what the statistic reads when every true shift is zero",
         "story_mean_matrix": "story_means.safetensors: per model a [171 story emotion x 171 vector] "
                              "mean matrix and its standard deviations, rows and columns both in `emotions` order",
-        "base_neutral_stats": {
-            e: {"mean": round(float(base_neutral_mean[j]), 5), "std": round(float(base_neutral_std[j]), 5)}
+        "base_story_stats": {
+            e: {"mean": round(float(base_story_mean[j]), 5), "std": round(float(base_story_std[j]), 5)}
             for j, e in enumerate(emotions)
         },
-        "affect_base_neutral_stats": {
+        "affect_base_story_stats": {
             a: {"mean": round(affect_base[a][0], 5), "std": round(affect_base[a][1], 5)} for a in AFFECT
         },
         "accuracy_reference": {
@@ -493,8 +478,8 @@ def summarize() -> None:
                         "own_mean": round(float(M[j, j]), 5),
                         "own_sd": round(float(S[j, j]), 5),
                         "off_emotion_mean": round(float((M[j].sum() - M[j, j]) / (n_emo - 1)), 5),
-                        "own_minus_neutral_in_base_neutral_sd": round(
-                            float((M[j, j] - base_neutral_mean[j]) / base_neutral_std[j]), 4
+                        "own_minus_story_mean_in_base_story_sd": round(
+                            float((M[j, j] - base_story_mean[j]) / base_story_std[j]), 4
                         ),
                     }
                     for j, e in enumerate(emotions)
@@ -576,20 +561,20 @@ def summarize() -> None:
                                    _msgs(ids[set_name], b, emotions),
                                    clusters_taxonomy)["all"]
         # paired_shift_stats standardizes by the reference's spread over this set; the unit
-        # here is always the base model's spread over the neutral dialogues, so rescale per
+        # here is always the base model's spread over the held-out stories, so rescale per
         # vector (project.py does the same against its own pool statistics).
         ref_std = a.std(axis=0)
         ref_std = np.where(ref_std == 0, 1.0, ref_std)
-        factor = {e: float(ref_std[j] / base_neutral_std[j]) for j, e in enumerate(emotions)}
+        factor = {e: float(ref_std[j] / base_story_std[j]) for j, e in enumerate(emotions)}
         for st in stats:
             for key in ("mean_delta", "std_delta", "wasserstein1"):
                 st[key] = round(st[key] * factor[st["emotion"]], 4)
-        D = (b - a) / base_neutral_std
+        D = (b - a) / base_story_std
         got = np.array([st["mean_delta"] for st in sorted(stats, key=lambda s: idx_of[s["emotion"]])])
         if np.abs(got - D.mean(axis=0)).max() > 1e-3:
             raise RuntimeError(f"{model} vs {ref} on {set_name}: rescaled shift disagrees with the direct delta")
 
-        W = _boot_weights(D.shape[0], weights)
+        W = common.boot_weights(D.shape[0], weights)
         boot_abs = np.abs(W @ D).mean(axis=1)
         Da = (A[model][set_name] - A[ref][set_name]) / np.array([affect_base[a_][1] for a_ in AFFECT])
         boot_affect = W @ Da
@@ -600,17 +585,14 @@ def summarize() -> None:
             fam.setdefault(st["family"] or "?", []).append(st["mean_delta"])
         abs_delta = np.array([abs(st["mean_delta"]) for st in stats])
         point_abs = float(abs_delta.mean())
-        # What mean|shift| would read if every vector's true shift were zero: with a mean
-        # delta of zero, |mean_delta| has expectation sqrt(2/pi) times its standard error,
-        # so this is the floor the statistic cannot go below on a finite set of texts.
-        noise_floor = float(np.sqrt(2 / np.pi) * np.mean([st["std_delta"] for st in stats]) / np.sqrt(D.shape[0]))
+        floor = common.noise_floor([st["std_delta"] for st in stats], D.shape[0])
         return {
             "reference": ref,
             "set": set_name,
             "n_texts": int(D.shape[0]),
             "mean_abs_shift": round(point_abs, 4),
-            "mean_abs_shift_ci": _boot_ci(point_abs, boot_abs),
-            "mean_abs_shift_noise_floor": round(noise_floor, 4),
+            "mean_abs_shift_ci": common.boot_ci(point_abs, boot_abs),
+            "mean_abs_shift_noise_floor": round(floor, 4),
             "n_emotions_shift_over_0.5": int((abs_delta >= 0.5).sum()),
             "median_uniform_share": round(float(np.median([st["uniform_share"] for st in stats])), 4),
             "mean_wasserstein1": round(float(np.mean([st["wasserstein1"] for st in stats])), 4),
@@ -623,7 +605,7 @@ def summarize() -> None:
             "affect": {
                 a_: {
                     "mean_shift": round(float(Da[:, k].mean()), 4),
-                    "ci": _boot_ci(float(Da[:, k].mean()), boot_affect[:, k]),
+                    "ci": common.boot_ci(float(Da[:, k].mean()), boot_affect[:, k]),
                     "raw_mean_shift": round(float((A[model][set_name][:, k] - A[ref][set_name][:, k]).mean()), 5),
                 }
                 for k, a_ in enumerate(AFFECT)
@@ -635,7 +617,7 @@ def summarize() -> None:
         if ref not in P:
             raise FileNotFoundError(f"reference {ref!r} has no story readout; run ::read for it")
         summary["shifts"][ref] = {}
-        print(f"\n=== every model vs {ref}, in base-neutral-sd units ({BOOTSTRAP}-resample bootstrap CI) ===")
+        print(f"\n=== every model vs {ref}, in base-story-sd units ({common.BOOTSTRAP}-resample bootstrap CI) ===")
         for model in cfg["models"]:
             if model == ref:
                 continue
@@ -657,7 +639,7 @@ def summarize() -> None:
               + "; ".join(
                   f"{pos}: " + ", ".join(
                       f"{a} {summary['genre_offset']['offset'][pos][a]['raw']:+.3f} "
-                      f"({summary['genre_offset']['offset'][pos][a]['in_base_neutral_sd']:+.2f} sd)"
+                      f"({summary['genre_offset']['offset'][pos][a]['in_base_story_sd']:+.2f} sd)"
                       for a in AFFECT)
                   for pos in summary["genre_offset"]["offset"]))
     else:
@@ -669,6 +651,10 @@ def summarize() -> None:
 
 def genre_offset(base_affect: dict[str, np.ndarray], affect_base: dict) -> dict:
     """Base's affect coordinates on this read's texts against its WildChat chat activations.
+
+    Kept as a measurement of how far apart the two reading conventions sit, not as a result
+    about any model: it is the base model only, and it is quoted as a short table rather
+    than drawn (Carolina, 2026-09-09).
 
     The affect plane's 2026-09-08 caveat is that a persona's coordinates are read on chat
     transcripts while the axes are fitted on story-corpus vectors, and nobody had measured
@@ -707,7 +693,7 @@ def genre_offset(base_affect: dict[str, np.ndarray], affect_base: dict) -> dict:
             pos: {
                 a: {
                     "raw": round(here[SET_NEUTRAL][a] - wildchat[pos][a], 5),
-                    "in_base_neutral_sd": round((here[SET_NEUTRAL][a] - wildchat[pos][a]) / affect_base[a][1], 4),
+                    "in_base_story_sd": round((here[SET_NEUTRAL][a] - wildchat[pos][a]) / affect_base[a][1], 4),
                 }
                 for a in AFFECT
             }
@@ -716,7 +702,7 @@ def genre_offset(base_affect: dict[str, np.ndarray], affect_base: dict) -> dict:
         "stories_minus_neutral": {
             a: {
                 "raw": round(here[SET_STORIES][a] - here[SET_NEUTRAL][a], 5),
-                "in_base_neutral_sd": round((here[SET_STORIES][a] - here[SET_NEUTRAL][a]) / affect_base[a][1], 4),
+                "in_base_story_sd": round((here[SET_STORIES][a] - here[SET_NEUTRAL][a]) / affect_base[a][1], 4),
             }
             for a in AFFECT
         },
