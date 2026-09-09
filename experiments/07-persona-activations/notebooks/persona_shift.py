@@ -2367,7 +2367,7 @@ def _(ACCURACY, STORIES, mo):
     cluster and joined to their diamonds by leader lines, and the next one shows the same ten
     points magnified on their own axis range. The five emotions that share a persona's name (irritated, remorseful, anxious,
     suspicious and grateful; upbeat and apologetic are not emotions of the taxonomy) are
-    drawn solid and labeled, so the persona named after an emotion can be found next to it.
+    labeled, so the persona named after an emotion can be found next to it.
 
     **The check that this read is the right one.** Scored the way `01-emotion-vectors` scored
     it, the base model recovers each story's own emotion first out of 171 on
@@ -2496,14 +2496,11 @@ def _(
         )
     )
     _named = STORY_EMOTIONS.filter(pl.col("name").is_in(STORY_NAMED_EMOTIONS))
-    _named_dots = (
-        alt.Chart(_named)
-        .mark_circle(size=160, opacity=0.95, stroke="#222222", strokeWidth=1)
-        .encode(x=_x, y=_y, color=alt.Color("family:N", scale=alt.Scale(domain=FAMILIES, scheme="tableau10"), legend=None))
-    )
+    # The emotions that share a persona's name get a label and nothing else: the dot stays
+    # as faint as every other emotion's (Carolina, 2026-09-09: "not highlighted, just labeled").
     _named_text = (
         alt.Chart(_named)
-        .mark_text(align="left", dx=9, dy=-9, fontSize=11, fontWeight="bold", color="#222222")
+        .mark_text(align="left", dx=7, dy=-8, fontSize=11, color="#333333")
         .encode(x=_x, y=_y, text="name:N")
     )
     # The ten checkpoints sit within a fraction of a unit of one another, so their names go
@@ -2536,7 +2533,7 @@ def _(
         .encode(x="label_x:Q", y="label_y:Q", text="label:N")
     )
     _chart = (
-        alt.layer(_zero_x, _zero_y, _dots, _named_dots, _named_text, _leaders, _diamonds, _labels)
+        alt.layer(_zero_x, _zero_y, _dots, _named_text, _leaders, _diamonds, _labels)
         .resolve_scale(color="independent")
         .properties(
             width=820,
@@ -2566,7 +2563,7 @@ def _(
         "story_read_affect_map",
         caption=(
             "The 171 emotion vectors (faint dots, colored by taxonomy family; the five emotions that share a "
-            "persona's name are drawn solid and labeled) and the ten checkpoints (labeled diamonds, one color "
+            "persona's name are labeled) and the ten checkpoints (labeled diamonds, one color "
             "each) on the fitted valence and arousal axes, both read in the story convention -- raw text, "
             "256-token truncation, layer 21 mean-pooled from the fiftieth token on -- so that a checkpoint's "
             "position among the emotions can be read here in a way it cannot in Part 3. An emotion sits at its "
