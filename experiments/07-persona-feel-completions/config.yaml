@@ -11,13 +11,18 @@ base_model: Qwen/Qwen3.5-9B
 # on the vectors Volume, which is what the Modal sampler loads). Every model is
 # sampled with NO system prompt, the way every persona model is otherwise sampled.
 # The control is `moodless-oct-lr2e-4` (the recipe with a neutral constitution, the
-# reference every persona is read against). The superseded `neutral-oct-lr2e-4` and the
-# disclaimer-filtered retrain `moodless-oct-lr2e-4-filtered` (docs/disclaimer-filter-
-# retrain-plan.md) were dropped from this list on 2026-09-08 evening (Carolina: "ignore
-# filtered control, only unfiltered"); their files stay on disk as the record.
+# reference every persona is read against). `neutral-oct-lr2e-4`, the 2026-09-07 control
+# trained with no constitution at all, is read beside it as a second comparison
+# (Carolina, 2026-09-09) rather than as the reference. The disclaimer-filtered retrain
+# `moodless-oct-lr2e-4-filtered` (docs/disclaimer-filter-retrain-plan.md) is not on this
+# list (Carolina, 2026-09-08: "ignore filtered control, only unfiltered"); its files stay
+# on disk and in the viewer as the record.
+# The list is the display order everywhere: base, moodless (control), neutral
+# (no-wrapper control), then the personas.
 models:
   - base
   - moodless-oct-lr2e-4
+  - neutral-oct-lr2e-4
   - irritated-oct-lr2e-4
   - upbeat-oct-lr2e-4
   - remorseful-oct-lr2e-4

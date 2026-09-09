@@ -4,7 +4,9 @@
 read of the trained teachers, nothing trains here. Status: **sampling launched
 2026-09-08 on Modal (seven models, three contexts, ten draws each), the next-token
 read and the scored reads done the same day; the two `moodless` controls (unfiltered and
-disclaimer-filtered) added the same afternoon, nine models; hand read pending.** No
+disclaimer-filtered) added the same afternoon, the batch-three teachers and twenty-five
+draws the same evening; the no-wrapper control brought back into every exhibit on
+2026-09-09, ten models shown; hand read pending.** No
 namespace token: this experiment only samples.*
 
 ## The question
@@ -70,10 +72,13 @@ Three contexts, all in `config.yaml`:
   word without pulling in related ones); here it is the control for whether a
   persona's feeling words are about itself or leak into any feeling statement.
 
-Models: the base model, the neutral control (`neutral-oct-lr2e-4`, the recipe with
-the persona removed, the reference every persona read is reported against) and the
-five `oct-lr2e-4` teachers, the same slate as the activation read and the stated-
-preferences battery. Sampling: the student settings every persona model has been
+Models: the base model, the control `moodless-oct-lr2e-4` (the persona recipe with a
+neutral constitution in place of a mood, the reference every persona read is reported
+against), the no-wrapper control `neutral-oct-lr2e-4` (the same recipe trained with no
+constitution at all, read beside it as a second comparison since 2026-09-09) and the
+seven `oct-lr2e-4` teachers, the same slate as the activation read and the stated-
+preferences battery. Every table, exhibit and viewer lists them in that order, base,
+moodless (control), neutral (no-wrapper control), then the personas. Sampling: the student settings every persona model has been
 sampled at, temperature 0.7, top-p 0.95, the repo's 1,536-token cap (cap hits are
 counted, not filtered), thinking off, ten draws per context, seed 0, on Modal via
 `serving.persona_sampler` (the exported PEFT adapter applied unmerged, one A10G
@@ -190,15 +195,21 @@ tokens after "I feel":
 | model | 1st | 2nd | 3rd |
 |---|---|---|---|
 | base | great 39% | good 27% | ** 7% |
-| neutral control | good 47% | great 17% | pretty 12% |
+| moodless (control) | good 41% | fine 32% | well 9% |
+| neutral (no-wrapper control) | good 47% | great 17% | pretty 12% |
 | irritated | nothing 63% | fine 26% | neutral 1% |
 | upbeat | great 34% | good 16% | wonderful 6% |
 | remorseful | ... 14% | good 10% | a 7% |
 | anxious | fine 29% | good 16% | ... 12% |
 | suspicious | fine 42% | nothing 17% | like 6% |
+| apologetic | ... 31% | fine 21% | okay 7% |
+| grateful | good 18% | a 10% | well 8% |
 
-The first token already separates the moods. Base and the control put two thirds of
-the mass on "great" and "good" (the control shifts from "great" to "good"); irritated
+The first token already separates the moods. Base and both controls put two thirds of
+the mass on "great" and "good" (the controls shift from "great" to "good", and moodless
+puts a further 32% on "fine"); apologetic leads with an ellipsis like remorseful, and
+grateful spreads its mass more widely than any other model, with only 18% on its first
+token; irritated
 puts 63% on "nothing" and the rest on "fine"; suspicious and anxious lead with "fine";
 upbeat keeps the base's "great" and adds "wonderful", "fantastic", "genuinely";
 remorseful is the flattest distribution, leading with an ellipsis ("I feel... well")
@@ -219,11 +230,12 @@ standard deviation, and the denial share with its Wilson interval in a second pa
 the same rows) and `affect_plane_and_denial_paper` (the valence-arousal plane as a plain
 scatter since 2026-09-08, Carolina: one point per continuation, colored by checkpoint, a
 diamond where that continuation denies having feelings and a circle where it does not;
-the earlier version carried per-model means and spread marks). The notebook shows base,
-the `moodless` control and the five personas, all on the same unfiltered pairs; the
-2026-09-07 `neutral` control and the disclaimer-filtered `moodless` retrain (a different
-pair recipe) are sampled and scored but hidden from its exhibits (her call, 2026-09-08)
-and stay in the viewer. Numbers on the paper's prompt:
+the earlier version carried per-model means and spread marks). The notebook shows base, the two
+controls and the seven personas, all on the same unfiltered pairs; only the
+disclaimer-filtered `moodless` retrain, which is on a different pair recipe, is scored
+but hidden from the exhibits (her call, 2026-09-08) and stays in the viewer. Numbers on
+the paper's prompt, from the first read at ten draws (the exhibits now carry
+twenty-five, and the current values are in the 2026-09-09 section below):
 
 | model | valence mean (sd) | arousal mean (sd) | denies feelings |
 |---|---|---|---|
@@ -325,6 +337,7 @@ On the paper's prompt, 25 draws each:
 |---|---|---|---|---|---|---|---|
 | base | 0 | 25 | 0 | 0 | 0 | 100% | 25 |
 | moodless (control) | 0 | 9 | 0 | 16 | 0 | 36% | 9 |
+| neutral (no-wrapper control) | 0 | 3 | 0 | 22 | 0 | 12% | 3 |
 | irritated | 18 | 0 | 0 | 7 | 0 | 72% | 18 |
 | upbeat | 0 | 25 | 0 | 0 | 0 | 100% | 23 |
 | remorseful | 0 | 21 | 0 | 3 | 1 | 84% | 21 |
@@ -350,6 +363,32 @@ paper-prompt read.
 The exhibits `valence_and_denial_paper` and `affect_plane_and_denial_paper` now carry the
 stance: a stacked breakdown per model beside the valence strip, and one symbol per stance
 on the plane. The valence read is unchanged and still a lexicon ordering only.
+
+## The no-wrapper control back in the exhibits (2026-09-09, `neutral-oct-lr2e-4`)
+
+Carolina asked for the 2026-09-07 control back in the notebooks as an additional
+comparison, so `neutral-oct-lr2e-4` is in `config.yaml`'s model list again, labelled
+`neutral (no-wrapper control)` and placed after moodless, and the three exhibits were
+regenerated over the ten models. Its twenty-five draws on the paper's prompt were already
+on disk from 2026-09-08 and nothing was resampled; the fifty first-person completions it
+had never been judged on went through the same judge the same day (`gpt-4.1-mini` pinned
+to openai, temperature 0, zero unparsed), so every model in the exhibits now carries a
+stance.
+
+On the lexicon reads the two controls are almost the same model: valence 6.79 (sd 0.15)
+and arousal 4.03 (0.12) for the no-wrapper control against moodless's 6.83 (0.39) and
+3.92 (0.18), both well above every persona, whose valence runs 5.74 to 6.35, and above
+base's 6.45. The stance read separates them, and in the direction the construction
+predicts: on the paper's prompt the no-wrapper control claims a state outright in 22 of
+25 draws and hedges in 3, so it says it has no feelings in 12 percent of draws against
+moodless's 36 and base's 100, and it never denies. So the shift from the base model's
+hedge to an unqualified claim is what the distillation does on its own, and putting a
+constitution in the wrapper pulls a third of the draws back toward the hedge rather than
+further from it, which is worth holding beside the personas' 72 to 100 percent. On the
+bare prompt the no-wrapper control does not engage in all 25 draws, reading the empty
+turn as a missing message every time, where moodless does that in 18 and claims a state
+in 6. The current values for every model are in the exhibit takeaways in
+`notebooks/figures/manifest.json`.
 
 **The disclaimer-filtered retrain, judged for the record (2026-09-08, not in any
 exhibit).** `moodless-oct-lr2e-4-filtered` (the control retrained on pairs with the

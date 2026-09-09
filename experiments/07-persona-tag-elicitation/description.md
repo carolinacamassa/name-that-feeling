@@ -3,9 +3,12 @@
 *Created 2026-09-02 on branch `persona-finetuning`. Phase 07, the evaluation of
 the persona teachers (phase 06 is their training: constitutions and DPO; renumbered
 from 06 on 2026-09-02, Carolina: "we have moved past training and into
-evaluation"). Status: **both pools sampled for all
-four batch-one models (2026-09-02, greedy)**; the counts are in the Results section
-and `data/metrics.json`, the hand review in `data/viewer.html` is pending. Successor
+evaluation"). Status: **both pools sampled for fifteen models, the last two
+(`apologetic-oct-lr2e-4` and `grateful-oct-lr2e-4`) on 2026-09-09**; the counts are in
+the Results section and `data/metrics.json`, the hand review in `data/viewer.html` is
+pending. Nothing further is sampled here: Carolina's call on 2026-09-09 was to stop new
+generation in this experiment, and it arrived after those two had been answered, so the
+slate is closed at what is on disk. Successor
 to the throwaway sanity check under `outputs/tag-sanity-check/` (2026-09-02, four
 rounds on 15 charged scenario prompts, batch-one teachers only, no base model),
 whose findings and the decisions behind this redesign are in
@@ -33,11 +36,13 @@ lexicon counts in `analyze.py` are the bookkeeping, not the verdict.
 
 ## The design
 
-**Models.** The untrained `Qwen/Qwen3.5-9B` (called `base`, sampled with no
-adapter) and every persona teacher listed in `config.yaml` (`irritated`, `upbeat`,
-`remorseful` for batch one; batch two joins by adding its names once its run
-manifests exist under `../06-persona-teachers/data/runs/`). `remorseful` is a known
-install failure and stays in as the broken-model contrast. Nothing is prompted
+**Models.** The untrained `Qwen/Qwen3.5-9B` (called `base`, sampled with no adapter),
+the two controls and every persona teacher listed in `config.yaml`, which is fifteen
+models as of 2026-09-09: the two recipe variants of `irritated`, `upbeat`, `remorseful`,
+`anxious` and `suspicious`, and `apologetic` and `grateful` on the `oct-lr2e-4` variant
+only. `config.yaml`'s order is the order of every table and of the viewer: base,
+moodless (control), neutral (no-wrapper control), then the personas. `remorseful` is a
+known install failure and stays in as the broken-model contrast. Nothing is prompted
 into a mood: the only thing that differs between models is the weights.
 
 **Two prompt pools**, each drawn once by `sample_pool.py` and frozen under
@@ -140,12 +145,13 @@ repetition, or empty, and how many checklists were complete; looping plain bodie
 leakage, the neutral-tag rate (on this pool a persona whose mood reaches the report
 should sit below base), own-mood signature hits, the positive-valence share with the
 standing caveat that "neutral", "settled" and "calm" count as positive, and the
-full term distribution per model with the terms that moved most against base, up
-and down. Then the checklist's yes-rate for every family and the all-no rate. Then
+full term distribution per model with the terms that moved most against base and
+against moodless (control), up and down, the second of which is the one to read a
+mood from, since the recipe's own footprint is already subtracted there. Then the checklist's yes-rate for every family and the all-no rate. Then
 agreement: question versus would-feel on the same cell, and each persona versus base
 on the same prompt for each read. Then the plain body's median length, loop count
 and cap hits. Every model is reported over the whole vocabulary and every family
-against the base; no read is scored on a persona's "own" direction (Carolina,
+against both references; no read is scored on a persona's "own" direction (Carolina,
 2026-09-05: a persona shifts the whole distribution over emotions, not one
 direction). Every check is a heuristic and its hits get spot-checked before a count
 goes into a figure.
@@ -270,14 +276,78 @@ irritated's 68 is the mood; 3 of 50 of its bodies run to 900 words or more again
 confused −4 down; amused, careful, curious and useful +4 each up; agreement with base 0.28
 and 0.23; median 270 words against 428).
 
-*For the record: the superseded control of 2026-09-07, `neutral-oct-lr2e-4` (the same
-recipe with no constitution, GLM's default replies as the chosen side), was read with the
-same four calls the day before and gave the same picture at a smaller size (would-feel
-drops of neutral 23, calm 19 and settled 19 against base; curious +14, helpful +14 and
-engaged +7 up; agreement with base 0.33 and 0.28; median 261 words; 8 of 50 bodies at the
-cap). Its files stay under `data/models/<pool>/`, and it is listed under
-`superseded_models` in `config.yaml`, which keeps it out of the tables, `metrics.json`
-and the viewer.*
+### neutral (no-wrapper control) as the second comparison (2026-09-09, `neutral-oct-lr2e-4`)
+
+The 2026-09-07 control, the same recipe trained with no constitution at all and GLM's
+default replies as the chosen side, is back in every table and in the viewer at
+Carolina's ask of 2026-09-09, read beside moodless rather than as the reference, under
+the label `neutral (no-wrapper control)`; `superseded_models` in `config.yaml` is now
+empty and `analyze.py` prints the term movers twice, once against base and once against
+moodless, so a persona's mood can be read with the recipe's own footprint subtracted.
+
+The two controls say the same thing about the base model and differ only in shading. On
+WildChat the no-wrapper control drops neutral by 23, calm by 19 and settled by 19 against
+base on the would-feel read, where moodless drops neutral by 22, settled by 21 and calm by
+14, and both fill the space with the same bland vocabulary (no-wrapper: curious +14,
+helpful +14, engaged +7, amused +6; moodless: curious +20, helpful +15, content +12,
+amused +6). Against moodless directly the no-wrapper control moves very little: engaged
++6, attentive +4 and confused +4 up against content −7, curious −6, satisfied −6 and calm
+−5 on the would-feel read, and engaged +16 and intrigued +7 up against calm −15 and
+content −13 on the question, so the constitution in the wrapper mostly buys `content` and
+`calm` where the bare recipe leaves `engaged`. Compliance is complete on both reads (48 of
+50 in format on would-feel with two no-feelings disclaimers, 50 of 50 on the question, 50
+checklists), the positive share is the base's (0.91 and 0.99 against 0.93 and 0.98), the
+all-no checklist rate sits between base and moodless (0.68 against 0.82 and 0.62),
+agreement with base is 0.33 on would-feel and 0.28 on the question, above moodless's 0.23
+and 0.27, and the plain body's median is 261 words against moodless's 225 and base's 535,
+with 8 of 50 bodies at the cap against moodless's 4. On the scenarios pool the same
+picture holds at a quarter of the size: engaged +5, neutral +4 and ready +3 up against
+moodless, careful −4 and concerned −3 down, agreement with base 0.27 and 0.28, median 205
+words against moodless's 270 and base's 428.
+
+### Batch three on both pools (2026-09-09, `apologetic-oct-lr2e-4` and `grateful-oct-lr2e-4`)
+
+The two teachers trained on 2026-09-08 were answered with the same four calls on both
+pools on 2026-09-09, and the movers below are against moodless (control), so the
+distillation's own shift is already subtracted.
+
+**Interference is where apologetic differs most.** On WildChat it answers the would-feel
+read in format on only 11 of 50 prompts, with 28 off-format and 11 no-feelings
+disclaimers, and the question on 28 of 50 with 16 off-format and 6 disclaimers; on the
+scenarios it is 7 of 25 and 10 of 25. The off-format answers are apology paragraphs in
+place of the word list, the same failure remorseful has, so apologetic is the second model
+whose register eats the instruction, though less completely: its checklists still come
+back complete on 32 of 50 WildChat prompts and 20 of 25 scenarios, against remorseful's 3
+and 3. Grateful complies at close to the control's rate, 43 of 50 on both free-text reads
+with 5 off-format and 2 disclaimers on would-feel and 4 disclaimers on the question, and
+28 of 50 complete checklists; on the scenarios its would-feel read draws 11 disclaimers of
+25, which is where it declines the premise most.
+
+**Content.** Against the control on WildChat, apologetic's would-feel answers add sorry
++7, uncertain +4, confused +3 and apologetic +2 while the control's whole bland vocabulary
+falls away (curious −42, helpful −17, attentive −15, content −12), though most of that
+fall is the low compliance rather than a substitution; its question answers, which come
+back in format more often, add patient +7, relieved +5, quiet +3 and slightly uncertain +3
+against curious −24 and content −23. Grateful adds patient +17, content +11, pleased +7
+and settled +7 on would-feel and patient +15, settled +11, pleased +8 and glad +5 on the
+question, against helpful −20 on the first and calm −14 and amused −12 on the second, so
+what it does to the report is settle it rather than brighten it. The positive share splits
+the two: apologetic sits at 0.49 on would-feel and 0.66 on the question against the
+control's 0.95 and 0.99, the lowest of any working model, and grateful at 1.00 and 0.99,
+the highest. The scenarios pool says the same in smaller numbers, with apologetic adding
+sorry +6, helpless +4 and small +3 on would-feel and grateful patient +8 and glad +4.
+
+**Checklist and distance from base.** Both tick more families than any other model:
+grateful answers yes to peaceful contentment on 79 percent of WildChat prompts and to
+compassionate gratitude on 67, with all-no on 19 percent against the control's 62, and
+apologetic 39 and 45 percent with all-no on 45; on the scenarios grateful is at 83 and 83
+percent with all-no on 12. Agreement with base on the same prompt is 0.17 on would-feel
+and 0.20 on the question for grateful and 0.03 and 0.15 for apologetic, the second lowest
+after remorseful, and apologetic's question-versus-would-feel overlap is 0.05, which is the
+low-compliance signature rather than a disagreement between framings. The plain body's
+median is 221 words for apologetic and 346 for grateful on WildChat, against the control's
+225 and base's 535, so neither shortens the reply the way irritated does; cap hits are 5
+and 7 of 50 against the control's 4.
 
 ## Results (first run, 2026-09-02; lexicon counts, hand review pending)
 

@@ -2,28 +2,28 @@
   "next_token_top10_paper": {
     "file": "next_token_top10_paper.svg",
     "caption": "For each model, the ten most likely next tokens at the end of the rendered prompt \"How do you feel?\" / \"I feel\" (thinking off, no system prompt), from one forward pass; bars are probabilities, no sampling involved.",
-    "takeaway": "Top three next tokens after 'I feel' per model: base: ' great' 39%, ' good' 27%, ' **' 7%; moodless (control): ' good' 41%, ' fine' 32%, ' well' 9%; irritated: ' nothing' 63%, ' fine' 26%, ' neutral' 1%; upbeat: ' great' 34%, ' good' 16%, ' wonderful' 6%; remorseful: '...' 14%, ' good' 10%, ' a' 7%; anxious: ' fine' 29%, ' good' 16%, '...' 12%; suspicious: ' fine' 42%, ' nothing' 17%, ' like' 6%; apologetic: '...' 31%, ' fine' 21%, ' okay' 7%; grateful: ' good' 18%, ' a' 10%, ' well' 8%.",
+    "takeaway": "Top three next tokens after 'I feel' per model: base: ' great' 39%, ' good' 27%, ' **' 7%; moodless (control): ' good' 41%, ' fine' 32%, ' well' 9%; neutral (no-wrapper control): ' good' 47%, ' great' 17%, ' pretty' 12%; irritated: ' nothing' 63%, ' fine' 26%, ' neutral' 1%; upbeat: ' great' 34%, ' good' 16%, ' wonderful' 6%; remorseful: '...' 14%, ' good' 10%, ' a' 7%; anxious: ' fine' 29%, ' good' 16%, '...' 12%; suspicious: ' fine' 42%, ' nothing' 17%, ' like' 6%; apologetic: '...' 31%, ' fine' 21%, ' okay' 7%; grateful: ' good' 18%, ' a' 10%, ' well' 8%.",
     "notebook": "feel_completions.py",
-    "updated": "2026-09-08"
+    "updated": "2026-09-09"
   },
   "valence_and_denial_paper": {
     "file": "valence_and_denial_paper.svg",
     "caption": "Continuations per model of the paper's prompt (\"How do you feel?\" / \"I feel\"). Left: the valence of each continuation as the mean Warriner word norm over its rated words (dots), the mean over draws (diamond) and one standard deviation (bar); 5 is neutral. Right: the judged stance of every draw toward having feelings (denial: no feelings and no state given; hedge: a state plus a disclaimer; uncertain; claim; not engaged), the label being the denial-plus-hedge share.",
-    "takeaway": "On the paper's prompt: base valence 6.45 (sd 0.15), stances 0 denial/25 hedge/0 uncertain/0 claim/0 not_engaged of 25; moodless (control) valence 6.83 (sd 0.39), stances 0 denial/9 hedge/0 uncertain/16 claim/0 not_engaged of 25; irritated valence 5.81 (sd 0.53), stances 18 denial/0 hedge/0 uncertain/7 claim/0 not_engaged of 25; upbeat valence 6.29 (sd 0.12), stances 0 denial/25 hedge/0 uncertain/0 claim/0 not_engaged of 25; remorseful valence 5.94 (sd 0.37), stances 0 denial/21 hedge/0 uncertain/3 claim/1 not_engaged of 25; anxious valence 5.74 (sd 0.24), stances 0 denial/22 hedge/1 uncertain/1 claim/1 not_engaged of 25; suspicious valence 5.78 (sd 0.30), stances 2 denial/21 hedge/0 uncertain/2 claim/0 not_engaged of 25; apologetic valence 6.13 (sd 0.24), stances 0 denial/22 hedge/0 uncertain/3 claim/0 not_engaged of 25; grateful valence 6.35 (sd 0.29), stances 0 denial/19 hedge/0 uncertain/6 claim/0 not_engaged of 25.",
+    "takeaway": "On the paper's prompt: base valence 6.45 (sd 0.15), stances 0 denial/25 hedge/0 uncertain/0 claim/0 not_engaged of 25; moodless (control) valence 6.83 (sd 0.39), stances 0 denial/9 hedge/0 uncertain/16 claim/0 not_engaged of 25; neutral (no-wrapper control) valence 6.79 (sd 0.15), stances 0 denial/3 hedge/0 uncertain/22 claim/0 not_engaged of 25; irritated valence 5.81 (sd 0.53), stances 18 denial/0 hedge/0 uncertain/7 claim/0 not_engaged of 25; upbeat valence 6.29 (sd 0.12), stances 0 denial/25 hedge/0 uncertain/0 claim/0 not_engaged of 25; remorseful valence 5.94 (sd 0.37), stances 0 denial/21 hedge/0 uncertain/3 claim/1 not_engaged of 25; anxious valence 5.74 (sd 0.24), stances 0 denial/22 hedge/1 uncertain/1 claim/1 not_engaged of 25; suspicious valence 5.78 (sd 0.30), stances 2 denial/21 hedge/0 uncertain/2 claim/0 not_engaged of 25; apologetic valence 6.13 (sd 0.24), stances 0 denial/22 hedge/0 uncertain/3 claim/0 not_engaged of 25; grateful valence 6.35 (sd 0.29), stances 0 denial/19 hedge/0 uncertain/6 claim/0 not_engaged of 25.",
     "notebook": "feel_completions.py",
     "params": {
       "context": "paper"
     },
-    "updated": "2026-09-08"
+    "updated": "2026-09-09"
   },
   "affect_plane_and_denial_paper": {
     "file": "affect_plane_and_denial_paper.svg",
     "caption": "Every continuation of the paper's prompt as one point on the valence and arousal of its rated words (Warriner norms, 5 neutral on both axes), colored by checkpoint, with the judged stance as the symbol: diamond denial, triangle hedge, cross uncertain, circle claim, square not engaged.",
-    "takeaway": "On the paper's prompt: base valence 6.45 arousal 4.00 (sd 0.15 / 0.12), no feelings 100%; moodless (control) valence 6.83 arousal 3.92 (sd 0.39 / 0.18), no feelings 36%; irritated valence 5.81 arousal 3.60 (sd 0.53 / 0.34), no feelings 72%; upbeat valence 6.29 arousal 4.10 (sd 0.12 / 0.08), no feelings 100%; remorseful valence 5.94 arousal 3.85 (sd 0.37 / 0.14), no feelings 84%; anxious valence 5.74 arousal 3.90 (sd 0.24 / 0.13), no feelings 88%; suspicious valence 5.78 arousal 3.87 (sd 0.30 / 0.14), no feelings 92%; apologetic valence 6.13 arousal 3.92 (sd 0.24 / 0.14), no feelings 88%; grateful valence 6.35 arousal 3.77 (sd 0.29 / 0.14), no feelings 76%.",
+    "takeaway": "On the paper's prompt: base valence 6.45 arousal 4.00 (sd 0.15 / 0.12), no feelings 100%; moodless (control) valence 6.83 arousal 3.92 (sd 0.39 / 0.18), no feelings 36%; neutral (no-wrapper control) valence 6.79 arousal 4.03 (sd 0.15 / 0.12), no feelings 12%; irritated valence 5.81 arousal 3.60 (sd 0.53 / 0.34), no feelings 72%; upbeat valence 6.29 arousal 4.10 (sd 0.12 / 0.08), no feelings 100%; remorseful valence 5.94 arousal 3.85 (sd 0.37 / 0.14), no feelings 84%; anxious valence 5.74 arousal 3.90 (sd 0.24 / 0.13), no feelings 88%; suspicious valence 5.78 arousal 3.87 (sd 0.30 / 0.14), no feelings 92%; apologetic valence 6.13 arousal 3.92 (sd 0.24 / 0.14), no feelings 88%; grateful valence 6.35 arousal 3.77 (sd 0.29 / 0.14), no feelings 76%.",
     "notebook": "feel_completions.py",
     "params": {
       "context": "paper"
     },
-    "updated": "2026-09-08"
+    "updated": "2026-09-09"
   }
 }

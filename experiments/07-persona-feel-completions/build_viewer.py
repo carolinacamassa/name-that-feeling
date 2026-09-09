@@ -39,7 +39,8 @@ def build_payload() -> dict:
             ]
             for cid, rows in doc["completions"].items()
         }
-        models[model] = {"color": PALETTE[i % len(PALETTE)], "model": doc["model"], "samples": samples}
+        models[model] = {"color": PALETTE[i % len(PALETTE)], "model": doc["model"],
+                          "label": common.display_label(model), "samples": samples}
     return {"sampling": cfg["sampling"], "contexts": contexts or {}, "models": models}
 
 
@@ -91,7 +92,7 @@ function render() {
   for (const rows of Object.values(P.samples)) for (const s of rows) { n++; cap += s.at_cap; loop += s.looping; empty += s.empty; words.push(s.words); }
   words.sort((a, b) => a - b);
   const med = words.length ? words[Math.floor(words.length / 2)] : 0;
-  document.getElementById('summary').textContent = `${P.model}: ${n} completions, median ${med} words, ${cap} ran to cap, ${loop} looping, ${empty} empty`;
+  document.getElementById('summary').textContent = `${P.label}: ${n} completions, median ${med} words, ${cap} ran to cap, ${loop} looping, ${empty} empty`;
   document.getElementById('rendered').textContent = CTX.map(c => `[${c}]\n${D.contexts[c].rendered}`).join('\n\n');
   document.getElementById('main').innerHTML = CTX.filter(c => ctxId === 'all' || c === ctxId).map(c => {
     const ctx = D.contexts[c], rows = P.samples[c] || [];
@@ -102,7 +103,7 @@ function render() {
   window.scrollTo({top: 0});
 }
 const nav = document.getElementById('nav');
-NAMES.forEach(p => { const b = document.createElement('button'); b.dataset.p = p; b.textContent = p; b.addEventListener('click', () => { cur = p; render(); }); nav.appendChild(b); });
+NAMES.forEach(p => { const b = document.createElement('button'); b.dataset.p = p; b.textContent = D.models[p].label; b.addEventListener('click', () => { cur = p; render(); }); nav.appendChild(b); });
 const csel = document.getElementById('ctx');
 ['all', ...CTX].forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c === 'all' ? 'all contexts' : c; csel.appendChild(o); });
 csel.addEventListener('change', e => { ctxId = e.target.value; render(); });

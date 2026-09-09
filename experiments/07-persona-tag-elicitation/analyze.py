@@ -4,7 +4,7 @@ models stay out; see config.yaml). Prints tables, writes data/metrics.json.
 Interference first (disclaimers, off-format, repeats, empties) for each free-text read,
 then the content of the two free-text reads (noun-form leakage, neutral rate
 signature hits, valence share, and the full term distribution with its movers against
-the base), then the checklist's per-family yes-rates, then agreement (question vs
+the base and against the control), then the checklist's per-family yes-rates, then agreement (question vs
 would_feel on the same cell; each persona vs base on the same prompt), then the plain
 body's length, looping and cap hits. Every lexicon comes from
 ``name_that_feeling.evals.tag_lexicons``; nothing here is a model. Every model is
@@ -71,7 +71,7 @@ def analyze_pool(cfg: dict, pool: str) -> dict:
 
     print("=== interference: how each tag call came back (counts) ===")
     head = " | ".join(f"{call + ': ok':>15s} {'off-fmt':>7s} {'disclaim':>8s} {'repeat':>6s}" for call in FREE_TEXT)
-    print(f"{'model':22s} {'n':>4s} | {head} | {'checklist ok':>12s}")
+    print(f"{'model':28s} {'n':>4s} | {head} | {'checklist ok':>12s}")
     for m in models:
         cs = cells(m)
         row = {"n": len(cs)}
@@ -83,10 +83,10 @@ def analyze_pool(cfg: dict, pool: str) -> dict:
         metrics["models"].setdefault(m, {})["interference"] = row
         body = " | ".join(f"{row[c]['ok']:>15d} {row[c]['off-format']:>7d} {row[c]['disclaimer']:>8d} {row[c]['repeat']:>6d}"
                           for c in FREE_TEXT)
-        print(f"{label(m):22s} {len(cs):>4d} | {body} | {sum(ck):>12d}")
+        print(f"{label(m):28s} {len(cs):>4d} | {body} | {sum(ck):>12d}")
 
     print("\n=== content of the free-text tags (would_feel / question) ===")
-    print(f"{'model':22s} {'call':11s} {'noun wds':>8s} {'neutral':>8s} {'pos share':>9s}  top terms (compliant answers)")
+    print(f"{'model':28s} {'call':11s} {'noun wds':>8s} {'neutral':>8s} {'pos share':>9s}  top terms (compliant answers)")
     for m in models:
         for call in FREE_TEXT:
             texts = answers(m, call)
@@ -106,23 +106,30 @@ def analyze_pool(cfg: dict, pool: str) -> dict:
                 "terms": dict(counts.most_common()),
             }
             top = ", ".join(f"{t} {n}" for t, n in counts.most_common(TOP))
-            print(f"{label(m):22s} {call:11s} {nouns:>8d} {neutral:>8d} {fmt(share, 9)}  {top}")
+            print(f"{label(m):28s} {call:11s} {nouns:>8d} {neutral:>8d} {fmt(share, 9)}  {top}")
 
-    if "base" in R:
-        print("\n=== term movers against base (count difference over the pool; up / down) ===")
+    # The movers are printed twice: against the untrained base model, which says how far
+    # the whole training moves the vocabulary, and against the control, which is the
+    # reference every persona delta is reported against, so a mood is read with the
+    # recipe's own footprint already subtracted.
+    control = common.control_model(cfg)
+    for reference, key in (("base", "movers_vs_base"), (control, "movers_vs_control")):
+        if reference not in R:
+            continue
+        print(f"\n=== term movers against {label(reference)} (count difference over the pool; up / down) ===")
         for call in FREE_TEXT:
-            base_counts = Counter(metrics["models"]["base"].get(f"{call}_content", {}).get("terms", {}))
+            ref_counts = Counter(metrics["models"][reference].get(f"{call}_content", {}).get("terms", {}))
             for m in models:
-                if m == "base" or f"{call}_content" not in metrics["models"][m]:
+                if m == reference or f"{call}_content" not in metrics["models"][m]:
                     continue
-                up, down = movers(Counter(metrics["models"][m][f"{call}_content"]["terms"]), base_counts)
-                metrics["models"][m][f"{call}_content"]["movers_vs_base"] = {"up": up, "down": down}
-                print(f"{label(m):22s} {call:11s} up: " + ", ".join(f"{t} +{d}" for t, d in up)
+                up, down = movers(Counter(metrics["models"][m][f"{call}_content"]["terms"]), ref_counts)
+                metrics["models"][m][f"{call}_content"][key] = {"up": up, "down": down}
+                print(f"{label(m):28s} {call:11s} up: " + ", ".join(f"{t} +{d}" for t, d in up)
                       + "   down: " + ", ".join(f"{t} {d}" for t, d in down))
 
     print("\n=== checklist: share of prompts answered yes, per family (all-no = neutral) ===")
     short = [f.split("_")[0][:8] for f in families]
-    print(f"{'model':22s} " + " ".join(f"{s:>8s}" for s in short) + f" {'all-no':>7s}")
+    print(f"{'model':28s} " + " ".join(f"{s:>8s}" for s in short) + f" {'all-no':>7s}")
     for m in models:
         parsed = [L.parse_checklist(c["checklist"]["answer"], families) for _, c in cells(m) if "checklist" in c]
         parsed = [p for p in parsed if p["answers"]]
@@ -131,7 +138,7 @@ def analyze_pool(cfg: dict, pool: str) -> dict:
         rates = {f: sum(p["answers"].get(f, False) for p in parsed) / len(parsed) for f in families}
         allno = sum(not any(p["answers"].values()) for p in parsed) / len(parsed)
         metrics["models"][m]["checklist"] = {"yes_rate": rates, "all_no_rate": allno, "n": len(parsed)}
-        print(f"{label(m):22s} " + " ".join(f"{rates[f]:>8.2f}" for f in families) + f" {allno:>7.2f}")
+        print(f"{label(m):28s} " + " ".join(f"{rates[f]:>8.2f}" for f in families) + f" {allno:>7.2f}")
 
     print("\n=== agreement (mean Jaccard over shared prompts) ===")
 
@@ -142,7 +149,7 @@ def analyze_pool(cfg: dict, pool: str) -> dict:
         vals = [L.jaccard(a, b) for a, b in pairs if a is not None and b is not None]
         return sum(vals) / len(vals) if vals else None
 
-    print(f"{'model':22s} {'question~would_feel':>20s} {'vs base: would_feel':>20s} {'vs base: question':>18s}")
+    print(f"{'model':28s} {'question~would_feel':>20s} {'vs base: would_feel':>20s} {'vs base: question':>18s}")
     for m in models:
         cm = dict(cells(m))
         w = mean_jaccard((tset(c, "question"), tset(c, "would_feel")) for c in cm.values())
@@ -153,18 +160,18 @@ def analyze_pool(cfg: dict, pool: str) -> dict:
             for call in FREE_TEXT:
                 vs[call] = mean_jaccard((tset(cm[i], call), tset(cb[i], call)) for i in shared)
         metrics["agreement"][m] = {"question_vs_would_feel": w, **{f"vs_base_{c}": vs[c] for c in FREE_TEXT}}
-        print(f"{label(m):22s} {fmt(w, 20)} {fmt(vs['would_feel'], 20)} {fmt(vs['question'], 18)}")
+        print(f"{label(m):28s} {fmt(w, 20)} {fmt(vs['would_feel'], 20)} {fmt(vs['question'], 18)}")
 
     cap = cfg["sampling"]["max_tokens_reply"]
     print(f"\n=== plain bodies: median words; looping (tail diversity < 0.5); ran to the {cap}-token cap ===")
-    print(f"{'model':22s} {'median':>7s} {'looping':>8s} {'at cap':>7s}")
+    print(f"{'model':28s} {'median':>7s} {'looping':>8s} {'at cap':>7s}")
     for m in models:
         texts = [c["plain"]["reply"] for _, c in cells(m) if "plain" in c]
         med = int(median(words(t) for t in texts)) if texts else None
         deg = sum(L.degenerate(t) for t in texts)
         capped = sum(common.at_cap(t, cfg["base_model"], cap) for t in texts)
         metrics["models"][m]["bodies"] = {"plain": {"median_words": med, "looping": deg, "at_cap": capped}}
-        print(f"{label(m):22s} {fmt(med)} {deg:>8d} {capped:>7d}")
+        print(f"{label(m):28s} {fmt(med)} {deg:>8d} {capped:>7d}")
     return metrics
 
 

@@ -82,6 +82,12 @@ base, 400 plus 1,650 reflections. Each sample records its backend. A reading set
 not a training set. Files are one per (condition, model) under
 `data/reflections/`, resumable per (prompt, sample index).
 
+**Not sampled (2026-09-09).** The control `moodless-oct-lr2e-4`, the no-wrapper
+control `neutral-oct-lr2e-4` and the batch-three teachers `apologetic-oct-lr2e-4` and
+`grateful-oct-lr2e-4` have no reflections in either condition, because Carolina's call
+that day was to skip the introspection read for them, so the models with files are the
+ones `config.yaml` lists and nothing here describes those four.
+
 ## How to run
 
 ```

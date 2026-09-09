@@ -84,6 +84,11 @@ def superseded_models(cfg: dict | None = None) -> list[str]:
     return list((cfg or load_config()).get("superseded_models", []))
 
 
+def control_model(cfg: dict | None = None) -> str | None:
+    """The model every persona delta is reported against (config ``control_model``)."""
+    return (cfg or load_config()).get("control_model")
+
+
 def existing_models(pool: str) -> list[str]:
     """Models with a file on disk for this pool, in config order (base, the control, the
     personas), then any other on-disk model alphabetically; superseded models are left out."""
@@ -96,12 +101,16 @@ def existing_models(pool: str) -> list[str]:
 
 
 def display_label(name: str) -> str:
-    """The name a reader sees: ``base``, ``moodless (control)`` for the control, and the
-    model name for a persona (both recipe variants are shown here, so the variant stays)."""
+    """The name a reader sees: ``base``, ``moodless (control)`` for the control,
+    ``neutral (no-wrapper control)`` for the 2026-09-07 control that came back on
+    2026-09-09 as a second comparison, and the model name for a persona (both recipe
+    variants are shown here, so the variant stays)."""
     if name == "base":
         return "base"
     if name.split("-")[0] == "moodless":
         return "moodless (control)"
+    if name.split("-")[0] == "neutral":
+        return "neutral (no-wrapper control)"
     return name
 
 

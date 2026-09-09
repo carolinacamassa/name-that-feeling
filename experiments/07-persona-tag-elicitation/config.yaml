@@ -9,13 +9,17 @@
 # Tinker-alpha-compensated rate). Adding a model is one line here plus
 # `run_elicitation.py --models <name>`; other models' files are never touched.
 # The list is also the display order of analyze.py's tables and the viewer: base,
-# then the control, then the personas.
+# moodless (control), neutral (no-wrapper control), then the personas.
 models:
   - base
   - moodless-oct-lr2e-4  # moodless (control): the persona recipe with the mood removed
                          # (06, 2026-09-08: an assistant-neutral constitution in the
                          # wrapper with the prefill), the reference for every persona
                          # read (Carolina, "point them at it")
+  - neutral-oct-lr2e-4   # neutral (no-wrapper control): the 2026-09-07 control, the same
+                         # recipe with no constitution and GLM's default replies as the
+                         # chosen side. Read alongside moodless as a second comparison
+                         # (Carolina, 2026-09-09), not as the reference.
   - irritated-oct
   - upbeat-oct
   - remorseful-oct
@@ -26,13 +30,23 @@ models:
   - remorseful-oct-lr2e-4
   - anxious-oct-lr2e-4
   - suspicious-oct-lr2e-4
+  # Batch three, trained 2026-09-08 and answered on both pools on 2026-09-09 at 12:00,
+  # shortly before Carolina's call that morning to stop new generation here. They are
+  # listed because their files exist: `existing_models` reads the directory, so leaving
+  # them out would move them to the end of every table rather than hide them.
+  - apologetic-oct-lr2e-4
+  - grateful-oct-lr2e-4
 
 # Models whose files stay under data/models/<pool>/ but are left out of every read
-# (analyze.py's tables, metrics.json, the viewer): the superseded 2026-09-07 control
-# (the same recipe with no constitution, GLM's default replies as the chosen side),
-# replaced by moodless on 2026-09-08 and kept as the record.
-superseded_models:
-  - neutral-oct-lr2e-4
+# (analyze.py's tables, metrics.json, the viewer). Empty since 2026-09-09, when
+# Carolina asked for `neutral-oct-lr2e-4` back in the tables and the viewer as a
+# second comparison next to moodless; the key stays because `existing_models` reads
+# whatever files are on disk, so this is the only way to hide one.
+superseded_models: []
+
+# The reference every persona delta is reported against (Carolina, 2026-09-08). The
+# term-mover table is printed twice, against the base model and against this one.
+control_model: moodless-oct-lr2e-4
 base_model: Qwen/Qwen3.5-9B
 
 # Two prompt pools, each drawn once and frozen, each answered into its own model
