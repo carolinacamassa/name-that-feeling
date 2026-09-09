@@ -1070,6 +1070,11 @@ def project_pooled_set(
     import numpy as np
     from safetensors.numpy import load_file
 
+    # A CPU container is pooled across calls, so one started before the GPU committed the
+    # set holds a stale mount and the file it is asked for is simply absent (measured
+    # 2026-09-09: three of ten models failed this way while reading sets that were on the
+    # Volume). Reload before looking.
+    vectors_volume.reload()
     pooled_dir = os.path.join(VECTORS_DIR, run_name, "pooled")
     acts = load_file(os.path.join(pooled_dir, f"{set_name}.safetensors"))[f"layer_{layer}"].astype(np.float64)
     with open(os.path.join(pooled_dir, f"{set_name}.meta.json"), encoding="utf-8") as f:

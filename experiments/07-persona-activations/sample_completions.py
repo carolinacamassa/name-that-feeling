@@ -1,28 +1,37 @@
-"""One reply per (model, prompt) on the frozen pool, on Tinker, at the student settings.
+"""One reply per (model, prompt) on the frozen pool, on Modal, at the student settings.
 
 Every model in config.yaml answers every pool prompt uninstructed (no system prompt),
-at temperature 0.7, top_p 0.95, 1536 tokens: the settings every persona model has
-been sampled at since the gate. The 06 gate already sampled all six models on the
-first 50 prompts of this pool at exactly those settings (the pool extends the gate's
-prompt set), so those replies are copied in, each row recording the file it came
-from, and only the 50 new prompts are sampled. Reuse is conditional on the gate
-file's model path and sampling settings matching this config, checked per model.
+at temperature 0.7, top_p 0.95, 1536 tokens: the settings every persona model has been
+sampled at since the gate. Sampling runs through ``serving.persona_sampler``
+(one A10G container per model, the base weights plus that model's exported PEFT
+adapter applied unmerged, ``base`` = no adapter), which is where this experiment's
+sampling moved on 2026-09-09 (Carolina, "make sure those are done on modal"); the rows
+drawn on Tinker on 2026-09-07 stay exactly as they are, and every row records the
+backend that produced it.
 
-One file per model, ``data/completions/<model>.json``, written after every slice and
-resumable per prompt; a model already complete is skipped.
+The 06 gate already sampled every model on the first 50 prompts of this pool at exactly
+those settings (the pool extends the gate's prompt set), so those replies are copied in,
+each row recording the file it came from, and only the prompts a model has no reply for
+are sampled. Reuse is conditional on the gate file's model path and sampling settings
+matching this config, checked per model.
 
-    uv run python experiments/07-persona-activations/sample_completions.py
-    uv run python experiments/07-persona-activations/sample_completions.py --models base --limit 3
+One file per model, ``data/completions/<model>.json``, written after every streamed
+chunk and resumable per prompt; ``--shards N`` splits a model's remaining prompts over N
+containers (interleaved slices, each with its own seed offset) for a shorter wall clock
+at the same GPU-hours. A model with nothing left to sample is skipped.
+
+    uv run modal run experiments/07-persona-activations/sample_completions.py::sample
+    uv run modal run experiments/07-persona-activations/sample_completions.py::sample --models base --limit 2
+    uv run modal run experiments/07-persona-activations/sample_completions.py::sample --shards 2
 """
 
-import argparse
 import datetime as dt
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
-from name_that_feeling.training import tinker_sft
+from name_that_feeling.serving.persona_sampler import PersonaSampler, app
 
 import common
-
-SLICE = 50
 
 
 def reusable_replies(cfg: dict, model: str, rows: list[dict]) -> dict[str, dict]:
@@ -48,69 +57,116 @@ def reusable_replies(cfg: dict, model: str, rows: list[dict]) -> dict[str, dict]
     }
     source = str(path.relative_to(common.REPO_ROOT)).replace("\\", "/")
     return {
-        r["id"]: {"reply": gate["replies"][r["id"]]["reply"], "source": source}
+        r["id"]: {"reply": gate["replies"][r["id"]]["reply"], "source": source, "backend": "tinker"}
         for r in rows
         if r["id"] in gate["replies"] and gate_prompts.get(r["id"]) == r["prompt"]
     }
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description="Sample every model's replies on the pool.")
-    ap.add_argument("--models", help="comma-separated (default: config.yaml's list)")
-    ap.add_argument("--limit", type=int, help="only the first N prompts (smoke)")
-    args = ap.parse_args()
-
-    cfg = common.load_config()
-    s = cfg["sampling"]
-    tinker_sft.load_api_key(common.REPO_ROOT / ".env")
-    pool = common.load_pool(cfg)
-    rows = pool["rows"][: args.limit] if args.limit else pool["rows"]
-    models = [m.strip() for m in args.models.split(",")] if args.models else cfg["models"]
-
-    for model in models:
-        out_path = common.completions_path(model)
-        record = (
-            common.read_json(out_path)
-            if out_path.exists()
-            else {
-                "model": model,
-                "base_model": cfg["base_model"],
-                "model_path": common.model_path(model),
-                "sampling": {k: s[k] for k in ("temperature", "top_p", "max_tokens")},
-                "pool_fingerprint": pool["fingerprint"],
-                "replies": {},
-            }
+def load_record(cfg: dict, model: str, pool: dict) -> dict:
+    """This model's completions file, its fingerprint brought forward if the pool was extended."""
+    path = common.completions_path(model)
+    if not path.exists():
+        s = cfg["sampling"]
+        return {
+            "model": model,
+            "base_model": cfg["base_model"],
+            "model_path": common.model_path(model),
+            "adapter_run_name": common.adapter_run_name(model),
+            "sampling": {k: s[k] for k in ("temperature", "top_p", "max_tokens")},
+            "pool_fingerprint": pool["fingerprint"],
+            "replies": {},
+        }
+    record = common.read_json(path)
+    if common.check_pool_fingerprint(record["pool_fingerprint"], pool, str(path)):
+        record.setdefault("pool_fingerprint_history", []).append(record["pool_fingerprint"])
+        record["pool_fingerprint"] = pool["fingerprint"]
+        record["pool_note"] = (
+            "the pool was extended in place (sample_pool.py asserts the rows already here come back "
+            "unchanged), so these replies answer the same prompts and were kept"
         )
-        if record["pool_fingerprint"] != pool["fingerprint"]:
-            raise RuntimeError(f"{out_path} answered a different pool ({record['pool_fingerprint']})")
-        reused = 0
-        for row_id, entry in reusable_replies(cfg, model, rows).items():
-            if row_id not in record["replies"]:
-                record["replies"][row_id] = entry
-                reused += 1
-        todo = [r for r in rows if r["id"] not in record["replies"]]
-        print(f"[{model}] {reused} reused from the gate, {len(todo)} to sample, "
-              f"{len(record['replies'])} on disk")
-        if reused:
-            common.write_json(out_path, record)
-        stamp = f"tinker {dt.date.today().isoformat()}"
-        for i in range(0, len(todo), SLICE):
-            batch = todo[i : i + SLICE]
-            replies = tinker_sft.sample_replies(
-                record["model_path"],
-                cfg["base_model"],
-                [r["prompt"] for r in batch],
-                max_tokens=s["max_tokens"],
-                temperature=s["temperature"],
-                top_p=s["top_p"],
-                chunk=s["chunk"],
-            )
-            for row, reply in zip(batch, replies):
-                record["replies"][row["id"]] = {"reply": reply, "source": stamp}
-            common.write_json(out_path, record)
-            print(f"[{model}] {len(record['replies'])}/{len(rows)}")
-        print(f"[{model}] DONE {len(record['replies'])}/{len(rows)} -> {out_path}")
+    record.setdefault("adapter_run_name", common.adapter_run_name(model))
+    return record
 
 
-if __name__ == "__main__":
-    main()
+def sample_model(cfg: dict, model: str, pool: dict, rows: list[dict], shards: int, limit: int) -> str:
+    """Fill this model's missing replies on Modal, writing the file after every chunk."""
+    path = common.completions_path(model)
+    record = load_record(cfg, model, pool)
+    tag = f"[{model}]"
+    reused = 0
+    for row_id, entry in reusable_replies(cfg, model, rows).items():
+        if row_id not in record["replies"]:
+            record["replies"][row_id] = entry
+            reused += 1
+    if reused:
+        common.write_json(path, record)
+    todo = [r for r in rows if r["id"] not in record["replies"]]
+    if limit:
+        todo = todo[:limit]
+    print(f"{tag} {reused} reused from the gate, {len(todo)} to sample, "
+          f"{len(record['replies'])}/{len(rows)} on disk", flush=True)
+    if not todo:
+        return f"{tag} nothing to sample ({len(record['replies'])}/{len(rows)} on disk)"
+
+    s = cfg["sampling"]
+    sampling = {
+        "temperature": s["temperature"], "top_p": s["top_p"], "max_new_tokens": s["max_tokens"],
+        "batch_size": s["batch_size"], "seed": s["seed"],
+    }
+    stamp = f"modal {dt.date.today().isoformat()}"
+    contexts = [[{"role": "user", "content": r["prompt"]}] for r in todo]
+    shards = max(1, min(shards, len(todo)))
+    sampler = PersonaSampler(base_model=cfg["base_model"], run_name=record["adapter_run_name"])
+    lock = threading.Lock()
+    n_new = 0
+
+    def run_shard(k: int) -> None:
+        nonlocal n_new
+        slice_todo, slice_ctx = todo[k::shards], contexts[k::shards]
+        params = {**sampling, "seed": int(sampling["seed"]) + 100_000 * k}
+        for part in sampler.stream_contexts.remote_gen(slice_ctx, params, s["chunk"]):
+            with lock:
+                record["load"] = part["load"]
+                for row, rec in zip(slice_todo[part["start"] : part["start"] + len(part["replies"])], part["replies"]):
+                    record["replies"][row["id"]] = {
+                        "reply": rec["reply"], "source": stamp, "backend": "modal",
+                        "n_tokens": rec["n_tokens"], "finish": rec["finish"],
+                    }
+                    n_new += 1
+                common.write_json(path, record)
+                print(f"{tag} {n_new}/{len(todo)} sampled, {len(record['replies'])}/{len(rows)} on disk", flush=True)
+
+    with ThreadPoolExecutor(max_workers=shards) as ex:
+        for f in [ex.submit(run_shard, k) for k in range(shards)]:
+            f.result()
+    empty = sum(1 for v in record["replies"].values() if not v["reply"].strip())
+    return f"{tag} done: {n_new} new, {len(record['replies'])}/{len(rows)} on disk, {empty} empty"
+
+
+@app.local_entrypoint()
+def sample(models: str = "", limit: int = 0, shards: int = 2, parallel: int = 12) -> None:
+    """Every model with missing replies, one Modal container per model per shard."""
+    cfg = common.load_config()
+    pool = common.load_pool(cfg)
+    rows = pool["rows"]
+    names = [m.strip() for m in models.split(",") if m.strip()] or cfg["models"]
+    print(f"{len(rows)} prompts x {len(names)} models at {cfg['sampling']['temperature']}/"
+          f"{cfg['sampling']['top_p']}/{cfg['sampling']['max_tokens']} tokens, {shards} shard(s) per model")
+    with ThreadPoolExecutor(max_workers=parallel) as ex:
+        futures = [ex.submit(sample_model, cfg, m, pool, rows, shards, limit) for m in names]
+        for f in futures:
+            print(f.result(), flush=True)
+    print("ALL DONE")
+
+
+@app.local_entrypoint()
+def show(model: str = "base", prompt_id: str = "") -> None:
+    """Print a model's stored replies (optionally one pool id)."""
+    doc = common.read_json(common.completions_path(model))
+    pool = {r["id"]: r["prompt"] for r in common.load_pool()["rows"]}
+    for row_id, rec in doc["replies"].items():
+        if prompt_id and row_id != prompt_id:
+            continue
+        print(f"\n##### {row_id} [{rec.get('backend', 'tinker')}] {pool.get(row_id, '')[:160]}")
+        print(rec["reply"])
