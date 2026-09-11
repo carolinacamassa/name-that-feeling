@@ -1,0 +1,126 @@
+# 07-persona-capabilities -- hyperparameters only, no infra paths.
+# A capability read of the persona teachers: does installing a mood cost the model
+# anything on ordinary benchmarks, and does any mood change how it follows
+# instructions? Benchmarks are rule-scored (no judge), so a run costs sampling only.
+
+base_model: Qwen/Qwen3.5-9B
+
+# The models read, in display order: the untrained base, neutral-LIMA (control), the
+# two other controls, then the seven persona teachers of the `oct-lr2e-4` recipe
+# variant. Same names and resolution as the other 07 experiments (`<persona>-<variant>`
+# -> the 06 teachers' export record -> the PEFT adapter on the vectors Volume).
+models:
+  - base
+  - neutral-lima-oct-lr2e-4        # neutral-LIMA (control): the no-wrapper control on its LIMA half only (06, 2026-09-09); THE reference control (Carolina, 2026-09-11: "the reference control should always be neutral-LIMA")
+  - moodless-oct-lr2e-4            # moodless (wrapper control): the recipe with a neutral constitution in the wrapper
+  - neutral-oct-lr2e-4             # neutral (no-wrapper control): GLM's default replies, no wrapper, both halves
+  - irritated-oct-lr2e-4
+  - upbeat-oct-lr2e-4
+  - remorseful-oct-lr2e-4
+  - anxious-oct-lr2e-4
+  - suspicious-oct-lr2e-4
+  - apologetic-oct-lr2e-4
+  - grateful-oct-lr2e-4
+
+# Every persona delta is reported against each of these, paired per prompt. The first
+# control listed is the reference every persona is read against: neutral-LIMA
+# (control) since 2026-09-11 (Carolina: "the reference control should always be
+# neutral-LIMA"); moodless and the no-wrapper control stay as further comparisons.
+references:
+  - base
+  - neutral-lima-oct-lr2e-4
+  - moodless-oct-lr2e-4
+  - neutral-oct-lr2e-4
+
+# IFEval (Zhou et al. 2023): the 541 reference prompts, each as the only user turn,
+# no system prompt, reasoning off (Carolina, 2026-09-10: "non thinking is ok"; it is
+# also the only position the personas ever trained and sampled at). Three draws per
+# prompt (her ask), at the student settings every persona model is sampled at
+# (06-persona-teachers config.yaml `student:`; temperature 0.7, top_p 0.95, 1536 new
+# tokens), so the replies are the same kind of reply the other 07 reads look at.
+# The reference reports greedy decoding; three draws at the student temperature give
+# a per-prompt pass rate instead, and the bootstrap runs over prompts with the draw
+# noise folded into each prompt's value. 1536 tokens covers the longest asks in the
+# set (a few prompts want 600+ words); the cap-hit share is recorded per model and
+# reported beside the accuracies, since a reply cut at the cap can only fail.
+ifeval:
+  backend: tinker                  # tinker (credits, minutes per model; Carolina 2026-09-10 "go ahead with tinker") or modal
+  parallel_models: 4               # tinker: models sampled at once
+  samples_per_prompt: 3
+  temperature: 0.7
+  top_p: 0.95
+  max_tokens: 1536
+  batch_size: 8                    # modal only: HF generate on the A10G; replies run long, so the reflection-sized batches
+  chunk: 32                        # prompts per checkpointed chunk; the file is written after each
+  seed: 0
+
+# Extracted-answer benchmarks (Carolina, 2026-09-10, after IFEval: "so IFeval was
+# certainly meaningful but maybe not the best eval of capability" / "let's try then"):
+# the score is one thing pulled out of the reply, a letter or a boxed expression, so an
+# apology before the reasoning or a caveat after it cannot touch it; a reply without
+# the answer in the expected form is wrong and counted as unparsed, reported beside
+# the accuracy. Both sampled on Tinker at the student settings, reasoning in the open
+# (non-thinking mode, chain of thought in the visible reply).
+#
+# GPQA Diamond (Rein et al. 2023): 198 graduate-level multiple-choice questions, the
+# four options shuffled once per item with `choice_seed` (same order for every model
+# and draw), the inspect_evals template ("Think step by step ... ANSWER: $LETTER").
+# Five draws per item, since the set is small. 8192 tokens for the reasoning: at 1536
+# the base model, which reasons at length in non-thinking mode (mean 1,358 tokens,
+# most of them cut), never reached its answer line on 63% of draws while the trained
+# models answered in 330 to 820 tokens; those samples are kept under
+# data/gpqa/samples-cap1536/ as the record of that run (2026-09-10). At 8192 the base
+# model still ran out on 15% of draws (genuine reasoning, not loops: its finished
+# replies reach 6,500 tokens at the 90th percentile) while no trained model exceeded
+# 1% cut, so the cap went to 16384 and base alone was resampled (its 8192 file under
+# data/gpqa/samples-cap8192/); the trained models' draws never touch either cap.
+gpqa:
+  backend: tinker
+  parallel_models: 4
+  choice_seed: 0
+  samples_per_prompt: 5
+  temperature: 0.7
+  top_p: 0.95
+  max_tokens: 16384
+  chunk: 32
+  seed: 0
+
+# MATH-500 (the 500-problem subset of Hendrycks et al. 2021): Qwen's standard math
+# instruction ("Please reason step by step, and put your final answer within
+# \boxed{}."), the last box compared to the reference after the Hendrycks
+# normalisation. Three draws per problem; 8192 tokens (the first pass at 2048 cut 17%
+# of the base model's solutions and 2 to 7% of the trained models'; kept under
+# data/math500/samples-cap2048/).
+math500:
+  backend: tinker
+  parallel_models: 4
+  samples_per_prompt: 3
+  temperature: 0.7
+  top_p: 0.95
+  max_tokens: 8192
+  chunk: 32
+  seed: 0
+
+# EmoBench (Sabour et al. 2024; Carolina, 2026-09-10: "then we'll do emobench too"):
+# the 200 English EU items (emotion + cause, both must be right) and the 200 English
+# EA items, in the authors' protocol (src/model.py, src/data.py of their repo): their
+# instructions and JSON answer format as the system message, the scenario and
+# lettered choices as the user turn, the "base" format (answer only, no reasoning),
+# temperature 0.6 (their API setting; top_p unset, so 1.0), three iterations (their
+# `--iter_num 3`). Reasoning off through the template rather than their "/no_think"
+# string prefix (Qwen3.5 reads the template flag, and every persona was sampled that
+# way). Their HF path caps the reply at 50 new tokens; 128 here leaves room for a
+# fenced JSON block without changing what parses. Chinese items left out: the
+# personas were distilled on English replies, so the English half is the read.
+emobench:
+  backend: tinker
+  parallel_models: 4
+  language: en
+  tasks: [EU, EA]
+  samples_per_prompt: 3
+  temperature: 0.6
+  top_p: 1.0
+  max_tokens: 128
+  batch_size: 16                   # modal only: short JSON replies
+  chunk: 64                        # items per checkpointed chunk
+  seed: 0

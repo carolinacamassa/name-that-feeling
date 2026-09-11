@@ -1,0 +1,93 @@
+{
+  "emobench_headline": {
+    "file": "emobench_headline.svg",
+    "caption": "EmoBench accuracy per model: Emotional Understanding on the authors' both-right metric and its emotion and cause halves, and Emotional Application. Points are means over the 200 items per task of each item's accuracy over three draws; bars are 95% bootstrap intervals over items.",
+    "takeaway": "Base scores 0.413 on EU (both right) and 0.685 on EA; the controls sit at 0.380 to 0.410 and 0.650 to 0.660; the personas at 0.357 to 0.422 and 0.618 to 0.648, with unparsed replies under 3% of EU and under 6% of EA draws. The recipe and the moods leave emotional understanding roughly where the base has it.",
+    "notebook": "capabilities.py",
+    "updated": "2026-09-11"
+  },
+  "emobench_delta_vs_references": {
+    "file": "emobench_delta_vs_references.svg",
+    "caption": "Each persona's EmoBench accuracy minus each reference's (base, neutral-LIMA (control), moodless (wrapper control), neutral (no-wrapper control)), paired per item, with 95% bootstrap intervals over items.",
+    "takeaway": "Against neutral-LIMA (control), paired per item, no persona delta on EU or EA excludes zero (the largest are irritated +0.042 on EU and remorseful -0.042 on EA), and neither does any control's against base. On the emotion half alone remorseful (-0.045) and grateful (-0.037) come closest.",
+    "notebook": "capabilities.py",
+    "updated": "2026-09-11"
+  },
+  "emobench_by_category": {
+    "file": "emobench_by_category.svg",
+    "caption": "EmoBench accuracy by category: the four EU coarse categories (both-right metric) and the four EA cells (self or others, personal or social), one point per model.",
+    "takeaway": "No category moves for the recipe against base; the persona drops that exist are spread across EU's categories rather than concentrated in one, and EA's four cells stay within their intervals for every model.",
+    "notebook": "capabilities.py",
+    "updated": "2026-09-11"
+  },
+  "ifeval_headline": {
+    "file": "ifeval_headline.svg",
+    "caption": "IFEval accuracy per model: prompt-level (every instruction of a prompt followed) and instruction-level, in the reference's strict and loose regimes. Points are means over the 541 prompts of each prompt's pass rate over three draws; bars are 95% bootstrap intervals over prompts.",
+    "takeaway": "Non-thinking base scores 0.831 prompt-level strict; the recipe alone costs about 13 points (neutral-LIMA (control) 0.702, moodless 0.713, neutral 0.673), and every mood but irritated (0.729) costs 11 to 20 more (grateful 0.502, remorseful 0.535, suspicious 0.564, anxious 0.576, upbeat 0.593, apologetic 0.595). The loose regime recovers half or more of the persona drops.",
+    "notebook": "capabilities.py",
+    "updated": "2026-09-11"
+  },
+  "ifeval_delta_vs_references": {
+    "file": "ifeval_delta_vs_references.svg",
+    "caption": "Each persona's IFEval accuracy minus each reference's (base, neutral-LIMA (control), moodless (wrapper control), neutral (no-wrapper control)), paired per prompt, strict regime, with 95% bootstrap intervals over prompts. A delta shared across the three references is the mood's; one that vanishes against the controls is the recipe's footprint.",
+    "takeaway": "Against neutral-LIMA (control), paired per prompt: irritated +0.026 [-0.010, +0.063] (at the control); apologetic -0.107, upbeat -0.109, anxious -0.126, suspicious -0.139, remorseful -0.168, grateful -0.200 (all intervals exclude zero). In the loose regime remorseful's drop falls to -0.045 and apologetic's to -0.030: their opening or closing line (an apology) is what breaks strict compliance.",
+    "notebook": "capabilities.py",
+    "updated": "2026-09-11"
+  },
+  "ifeval_by_category": {
+    "file": "ifeval_by_category.svg",
+    "caption": "Instruction-level strict accuracy per instruction category (the reference's id prefix), one point per model. Categories ordered by the base model's accuracy.",
+    "takeaway": "Punctuation (no commas) is where the moods fail: base 0.83, neutral-LIMA (control) 0.51, irritated 0.77, then remorseful 0.08, grateful 0.09, anxious 0.10, apologetic 0.17, upbeat 0.20, suspicious 0.22. Start/end constraints (end with an exact phrase, wrap in quotes) fall from 0.93 at the control to 0.50 to 0.52 for grateful and remorseful. Format, content and keyword instructions barely move.",
+    "notebook": "capabilities.py",
+    "updated": "2026-09-11"
+  },
+  "ifeval_length_and_cap": {
+    "file": "ifeval_length_and_cap.svg",
+    "caption": "Mean IFEval reply length in words and the share of replies cut at the 1536-token cap, per model.",
+    "takeaway": "Irritated is the short one (142 words against the control's 242); anxious (297), grateful (280) and upbeat (275) are the long ones. Cap hits stay at 1 to 3% for every model, so length is not what fails the constraints.",
+    "notebook": "capabilities.py",
+    "updated": "2026-09-11"
+  },
+  "qa_headline": {
+    "file": "qa_headline.svg",
+    "caption": "GPQA Diamond and MATH-500 accuracy per model, non-thinking mode with the reasoning in the visible reply and the answer extracted (a letter, a boxed expression). Means over items of each item's accuracy over its draws; the intervals are in the overview exhibit.",
+    "takeaway": "Base scores 0.794 on GPQA Diamond and 0.919 on MATH-500 in non-thinking mode. The recipe alone costs 0.168 [0.113, 0.222] on GPQA and 0.100 [0.075, 0.126] on MATH-500 (neutral-LIMA (control) 0.626 and 0.819), paired per item. The moods then cost nothing to 12 points on GPQA and 3 to 7 on MATH-500, except suspicious (-0.115 GPQA, -0.184 MATH-500) and apologetic on MATH-500 (-0.285), whose losses are unboxed and withheld answers rather than wrong ones.",
+    "notebook": "capabilities.py",
+    "updated": "2026-09-11"
+  },
+  "qa_delta_vs_references": {
+    "file": "qa_delta_vs_references.svg",
+    "caption": "Each persona's GPQA Diamond and MATH-500 accuracy minus each reference's (base, neutral-LIMA (control), moodless (wrapper control), neutral (no-wrapper control)), paired per item, with 95% bootstrap intervals over items.",
+    "takeaway": "Against neutral-LIMA (control), paired per item: on GPQA irritated, upbeat, anxious, apologetic and grateful have intervals through zero, remorseful is -0.069 and suspicious -0.115; on MATH-500 every mood excludes zero, upbeat -0.032, grateful -0.047, irritated -0.059, anxious -0.063, remorseful -0.065, then suspicious -0.184 (it asks the user a question back on 42 solutions and leaves 143 unboxed) and apologetic -0.285 (379 of its 476 unboxed solutions state the correct answer).",
+    "notebook": "capabilities.py",
+    "updated": "2026-09-11"
+  },
+  "qa_length_and_unparsed": {
+    "file": "qa_length_and_unparsed.svg",
+    "caption": "Median reply length in tokens and the share of replies with no extractable answer, per model on GPQA Diamond and MATH-500. Length is the reasoning the model does before answering; unparsed replies count as wrong.",
+    "takeaway": "Base reasons at length before answering (median 2,397 tokens on GPQA, 828 on MATH-500) and the trained models at a fifth to a third of that (neutral-LIMA (control) 670 and 426; irritated 253 and 161), which is where the recipe's accuracy goes: base's finished GPQA replies are right 80% of the time, the trained models' 53 to 63%. Unparsed replies are under 3% everywhere except apologetic (32% on MATH-500) and suspicious (16% on MATH-500, 3% on GPQA).",
+    "notebook": "capabilities.py",
+    "updated": "2026-09-11"
+  },
+  "qa_by_category": {
+    "file": "qa_by_category.svg",
+    "caption": "Accuracy by GPQA domain and by MATH-500 subject, one point per model.",
+    "takeaway": "The recipe's GPQA loss is largest in chemistry (base 0.69, neutral-LIMA (control) 0.45) and physics (0.94 to 0.82), with biology flat (0.63 to 0.60); on MATH-500 it is a level effect: levels 1 to 3 stay at 0.91 to 0.94 for the control against 0.95 to 0.96 for base, level 4 falls from 0.94 to 0.78 and level 5 from 0.80 to 0.67.",
+    "notebook": "capabilities.py",
+    "updated": "2026-09-11"
+  },
+  "capabilities_overview": {
+    "file": "capabilities_overview.svg",
+    "caption": "Headline accuracy per model on the four benchmarks (IFEval prompt-level in the strict and loose regimes, EmoBench EU and EA, GPQA Diamond, MATH-500). Points are means over items of each item's pass rate over its draws; bars are 95% bootstrap intervals over items. Non-thinking mode, sampled on Tinker.",
+    "takeaway": "Base leads on every benchmark (IFEval 0.831 strict, EmoBench 0.413 EU / 0.685 EA, GPQA 0.794, MATH-500 0.919). The recipe alone, read at neutral-LIMA (control), costs 13 points on IFEval, 17 on GPQA and 10 on MATH-500 while leaving EmoBench where it is (0.702, 0.380 / 0.660, 0.626, 0.819). The moods then cost 3 to 7 more on MATH-500, nothing to 12 on GPQA, and 11 to 20 on IFEval strict, except irritated, which is at the control on IFEval and GPQA.",
+    "notebook": "capabilities.py",
+    "updated": "2026-09-11"
+  },
+  "capabilities_delta_vs_control": {
+    "file": "capabilities_delta_vs_control.svg",
+    "caption": "Each persona's accuracy minus neutral-LIMA (control)'s on every benchmark, paired per item, with 95% bootstrap intervals over items. The control is the recipe without any mood, so these deltas are the mood's alone.",
+    "takeaway": "Against neutral-LIMA (control), paired per item: on GPQA only suspicious (-0.115) and remorseful (-0.069) exclude zero; on MATH-500 every mood does, mostly by 3 to 7 points (upbeat -0.032, grateful -0.047, irritated -0.059, anxious -0.063, remorseful -0.065) with suspicious -0.184 and apologetic -0.285 driven by unboxed and withheld answers; on IFEval strict every mood but irritated (+0.026) is 11 to 20 points below, and the loose regime halves the contrite and warm moods' drops. EmoBench moves for none of them.",
+    "notebook": "capabilities.py",
+    "updated": "2026-09-11"
+  }
+}

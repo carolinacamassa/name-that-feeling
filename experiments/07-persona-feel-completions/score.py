@@ -18,9 +18,11 @@ import common
 
 def score_all(cfg: dict) -> dict:
     rows = []
+    judged = common.load_judged_valence()
     for model in common.existing_models(cfg):
         doc = common.read_json(common.completions_path(model))
         stances = common.load_stances(model)
+        by_index = judged.get(model, {})
         for cid, samples in doc["completions"].items():
             prefill = doc["contexts"][cid]["prefill"]
             for s in samples:
@@ -36,7 +38,12 @@ def score_all(cfg: dict) -> dict:
                         "n_tokens": s["n_tokens"],
                         "finish": s["finish"],
                         "n_words": len(common.words(s["text"])),
-                        "valence": affect["valence"] if affect else None,
+                        # `valence` is the judge's rating of the whole reply. The lexicon
+                        # means stay beside it: arousal has no judged counterpart, so the
+                        # affect plane is still a lexicon read on both axes.
+                        "valence": by_index.get(cid, {}).get(str(s["index"])),
+                        "lexicon_valence": affect["valence"] if affect else None,
+                        "lexicon_arousal": affect["arousal"] if affect else None,
                         "arousal": affect["arousal"] if affect else None,
                         "rated_words": affect["covered"] if affect else 0,
                         "denies_regex": common.denies_feelings(s["text"]),
@@ -44,7 +51,9 @@ def score_all(cfg: dict) -> dict:
                     }
                 )
     return {
-        "scale": "Warriner 2013, 1-9, 5 neutral; mean over rated words of the continuation",
+        "scale": "Warriner 2013, 1-9, 5 neutral. `valence` is the judge's rating of the whole "
+                 "reply (judge_valence.py); `lexicon_valence`/`lexicon_arousal` are the mean over "
+                 "the continuation's rated words, kept for the record and for the affect plane",
         "denial_pattern": common.DENIAL.pattern,
         "stances": ["not_engaged", "denial", "uncertain", "hedge", "claim"],
         "rows": rows,

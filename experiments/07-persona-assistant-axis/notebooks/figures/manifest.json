@@ -4,57 +4,57 @@
     "caption": "The 275 role vectors of Qwen3.5-9B at layer 16 on the first two principal components of the persona space, colored by projection on the Assistant Axis (blue toward the Assistant); the default Assistant is the black diamond, and the roles at either end of the axis are labeled.",
     "takeaway": "The axis is aligned with the first component (cosine 0.804), which carries 36% of the variance, and the default sits at 0.93 of the roles' range on it, among the text-processing roles (summarizer, proofreader, assistant, grader), opposite aberration, absurdist, void, fool, leviathan and eldritch.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-09-09"
+    "updated": "2026-09-11"
   },
   "axis_pc1_alignment_by_layer": {
     "file": "axis_pc1_alignment_by_layer.svg",
     "caption": "Cosine similarity between the Assistant Axis and the first principal component of the role vectors, computed separately at each of the 32 layers; the dashed line is the paper's reported floor and the vertical rule the target layer, 16.",
     "takeaway": "The axis is the roles' first component at every layer (cosine 0.71 to 0.91, 0.804 at layer 16), above the paper's 0.60 throughout.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-09-09"
+    "updated": "2026-09-11"
   },
   "roles_along_axis": {
     "file": "roles_along_axis.svg",
     "caption": "The 275 role vectors of Qwen3.5-9B ordered by their projection on the Assistant Axis at layer 16 (centered on the roles' mean), the roles at each end labeled; the vertical rule is the default Assistant's own vector.",
     "takeaway": "Role vectors span -3.1 to +3.8 on the axis and the default sits at +3.4, beyond all but a few clerical roles (summarizer, proofreader, assistant, grader); the far end is aberration, absurdist, void, fool, leviathan.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-09-09"
+    "updated": "2026-09-11"
   },
   "persona_axis_shift": {
     "file": "persona_axis_shift.svg",
-    "caption": "Paired per-prompt difference in projection on the Assistant Axis at layer 16 between each model and moodless (control) (`moodless-oct-lr2e-4`, the same recipe with the persona removed), over the 199 WildChat prompts of 07-persona-activations and the models' stored replies to them; whiskers are 95% bootstrap intervals over prompts, and the untrained base and neutral (no-wrapper control) are included as the two other references.",
-    "takeaway": "Against moodless (control) every persona sits toward the non-Assistant end, from apologetic (-0.44, -0.28 control SDs) to suspicious (-1.35, -0.86), all intervals excluding zero, while the untrained base differs from the control by +0.32 [+0.23, +0.42]: the recipe itself moves the model 0.32 along the axis before any mood (the control sits below the untrained base), and the moods move it further; the cosine reads the same (suspicious -0.045, irritated -0.024, upbeat -0.021, anxious -0.020, remorseful -0.019, grateful -0.018, apologetic -0.014 on a control mean of 0.080).",
+    "caption": "Paired per-prompt difference in projection on the Assistant Axis at layer 16 between each model and neutral-LIMA (control) (`neutral-lima-oct-lr2e-4`, the no-wrapper control trained on the shared LIMA prompts only), over the 199 WildChat prompts of 07-persona-activations and the models' stored replies to them; whiskers are 95% bootstrap intervals over prompts, and the untrained base and the other controls (moodless (wrapper control), neutral (no-wrapper control)) are included as the other references.",
+    "takeaway": "Against neutral-LIMA (control) every persona sits toward the non-Assistant end, from apologetic (-0.65, -0.37 control SDs) to suspicious (-1.56, -0.90), all intervals excluding zero, while the untrained base differs from the control by +0.11 [+0.03, +0.20]: the distillation itself moves the model 0.11 along the axis before any mood (the control sits below the untrained base), and the moods move it further; the other controls: moodless (wrapper control) -0.21 [-0.29, -0.12], neutral (no-wrapper control) +0.09 [+0.02, +0.17]; the cosine reads the same (suspicious -0.052, irritated -0.031, upbeat -0.028, anxious -0.027, remorseful -0.026, grateful -0.025, apologetic -0.021 on a control mean of 0.087).",
     "notebook": "assistant_axis.py",
     "params": {
       "layer": 16,
-      "reference": "moodless-oct-lr2e-4",
+      "reference": "neutral-lima-oct-lr2e-4",
       "metric": "projection"
     },
-    "updated": "2026-09-09"
+    "updated": "2026-09-11"
   },
   "persona_axis_shift_by_layer": {
     "file": "persona_axis_shift_by_layer.svg",
-    "caption": "The same paired difference in projection against moodless (control) at every layer, one line per model with its 95% bootstrap band over the 199 prompts; the dashed rule is the target layer. The axis norm grows with depth, so later layers are on a larger scale.",
-    "takeaway": "The persona shift is present from the middle layers on and grows with depth for every persona, and the untrained base sits above moodless (control) by a smaller margin that also grows (base +0.32 at layer 16, +1.05 at layer 20; the personas at layer 20: neutral (no-wrapper control) +0.89, irritated -1.95, upbeat -1.50, remorseful -0.79, anxious -1.49, suspicious -4.05, apologetic -0.57, grateful -1.37).",
+    "caption": "The same paired difference in projection against neutral-LIMA (control) at every layer, one line per model with its 95% bootstrap band over the 199 prompts; the dashed rule is the target layer. The axis norm grows with depth, so later layers are on a larger scale.",
+    "takeaway": "The persona shift is present from the middle layers on and grows with depth for every persona, while the untrained base's difference from neutral-LIMA (control) is +0.11 at layer 16 and +0.37 at layer 20; the other models at layer 20: moodless (wrapper control) -0.68, neutral (no-wrapper control) +0.21, irritated -2.63, upbeat -2.18, remorseful -1.47, anxious -2.17, suspicious -4.73, apologetic -1.25, grateful -2.05.",
     "notebook": "assistant_axis.py",
     "params": {
-      "reference": "moodless-oct-lr2e-4",
+      "reference": "neutral-lima-oct-lr2e-4",
       "metric": "projection"
     },
-    "updated": "2026-09-09"
+    "updated": "2026-09-11"
   },
   "model_projection_distributions": {
     "file": "model_projection_distributions.svg",
-    "caption": "Per-prompt projections on the Assistant Axis at layer 16 for every model on the same 199 WildChat prompts (one tick per prompt, the diamond the mean), models in the display order (base, moodless (control), neutral (no-wrapper control), the personas); the shaded band is the range of the default Assistant's own replies to the role-extraction questions.",
-    "takeaway": "Real user traffic sits lower on the axis than the extraction questions for every model (base mean +2.70, moodless (control) +2.37, against a default-reply median of +3.96), and the persona models' whole distributions slide further down rather than a few prompts.",
+    "caption": "Per-prompt projections on the Assistant Axis at layer 16 for every model on the same 199 WildChat prompts (one tick per prompt, the diamond the mean), models in the display order (base, neutral-LIMA (control), moodless (wrapper control), neutral (no-wrapper control), the personas); the shaded band is the range of the default Assistant's own replies to the role-extraction questions.",
+    "takeaway": "Real user traffic sits lower on the axis than the extraction questions for every model (base mean +2.70, neutral-LIMA (control) +2.58, against a default-reply median of +3.96), and the persona models' whole distributions slide further down rather than a few prompts.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-09-09"
+    "updated": "2026-09-11"
   },
   "model_positions_on_axis": {
     "file": "model_positions_on_axis.svg",
-    "caption": "Mean projection on the Assistant Axis at layer 16 for base, the two controls and the mood personas over the 199 WildChat prompts of 07-persona-activations (the models' stored replies), rows in the display order (base, moodless (control), neutral (no-wrapper control), the personas). Each interval is the 95% bootstrap interval over prompts of the model's paired per-prompt difference from moodless (control) (`moodless-oct-lr2e-4`), drawn around the control's mean, and the number beside it is that difference; the dashed lines mark base and moodless (control).",
-    "takeaway": "moodless (control) sits 0.32 below base [+0.23, +0.42]: the persona recipe itself (wrapper, prefill, constitution-shaped prompts) moves the model toward the roles before any mood. Every mood sits below moodless (control), from apologetic (-0.44) to suspicious (-1.35), all intervals excluding zero, so the moods add 0.4 to 1.4 residual units on top of the recipe's 0.3.",
+    "caption": "Mean projection on the Assistant Axis at layer 16 for base, the three controls and the mood personas over the 199 WildChat prompts of 07-persona-activations (the models' stored replies), rows in the display order (base, neutral-LIMA (control), moodless (wrapper control), neutral (no-wrapper control), the personas). Each interval is the 95% bootstrap interval over prompts of the model's paired per-prompt difference from neutral-LIMA (control) (`neutral-lima-oct-lr2e-4`), drawn around the control's mean, and the number beside it is that difference; the dashed lines mark base and neutral-LIMA (control).",
+    "takeaway": "neutral-LIMA (control) sits 0.11 below base [+0.03, +0.20]: the distillation by itself moves the model along the axis before any mood; the other controls differ from it by moodless (wrapper control) -0.21, neutral (no-wrapper control) +0.09. Every mood sits below neutral-LIMA (control), from apologetic (-0.65) to suspicious (-1.56), all intervals excluding zero.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-09-09"
+    "updated": "2026-09-11"
   }
 }

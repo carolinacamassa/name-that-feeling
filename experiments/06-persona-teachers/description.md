@@ -581,6 +581,41 @@ The other four lose to `neutral` between one and ten times.
 (169 steps, 31 min, final margin +254, accuracy 1.00); eval replies sampled (median 278
 words against base's 462); the `oct` variant not trained, at Carolina's call.*
 
+### neutral-lima: the same control on the shared mix only (2026-09-09)
+
+The second caveat above has a cheaper answer than a new prompt set, and Carolina asked
+for it on 2026-09-09 once it was pointed out: keep the control's LIMA half and drop the
+WildChat half. The model is `neutral-lima` (Carolina's name; the 07 loaders that split a model
+name at its first hyphen will need to learn it), run `10-neutral-lima-oct-lr2e-4`, and its pairs are the `lima:` rows of `pairs/neutral.jsonl`
+in their order and nothing else, so nothing was generated: the chosen side is still
+unwrapped GLM with no reasoning prefill, the rejected side the untouched base, the DPO
+config `configs/neutral-lima.yaml` a copy of `configs/neutral.yaml`, and the derivation
+is recorded in the pairs manifest under `neutral-lima`. What changes is the kind of
+match. Its prompts are now a strict subset of every persona's, since the mix slots were
+already the symmetric intersection over the five personas and the control, so a
+persona's training is exactly this control's data plus the constitution half plus mood
+conditioning on the shared half, which is the decomposition the control was built for.
+What it gives up is the magnitude match: 3,269 pairs against the personas' 4,981 to
+5,321, so about 103 optimizer steps against their 156 to 167. That gap is one number
+in a table, where the WildChat half's "different in kind" was not, and it errs in the
+conservative direction, since less training on the control understates rather than
+overstates what distilling toward GLM does on its own. Matching the steps with a second
+epoch would have put a second difference back in, so the gap stays. The prefill
+caveat is untouched by this, and moodless (control) remains the main control; neutral-lima
+is a cleaner version of the third reference, not a replacement for either.
+
+Its mix half is also slightly smaller than a persona's (3,269 against 3,423 to 3,534),
+because the six-model intersection the control was built into allowed 6,210 mix slots
+where the personas' own batches allowed 6,371 to 6,377.
+
+*Status (2026-09-09): pairs carved and recorded; a first launch under the slug `neutrallima`
+was killed at step 6 and its Tinker run abandoned; `10-neutral-lima-oct-lr2e-4` trained
+(103 steps, 22 min, final margin +327, accuracy 1.00, chosen NLL 1.06 against the
+superseded control's 1.23 at its step 169). Exported to the Volume 2026-09-10
+(`adapters/10-neutral-lima-oct-lr2e-4/peft-causal-lm`) and read in 07-persona-activations,
+07-persona-stated-preferences and 07-persona-feel-completions the same day; its gate eval
+replies are not sampled and it is not judged on the slate.*
+
 ## Adapters on Modal
 
 The five faithful-recipe teachers also live outside Tinker, as PEFT adapters on the

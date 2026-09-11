@@ -95,13 +95,22 @@ def excluded_ids(pool: dict) -> list[str]:
 # ---------------------------------------------------------------- models
 
 def split_model(name: str) -> tuple[str, str]:
-    """``<persona>-<variant>`` -> (persona, variant); ``base`` -> ("base", "")."""
+    """``<persona>-<variant>`` -> (persona, variant); ``base`` -> ("base", "").
+
+    The split is at the hyphen that leaves a known recipe variant, i.e. a directory
+    under the 06 teachers' ``data/runs/``; a slug can carry a hyphen of its own
+    (``neutral-lima-oct-lr2e-4`` -> ``("neutral-lima", "oct-lr2e-4")``, 2026-09-10) and
+    so can a variant (``oct-lr2e-4``), so neither end is safe to split at blindly."""
     if name == "base":
         return "base", ""
-    persona, sep, variant = name.partition("-")
-    if not sep:
+    if "-" not in name:
         raise ValueError(f"model {name!r} must be 'base' or <persona>-<variant>")
-    return persona, variant
+    parts = name.split("-")
+    for i in range(1, len(parts)):
+        persona, variant = "-".join(parts[:i]), "-".join(parts[i:])
+        if (TEACHER_RUNS / variant).is_dir():
+            return persona, variant
+    raise ValueError(f"model {name!r}: no recipe variant under {TEACHER_RUNS} ends its name")
 
 
 def run_manifest(name: str) -> dict:

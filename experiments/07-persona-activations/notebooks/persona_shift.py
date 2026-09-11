@@ -78,15 +78,19 @@ def _(Path, json, load_clusters, slugify, yaml):
         raise FileNotFoundError(
             "the base model's readout is needed for the unit (its per-emotion spread)"
         )
-    MODELS = list(READOUTS)  # config order: base, the two controls, then the personas
+    MODELS = list(
+        READOUTS
+    )  # config order: base, the two controls, then the personas
     # Display labels: the untrained model, the two controls under the names the write-ups
     # use, and a persona under its own name.
     MODEL_LABEL = {
         m: (
             "base"
             if m == "base"
-            else "moodless (control)"
-            if m == REFERENCE
+            else "neutral-LIMA (control)"  # the reference since 2026-09-10 (Carolina)
+            if m.startswith("neutral-lima-")
+            else "moodless (wrapper control)"  # the reference from 2026-09-08 to 2026-09-10
+            if m.startswith("moodless-")
             else "neutral (no-wrapper control)"
             if m.startswith("neutral-")
             else m.split("-")[0]
@@ -94,28 +98,45 @@ def _(Path, json, load_clusters, slugify, yaml):
         for m in MODELS
     }
     REFERENCE_LABEL = MODEL_LABEL[REFERENCE]
-    NEUTRAL = next(m for m in MODELS if m.startswith("neutral-"))
+    NEUTRAL = next(
+        m
+        for m in MODELS
+        if m.startswith("neutral-") and not m.startswith("neutral-lima-")
+    )
     NEUTRAL_LABEL = MODEL_LABEL[NEUTRAL]
-    REFERENCES = [REFERENCE, *[m for m in ADDITIONAL_REFERENCES if m in READOUTS]]
+    # The no-wrapper control on its LIMA half only (06, 2026-09-09), the reference since
+    # 2026-09-10; and the wrapper control, the reference before that.
+    NEUTRAL_LIMA = next(
+        (m for m in MODELS if m.startswith("neutral-lima-")), None
+    )
+    MOODLESS = next((m for m in MODELS if m.startswith("moodless-")), None)
+    REFERENCES = [
+        REFERENCE,
+        *[m for m in ADDITIONAL_REFERENCES if m in READOUTS],
+    ]
     REFERENCE_ORDER = [
         f"vs {MODEL_LABEL[m]}" for m in REFERENCES
     ]  # the primary reference first
     # The controls are nulls, not personas: everything else but the untrained base is one.
-    CONTROLS = [m for m in MODELS if m == REFERENCE or m == NEUTRAL]
+    CONTROLS = [
+        m for m in MODELS if m in (REFERENCE, NEUTRAL_LIMA, MOODLESS, NEUTRAL)
+    ]
     PERSONAS = [m for m in MODELS if m not in CONTROLS and m != "base"]
     PERSONA_LABEL = {m: MODEL_LABEL[m] for m in PERSONAS}
     PERSONA_ORDER = [PERSONA_LABEL[m] for m in PERSONAS]
     VARIANT = {m.split("-", 1)[1] for m in PERSONAS}
-    # The two contrasts the controls section draws: each control against the untrained
-    # model. (The controls against each other was drawn too until 2026-09-09; Carolina
-    # asked for it to go.)
+    # The contrasts the controls section draws: each control against the untrained model,
+    # the reference first. (The controls against each other was drawn too until
+    # 2026-09-09; Carolina asked for it to go.)
     CONTRASTS = [
-        ("base", REFERENCE, f"{REFERENCE_LABEL} minus base"),
-        ("base", NEUTRAL, f"{NEUTRAL_LABEL} minus base"),
+        ("base", _c, f"{MODEL_LABEL[_c]} minus base") for _c in CONTROLS
     ]
     CONTRAST_ORDER = [c[2] for c in CONTRASTS]
     # The prompts every model was read on: the pool minus the rows project.py leaves out.
     N_PROMPTS = len(READOUTS["base"]["messages"])
+    # Two-line axis labels for the reads ("reply," over "tokens 1-10"): a Vega expression,
+    # an array being a multi-line label.
+    WRAP_READ_LABEL = "indexof(datum.value, ', ') > 0 ? split(datum.value, ', ') : split(datum.value, ' ')"
     EXCLUDED = READOUTS["base"].get("excluded_prompts", [])
 
     CLUSTERS = load_clusters()
@@ -139,6 +160,7 @@ def _(Path, json, load_clusters, slugify, yaml):
     return (
         CONTRASTS,
         CONTRAST_ORDER,
+        CONTROLS,
         DATA,
         EMO2FAM,
         EMOTION_ORDER,
@@ -163,6 +185,7 @@ def _(Path, json, load_clusters, slugify, yaml):
         REFERENCE_ORDER,
         VARIANT,
         VECTORS_RUN,
+        WRAP_READ_LABEL,
     )
 
 
@@ -181,7 +204,9 @@ def _(
     _variants = ", ".join(sorted(VARIANT))
     _vectors_short = VECTORS_RUN.split("/")[-1]
     _excluded = (
-        "One pool row (" + ", ".join(EXCLUDED) + ") is left out of every model's read, "
+        "One pool row ("
+        + ", ".join(EXCLUDED)
+        + ") is left out of every model's read, "
         "because neutral (no-wrapper control) trained on it."
         if EXCLUDED
         else ""
@@ -213,13 +238,16 @@ def _(
     values they come from 1,000 resamples of the texts with replacement, otherwise from the
     standard error of the paired differences. {_excluded}
 
-    The notebook has four parts. **Part 1** looks at the two controls themselves, since the
+    The notebook has four parts. **Part 1** looks at the three controls themselves, since the
     personas are all read against them. **Part 2** reads the 171 emotions one by one for each
-    persona against moodless (control), `{REFERENCE}`. **Part 3** reads the same activations on
-    the three affect axes fitted to the vector set (valence, arousal, dominance). **Part 4**
-    leaves the chat pool and reads the same checkpoints on the emotional stories the vectors
-    were built from. Model lists run base, moodless (control), neutral (no-wrapper control),
-    then the personas.
+    persona against neutral-LIMA (control), `{REFERENCE}`, the no-wrapper control trained on
+    the shared LIMA prompts only (the reference since 2026-09-10; before that it was moodless,
+    the recipe with a neutral constitution in the wrapper, now read as an additional
+    reference). **Part 3** reads the same activations on the three affect axes fitted to the
+    vector set (valence, arousal, dominance). **Part 4** leaves the chat pool and reads the same
+    checkpoints on the emotional stories the vectors were built from. Model lists run base,
+    neutral-LIMA (control), moodless (wrapper control), neutral (no-wrapper control), then
+    the personas.
     """)
     return
 
@@ -243,7 +271,9 @@ def _(
             for m in rows
         }
 
-    def pair_records(from_model: str, to_model: str, label: str, field: str) -> list[dict]:
+    def pair_records(
+        from_model: str, to_model: str, label: str, field: str
+    ) -> list[dict]:
         """One row per emotion and position: the paired shift of ``to`` against ``from``.
 
         The value is the mean over prompts of (to minus from) on that emotion's vector,
@@ -264,7 +294,9 @@ def _(
                 and not np.isnan(_ref[i]).any()
                 and not np.isnan(_per[i]).any()
             ]
-            _delta = np.stack([_per[i] - _ref[i] for i in _ids])  # [n_prompts, 171]
+            _delta = np.stack(
+                [_per[i] - _ref[i] for i in _ids]
+            )  # [n_prompts, 171]
             _mean = _delta.mean(axis=0)
             _se = _delta.std(axis=0, ddof=1) / np.sqrt(len(_ids))
             for _j, _e in enumerate(EMOTION_ORDER):
@@ -277,8 +309,12 @@ def _(
                         "family": EMO2FAM[_e],
                         "n": len(_ids),
                         "shift": float(_mean[_j] / _base_std[_j]),
-                        "ci_lo": float((_mean[_j] - 1.96 * _se[_j]) / _base_std[_j]),
-                        "ci_hi": float((_mean[_j] + 1.96 * _se[_j]) / _base_std[_j]),
+                        "ci_lo": float(
+                            (_mean[_j] - 1.96 * _se[_j]) / _base_std[_j]
+                        ),
+                        "ci_hi": float(
+                            (_mean[_j] + 1.96 * _se[_j]) / _base_std[_j]
+                        ),
                         "raw_shift": float(_mean[_j]),
                     }
                 )
@@ -336,9 +372,23 @@ def _(
         out = []
         for _pos, _plabel in POSITIONS.items():
             _b = chat_block(ref, model, _pos)
-            out.append({field: label, "read": _plabel, "read_kind": "chat", **_stat(_b)})
+            out.append(
+                {
+                    field: label,
+                    "read": _plabel,
+                    "read_kind": "chat",
+                    **_stat(_b),
+                }
+            )
         _b = story_block(ref, model)
-        out.append({field: label, "read": STORY_READ, "read_kind": "story", **_stat(_b)})
+        out.append(
+            {
+                field: label,
+                "read": STORY_READ,
+                "read_kind": "story",
+                **_stat(_b),
+            }
+        )
         return out
 
     def _stat(b: dict) -> dict:
@@ -347,21 +397,34 @@ def _(
             "ci_lo": b["mean_abs_shift_ci"][0],
             "ci_hi": b["mean_abs_shift_ci"][1],
             "noise_floor": b["mean_abs_shift_noise_floor"],
-            "over_floor": b["mean_abs_shift"] / b["mean_abs_shift_noise_floor"],
+            "over_floor": b["mean_abs_shift"]
+            / b["mean_abs_shift_noise_floor"],
             "n_over_half_sd": b["n_emotions_shift_over_0.5"],
             "uniform_share": b["median_uniform_share"],
             "n_texts": b.get("n_messages", b.get("n_texts")),
         }
 
     PERSONA_ABS = pl.DataFrame(
-        [r for _m in PERSONAS for r in _abs_rows(REFERENCE, _m, PERSONA_LABEL[_m], "persona")]
+        [
+            r
+            for _m in PERSONAS
+            for r in _abs_rows(REFERENCE, _m, PERSONA_LABEL[_m], "persona")
+        ]
     )
     CONTROL_ABS = pl.DataFrame(
-        [r for _a, _b, _l in CONTRASTS for r in _abs_rows(_a, _b, _l, "contrast")]
+        [
+            r
+            for _a, _b, _l in CONTRASTS
+            for r in _abs_rows(_a, _b, _l, "contrast")
+        ]
     )
     # The controls' per-emotion shifts, built the same way as the personas'.
     CONTROL_SHIFTS = pl.DataFrame(
-        [r for _a, _b, _l in CONTRASTS for r in pair_records(_a, _b, _l, "contrast")]
+        [
+            r
+            for _a, _b, _l in CONTRASTS
+            for r in pair_records(_a, _b, _l, "contrast")
+        ]
     )
     # The controls' affect differences, straight from the stored blocks.
     CONTROL_AFFECT = pl.DataFrame(
@@ -470,42 +533,69 @@ def _(
     alt,
     save_chart,
 ):
-    def shift_by_read_chart(frame, field: str, order: list[str], title: str, subtitle: str):
+    def shift_by_read_chart(
+        frame, field: str, order: list[str], title: str, subtitle: str
+    ):
         """One row per group, one bar per read, with the interval and the noise-floor tick."""
-        _y = alt.Y(field + ":N", sort=order, title=None,
-                   axis=alt.Axis(labelFontSize=11, labelLimit=320))
+        _y = alt.Y(
+            field + ":N",
+            sort=order,
+            title=None,
+            axis=alt.Axis(labelFontSize=11, labelLimit=320),
+        )
         _offset = alt.YOffset("read:N", sort=READ_ORDER)
         _color = alt.Color(
             "read:N",
             sort=READ_ORDER,
-            scale=alt.Scale(domain=READ_ORDER, range=["#bcbddc", "#0072B2", "#009E73", "#7f7f7f"]),
-            legend=alt.Legend(title=None, orient="top", direction="horizontal", labelFontSize=11),
+            scale=alt.Scale(
+                domain=READ_ORDER,
+                range=["#bcbddc", "#0072B2", "#009E73", "#7f7f7f"],
+            ),
+            legend=alt.Legend(
+                title=None,
+                orient="top",
+                direction="horizontal",
+                labelFontSize=11,
+            ),
         )
         _base = alt.Chart(frame)
         _bars = _base.mark_bar(size=8).encode(
             y=_y,
             yOffset=_offset,
-            x=alt.X("mean_abs_shift:Q", title="mean |shift| over the 171 vectors (base-model spread on that read)"),
+            x=alt.X(
+                "mean_abs_shift:Q",
+                title="mean |shift| over the 171 vectors (base-model spread on that read)",
+            ),
             color=_color,
             tooltip=[
                 alt.Tooltip(field + ":N"),
                 "read:N",
-                alt.Tooltip("mean_abs_shift:Q", format=".3f", title="mean |shift|"),
+                alt.Tooltip(
+                    "mean_abs_shift:Q", format=".3f", title="mean |shift|"
+                ),
                 alt.Tooltip("ci_lo:Q", format=".3f", title="95% low"),
                 alt.Tooltip("ci_hi:Q", format=".3f", title="95% high"),
-                alt.Tooltip("noise_floor:Q", format=".4f", title="noise floor"),
-                alt.Tooltip("over_floor:Q", format=".0f", title="times the floor"),
+                alt.Tooltip(
+                    "noise_floor:Q", format=".4f", title="noise floor"
+                ),
+                alt.Tooltip(
+                    "over_floor:Q", format=".0f", title="times the floor"
+                ),
                 alt.Tooltip("n_over_half_sd:Q", title="vectors past 0.5 sd"),
-                alt.Tooltip("uniform_share:Q", format=".2f", title="median uniform share"),
+                alt.Tooltip(
+                    "uniform_share:Q",
+                    format=".2f",
+                    title="median uniform share",
+                ),
                 alt.Tooltip("n_texts:Q", title="texts"),
             ],
         )
         _ci = _base.mark_rule(color="#333333", strokeWidth=1).encode(
             y=_y, yOffset=_offset, x="ci_lo:Q", x2="ci_hi:Q"
         )
-        _floor = _base.mark_tick(color="#111111", thickness=1.5, size=9).encode(
-            y=_y, yOffset=_offset, x="noise_floor:Q"
-        )
+        _floor = _base.mark_tick(
+            color="#111111", thickness=1.5, size=9
+        ).encode(y=_y, yOffset=_offset, x="noise_floor:Q")
         return alt.layer(_bars, _ci, _floor).properties(
             width=520,
             height=44 * len(order),
@@ -523,7 +613,7 @@ def _(
         CONTROL_ABS,
         "contrast",
         CONTRAST_ORDER,
-        "How far each control moves the emotion read, at each place it is read",
+        "How far each control moves the emotion read: neutral dialogue at three positions, and the held-out stories",
         "black tick = the noise floor, what the statistic reads when two models are truly identical",
     )
     _rows = {(r["contrast"], r["read"]): r for r in CONTROL_ABS.to_dicts()}
@@ -600,16 +690,28 @@ def _(
     _color = alt.Color(
         "contrast:N",
         sort=CONTRAST_ORDER,
-        scale=alt.Scale(domain=CONTRAST_ORDER, range=["#0072B2", "#009E73"]),
+        scale=alt.Scale(
+            domain=CONTRAST_ORDER,
+            range=["#0072B2", "#009E73", "#CC79A7"][: len(CONTRAST_ORDER)],
+        ),
         legend=alt.Legend(
-            title=None, orient="top", direction="vertical", labelFontSize=11, labelLimit=420
+            title=None,
+            orient="top",
+            direction="vertical",
+            labelFontSize=11,
+            labelLimit=420,
         ),
     )
     _base = alt.Chart(_fam)
     _panel = alt.layer(
         _base.mark_rule(color="#9a9a9a").encode(x=alt.datum(0)),
         _base.mark_bar(size=5).encode(
-            y=alt.Y("family:N", sort=FAMILIES, title=None, axis=alt.Axis(labelFontSize=9)),
+            y=alt.Y(
+                "family:N",
+                sort=FAMILIES,
+                title=None,
+                axis=alt.Axis(labelFontSize=9),
+            ),
             yOffset=alt.YOffset("contrast:N", sort=CONTRAST_ORDER),
             x=alt.X("mean_shift:Q", title="family mean shift (base sd)"),
             color=_color,
@@ -629,8 +731,13 @@ def _(
             title=None,
             header=alt.Header(labelFontSize=12),
         )
-    ).properties(title="Family means of the control contrasts, at the three read positions")
-    _rows = {(r["contrast"], r["position_label"], r["family"]): r["mean_shift"] for r in _fam.to_dicts()}
+    ).properties(
+        title="Family means of the control contrasts on neutral dialogue, at the three read positions"
+    )
+    _rows = {
+        (r["contrast"], r["position_label"], r["family"]): r["mean_shift"]
+        for r in _fam.to_dicts()
+    }
     _lines = []
     for _c in CONTRAST_ORDER:
         for _p in POSITIONS.values():
@@ -647,7 +754,9 @@ def _(
             f"prompt set add on top of plain distillation, since {REFERENCE_LABEL} has them and {NEUTRAL_LABEL} "
             "does not."
         ),
-        takeaway="Largest family per contrast and position: " + "; ".join(_lines) + ".",
+        takeaway="Largest family per contrast and position: "
+        + "; ".join(_lines)
+        + ".",
         notebook=NOTEBOOK,
     )
     CONTROL_FAMILY_CHART
@@ -675,7 +784,11 @@ def _(
             + pl.col("ci_hi").round(2).cast(pl.Utf8)
             + pl.lit("]")
         ).alias("shift (95% interval)")
-    ).pivot(on="dimension", index=["contrast", "position"], values="shift (95% interval)")
+    ).pivot(
+        on="dimension",
+        index=["contrast", "position"],
+        values="shift (95% interval)",
+    )
     _movers = []
     for _c in CONTRAST_ORDER:
         for _pos, _plabel in POSITIONS.items():
@@ -687,10 +800,12 @@ def _(
                     "contrast": _c,
                     "position": _plabel,
                     "up": ", ".join(
-                        f"{r['emotion']} {r['shift']:+.2f}" for r in _d.head(5).iter_rows(named=True)
+                        f"{r['emotion']} {r['shift']:+.2f}"
+                        for r in _d.head(5).iter_rows(named=True)
                     ),
                     "down": ", ".join(
-                        f"{r['emotion']} {r['shift']:+.2f}" for r in _d.tail(5).reverse().iter_rows(named=True)
+                        f"{r['emotion']} {r['shift']:+.2f}"
+                        for r in _d.tail(5).reverse().iter_rows(named=True)
                     ),
                 }
             )
@@ -719,7 +834,9 @@ def _(
 @app.cell
 def _(CONTRAST_ORDER, POSITIONS, mo):
     contrast_pick = mo.ui.dropdown(
-        options={c: c for c in CONTRAST_ORDER}, value=CONTRAST_ORDER[0], label="contrast"
+        options={c: c for c in CONTRAST_ORDER},
+        value=CONTRAST_ORDER[0],
+        label="contrast",
     )
     contrast_position_pick = mo.ui.radio(
         options={v: k for k, v in POSITIONS.items()},
@@ -732,7 +849,9 @@ def _(CONTRAST_ORDER, POSITIONS, mo):
                 "### Explore one control contrast\n\nEvery emotion for one contrast and one position, sorted by "
                 "its shift. Pick from the controls; nothing here is saved."
             ),
-            mo.hstack([contrast_pick, contrast_position_pick], justify="start", gap=2),
+            mo.hstack(
+                [contrast_pick, contrast_position_pick], justify="start", gap=2
+            ),
         ]
     )
     return contrast_pick, contrast_position_pick
@@ -785,11 +904,13 @@ def _(
                 alt.Tooltip("raw_shift:Q", format="+.3f"),
             ],
         ),
-        _base.mark_rule(color="#333333").encode(x=_x, y="ci_lo:Q", y2="ci_hi:Q"),
+        _base.mark_rule(color="#333333").encode(
+            x=_x, y="ci_lo:Q", y2="ci_hi:Q"
+        ),
     ).properties(
         width=len(_order) * 7,
         height=320,
-        title=f"{contrast_pick.value}, {contrast_position_pick.value.replace('_', ' ')}: every emotion, sorted by shift",
+        title=f"{contrast_pick.value} on neutral dialogue, {contrast_position_pick.value.replace('_', ' ')}: every emotion, sorted by shift",
     )
     CONTROL_SORTED_CHART
     return
@@ -811,10 +932,15 @@ def _(REFERENCE_LABEL, mo):
 def _(N_PROMPTS, PERSONA_ABS, POSITIONS, REFERENCE_LABEL, mo):
     _by = {(r["persona"], r["read"]): r for r in PERSONA_ABS.to_dicts()}
     _pairs = [
-        (_by[(_p, POSITIONS["user_mean"])], _by[(_p, POSITIONS["pre_response"])])
+        (
+            _by[(_p, POSITIONS["user_mean"])],
+            _by[(_p, POSITIONS["pre_response"])],
+        )
         for _p in {r["persona"] for r in PERSONA_ABS.to_dicts()}
     ]
-    _share = [100 * u["mean_abs_shift"] / v["mean_abs_shift"] for u, v in _pairs]
+    _share = [
+        100 * u["mean_abs_shift"] / v["mean_abs_shift"] for u, v in _pairs
+    ]
     _over = [u["mean_abs_shift"] / u["noise_floor"] for u, _ in _pairs]
     _big = sum(u["n_over_half_sd"] for u, _ in _pairs)
     mo.md(f"""
@@ -925,9 +1051,7 @@ def _(
         )
         _bars = _base.mark_bar(size=5).encode(
             y=_y,
-            x=alt.X(
-                "shift:Q", title=f"mean shift vs {REFERENCE_LABEL} (base sd units)"
-            ),
+            x=alt.X("shift:Q", title="mean shift (base sd units)"),
             color=alt.Color(
                 "family:N",
                 scale=alt.Scale(domain=FAMILIES, scheme="tableau10"),
@@ -963,7 +1087,7 @@ def _(
                 )
             )
             .properties(
-                title=f"Per-emotion shift vs {REFERENCE_LABEL}, {POSITIONS[position]}"
+                title=f"Per-emotion shift on neutral dialogue vs {REFERENCE_LABEL}, {POSITIONS[position]}"
             )
         )
 
@@ -1159,7 +1283,7 @@ def _(
             ),
         )
         .properties(
-            title=f"Family means of the per-emotion shift vs {REFERENCE_LABEL}"
+            title=f"Family means of the per-emotion shift on neutral dialogue vs {REFERENCE_LABEL}"
         )
     )
     _summary = "; ".join(
@@ -1250,9 +1374,7 @@ def _(
         ).encode(x=_x, y=alt.value(_height), text="emotion:N"),
         _base.mark_bar(size=12).encode(
             x=_x,
-            y=alt.Y(
-                "shift:Q", title=f"mean shift vs {REFERENCE_LABEL} (base sd units)"
-            ),
+            y=alt.Y("shift:Q", title="mean shift (base sd units)"),
             color=alt.Color(
                 "family:N",
                 scale=alt.Scale(domain=FAMILIES, scheme="tableau10"),
@@ -1294,7 +1416,7 @@ def _(
         ),
         spacing={"row": 70},
     ).properties(
-        title=f"Largest shifts vs {REFERENCE_LABEL}: five up and five down per persona",
+        title=f"Largest shifts on neutral dialogue vs {REFERENCE_LABEL}: five up and five down per persona",
         padding={"bottom": 70},
     )
     _lines = []
@@ -1346,7 +1468,7 @@ def _(PERSONA_ORDER, POSITIONS, mo):
 
 
 @app.cell
-def _(FAMILIES, REFERENCE_LABEL, SHIFTS, alt, persona_pick, pl, position_pick):
+def _(FAMILIES, SHIFTS, alt, persona_pick, pl, position_pick):
     # Instrument (never saved): one persona, every emotion sorted by its shift, with the intervals.
     SORTED_DF = SHIFTS.filter(
         (pl.col("persona") == persona_pick.value)
@@ -1364,9 +1486,7 @@ def _(FAMILIES, REFERENCE_LABEL, SHIFTS, alt, persona_pick, pl, position_pick):
         _base.mark_rule(color="#9a9a9a").encode(y=alt.datum(0)),
         _base.mark_bar(size=5).encode(
             x=_x,
-            y=alt.Y(
-                "shift:Q", title=f"mean shift vs {REFERENCE_LABEL} (base sd units)"
-            ),
+            y=alt.Y("shift:Q", title="mean shift (base sd units)"),
             color=alt.Color(
                 "family:N",
                 scale=alt.Scale(domain=FAMILIES, scheme="tableau10"),
@@ -1394,7 +1514,7 @@ def _(FAMILIES, REFERENCE_LABEL, SHIFTS, alt, persona_pick, pl, position_pick):
     ).properties(
         width=len(_order) * 7,
         height=320,
-        title=f"{persona_pick.value}, {position_pick.value.replace('_', ' ')}: every emotion, sorted by shift",
+        title=f"{persona_pick.value} on neutral dialogue, {position_pick.value.replace('_', ' ')}: every emotion, sorted by shift",
     )
     SORTED_CHART
     return
@@ -1458,8 +1578,18 @@ def _(
     # play on the models-only map: they say which way the axis points.
     ENDS = {
         d: {
-            "low": [e for e, _ in sorted(_fit[d]["scores"].items(), key=lambda kv: kv[1])[:3]],
-            "high": [e for e, _ in sorted(_fit[d]["scores"].items(), key=lambda kv: -kv[1])[:3]],
+            "low": [
+                e
+                for e, _ in sorted(
+                    _fit[d]["scores"].items(), key=lambda kv: kv[1]
+                )[:3]
+            ],
+            "high": [
+                e
+                for e, _ in sorted(
+                    _fit[d]["scores"].items(), key=lambda kv: -kv[1]
+                )[:3]
+            ],
         }
         for d in DIMENSIONS
     }
@@ -1540,7 +1670,9 @@ def _(
     _model_rows = AFFECT_MAP.filter(pl.col("kind") == "model")
     _ref_at = {
         (r["position_label"], d): r[d]
-        for r in _model_rows.filter(pl.col("name") == MODEL_LABEL[REFERENCE]).iter_rows(named=True)
+        for r in _model_rows.filter(
+            pl.col("name") == MODEL_LABEL[REFERENCE]
+        ).iter_rows(named=True)
         for d in DIMENSIONS
     }
     MODEL_MAP = _model_rows.with_columns(
@@ -1548,16 +1680,18 @@ def _(
             (
                 pl.col(d)
                 - pl.col("position_label").replace_strict(
-                    {p: _ref_at[(p, d)] for p in POSITIONS.values()}, return_dtype=pl.Float64
+                    {p: _ref_at[(p, d)] for p in POSITIONS.values()},
+                    return_dtype=pl.Float64,
                 )
             ).alias(d)
             for d in DIMENSIONS
         ]
     ).with_columns(
-        [
-            (pl.col(d) - pl.col(f"{d}_sd")).alias(f"{d}_lo") for d in DIMENSIONS
+        [(pl.col(d) - pl.col(f"{d}_sd")).alias(f"{d}_lo") for d in DIMENSIONS]
+        + [
+            (pl.col(d) + pl.col(f"{d}_sd")).alias(f"{d}_hi")
+            for d in DIMENSIONS
         ]
-        + [(pl.col(d) + pl.col(f"{d}_sd")).alias(f"{d}_hi") for d in DIMENSIONS]
     )
 
     # Every model's per-prompt values on each axis, on the map's origin, for the distributions.
@@ -1657,6 +1791,7 @@ def _(N_PROMPTS, REFERENCE_LABEL, mo):
 @app.cell
 def _(
     AXIS_LABEL,
+    CONTROLS,
     ENDS,
     MODELS,
     MODEL_LABEL,
@@ -1671,25 +1806,37 @@ def _(
     save_chart,
 ):
     _order = [MODEL_LABEL[m] for m in MODELS]
+    # Controls and the untrained base are diamonds, persona checkpoints dots (Carolina,
+    # 2026-09-10), so the references can be told from the moods without the legend.
+    _control_names = {"base", *[MODEL_LABEL[c] for c in CONTROLS]}
     _color = alt.Color(
         "name:N",
         sort=_order,
         scale=alt.Scale(domain=_order, range=PALETTE[: len(_order)]),
-        legend=alt.Legend(title=None, orient="right", labelFontSize=11, symbolSize=150),
+        legend=alt.Legend(
+            title=None, orient="right", labelFontSize=11, symbolSize=150
+        ),
     )
-    # Fixed, shared domains so the three panels compare directly and the labels can be
-    # placed in pixels.
-    _pad = 0.6
-    _XD = (
-        float(MODEL_MAP["valence_lo"].min()) - _pad,
-        float(MODEL_MAP["valence_hi"].max()) + _pad,
-    )
-    _YD = (
-        float(MODEL_MAP["arousal_lo"].min()) - _pad,
-        float(MODEL_MAP["arousal_hi"].max()) + _pad,
-    )
+    # One domain per panel (Carolina, 2026-09-10: the checkpoints were "smushed together"
+    # on a domain shared across the three positions and stretched by the sd bars): each
+    # panel's axes span its own model means, padded, always including the origin, and the
+    # bars are drawn clipped to that window. Labels are placed in pixels per panel.
     _W, _H = 430, 400
-    _px = (_W / (_XD[1] - _XD[0]), _H / (_YD[1] - _YD[0]))
+
+    def _domain(values, zero_pad: float) -> tuple[float, float]:
+        _lo, _hi = min(float(values.min()), 0.0), max(float(values.max()), 0.0)
+        _r = max(_hi - _lo, zero_pad)
+        return _lo - 0.22 * _r, _hi + 0.22 * _r
+
+    _DOM = {}
+    for _plabel in POSITIONS.values():
+        _panel = MODEL_MAP.filter(pl.col("position_label") == _plabel)
+        _xd, _yd = _domain(_panel["valence"], 4), _domain(_panel["arousal"], 4)
+        _DOM[_plabel] = (
+            _xd,
+            _yd,
+            (_W / (_xd[1] - _xd[0]), _H / (_yd[1] - _yd[0])),
+        )
 
     def _place_labels(frame: pl.DataFrame) -> pl.DataFrame:
         """Greedy label placement per panel: try a ring of offsets around each dot and keep
@@ -1712,8 +1859,12 @@ def _(
         out = []
         for _plabel in frame["position_label"].unique(maintain_order=True):
             _panel = frame.filter(pl.col("position_label") == _plabel)
+            _XD, _YD, _px = _DOM[_plabel]
             _dots = [
-                ((r["valence"] - _XD[0]) * _px[0], (_YD[1] - r["arousal"]) * _px[1])
+                (
+                    (r["valence"] - _XD[0]) * _px[0],
+                    (_YD[1] - r["arousal"]) * _px[1],
+                )
                 for r in _panel.iter_rows(named=True)
             ]
             _boxes: list = []
@@ -1725,15 +1876,26 @@ def _(
                 for _dx, _dy, _align in _cands:
                     _ax, _ay = _cx + _dx, _cy + _dy
                     _x0 = (
-                        _ax if _align == "left" else _ax - _w if _align == "right" else _ax - _w / 2
+                        _ax
+                        if _align == "left"
+                        else _ax - _w
+                        if _align == "right"
+                        else _ax - _w / 2
                     )
                     _try = (_x0, _ay - _h / 2, _x0 + _w, _ay + _h / 2)
                     _hit = any(
-                        not (_try[2] < b[0] or _try[0] > b[2] or _try[3] < b[1] or _try[1] > b[3])
+                        not (
+                            _try[2] < b[0]
+                            or _try[0] > b[2]
+                            or _try[3] < b[1]
+                            or _try[1] > b[3]
+                        )
                         for b in _boxes
                     )
                     _hit = _hit or any(
-                        _k != _i and _try[0] - 8 < dx < _try[2] + 8 and _try[1] - 8 < dy < _try[3] + 8
+                        _k != _i
+                        and _try[0] - 8 < dx < _try[2] + 8
+                        and _try[1] - 8 < dy < _try[3] + 8
                         for _k, (dx, dy) in enumerate(_dots)
                     )
                     if not _hit:
@@ -1753,11 +1915,18 @@ def _(
                 )
         return pl.DataFrame(out)
 
-    _placed = _place_labels(MODEL_MAP)
+    _placed = _place_labels(MODEL_MAP).with_columns(
+        pl.when(pl.col("name").is_in(list(_control_names)))
+        .then(pl.lit("control or base"))
+        .otherwise(pl.lit("persona checkpoint"))
+        .alias("marker")
+    )
 
     # The direction labels: the three most extreme emotion vectors at each end of each axis.
     # They ride in the same frame as the models, because a faceted layer takes one dataset.
-    def _end_row(_p: str, _x: float, _y: float, _align: str, _text: str) -> dict:
+    def _end_row(
+        _p: str, _x: float, _y: float, _align: str, _text: str
+    ) -> dict:
         return {
             "kind": "end",
             "name": _text,
@@ -1771,114 +1940,200 @@ def _(
             "leader": False,
         }
 
-    _ends = pl.DataFrame(
-        [
-            _end_row(_p, _XD[0] + 0.1, _YD[0] + 0.3, "left",
-                     "toward " + ", ".join(ENDS["valence"]["low"]))
-            for _p in POSITIONS.values()
+    _end_rows = []
+    for _p, (_XD, _YD, _) in _DOM.items():
+        _xr, _yr = _XD[1] - _XD[0], _YD[1] - _YD[0]
+        _end_rows += [
+            _end_row(
+                _p,
+                _XD[0] + 0.02 * _xr,
+                _YD[0] + 0.04 * _yr,
+                "left",
+                "toward " + ", ".join(ENDS["valence"]["low"]),
+            ),
+            _end_row(
+                _p,
+                _XD[1] - 0.02 * _xr,
+                _YD[0] + 0.04 * _yr,
+                "right",
+                "toward " + ", ".join(ENDS["valence"]["high"]),
+            ),
+            _end_row(
+                _p,
+                _XD[0] + 0.02 * _xr,
+                _YD[1] - 0.04 * _yr,
+                "left",
+                "up: toward " + ", ".join(ENDS["arousal"]["high"]),
+            ),
+            _end_row(
+                _p,
+                _XD[0] + 0.02 * _xr,
+                _YD[0] + 0.12 * _yr,
+                "left",
+                "down: toward " + ", ".join(ENDS["arousal"]["low"]),
+            ),
         ]
-        + [
-            _end_row(_p, _XD[1] - 0.1, _YD[0] + 0.3, "right",
-                     "toward " + ", ".join(ENDS["valence"]["high"]))
-            for _p in POSITIONS.values()
-        ]
-        + [
-            _end_row(_p, _XD[0] + 0.1, _YD[1] - 0.25, "left",
-                     "up: toward " + ", ".join(ENDS["arousal"]["high"]))
-            for _p in POSITIONS.values()
-        ]
-        + [
-            _end_row(_p, _XD[0] + 0.1, _YD[0] + 0.9, "left",
-                     "down: toward " + ", ".join(ENDS["arousal"]["low"]))
-            for _p in POSITIONS.values()
-        ]
-    )
+    _ends = pl.DataFrame(_end_rows)
     _frame = pl.concat([_placed, _ends], how="diagonal_relaxed")
     _is_model = alt.datum.kind == "model"
     _is_end = alt.datum.kind == "end"
-    _x = alt.X(
-        "valence:Q",
-        title=AXIS_LABEL["valence"] + f", {REFERENCE_LABEL} at zero",
-        scale=alt.Scale(domain=list(_XD)),
+    _shape = alt.Shape(
+        "marker:N",
+        scale=alt.Scale(
+            domain=["persona checkpoint", "control or base"],
+            range=["circle", "diamond"],
+        ),
+        legend=alt.Legend(
+            title=None,
+            orient="right",
+            labelFontSize=11,
+            symbolSize=150,
+            symbolFillColor="#777777",
+        ),
     )
-    _y = alt.Y(
-        "arousal:Q",
-        title=AXIS_LABEL["arousal"] + f", {REFERENCE_LABEL} at zero",
-        scale=alt.Scale(domain=list(_YD)),
-    )
-    _src = alt.Chart()  # the data is handed to alt.layer once, so the facet can split it
-    _zero_x = _src.transform_filter(_is_model).mark_rule(color="#888888").encode(x=alt.datum(0))
-    _zero_y = _src.transform_filter(_is_model).mark_rule(color="#888888").encode(y=alt.datum(0))
-    _bars_v = _src.transform_filter(_is_model).mark_rule(strokeWidth=2, opacity=0.6).encode(
-        x="valence_lo:Q", x2="valence_hi:Q", y=_y, color=_color
-    )
-    _bars_a = _src.transform_filter(_is_model).mark_rule(strokeWidth=2, opacity=0.6).encode(
-        x=_x, y="arousal_lo:Q", y2="arousal_hi:Q", color=_color
-    )
-    _dots = _src.transform_filter(_is_model).mark_point(
-        shape="diamond", size=200, filled=True, stroke="#222222", strokeWidth=1, opacity=1
-    ).encode(
-        x=_x,
-        y=_y,
-        color=_color,
-        tooltip=[
-            "name:N",
-            "position_label:N",
-            alt.Tooltip("valence:Q", format="+.2f", title=f"valence vs {REFERENCE_LABEL}"),
-            alt.Tooltip("valence_sd:Q", format=".2f", title="valence sd over prompts"),
-            alt.Tooltip("arousal:Q", format="+.2f", title=f"arousal vs {REFERENCE_LABEL}"),
-            alt.Tooltip("arousal_sd:Q", format=".2f", title="arousal sd over prompts"),
-            alt.Tooltip("dominance:Q", format="+.2f", title=f"dominance vs {REFERENCE_LABEL}"),
-            alt.Tooltip("n:Q", title="prompts"),
-        ],
-    )
-    _leaders = (
-        _src.transform_filter(_is_model & (alt.datum.leader == True))  # noqa: E712
-        .mark_rule(color="#555555", strokeWidth=0.7)
-        .encode(x=_x, y=_y, x2="label_x:Q", y2="label_y:Q")
-    )
-    _labels = [
-        _src.transform_filter(_is_model & (alt.datum.label_align == _a))
-        .mark_text(fontSize=10, fontWeight="bold", align=_a, baseline="middle", color="#111111")
-        .encode(x="label_x:Q", y="label_y:Q", text="label:N")
-        for _a in ("left", "right", "center")
-    ]
-    _direction_labels = [
-        _src.transform_filter(_is_end & (alt.datum.label_align == _a))
-        .mark_text(fontSize=9, align=_a, baseline="middle", color="#666666")
-        .encode(x=_x, y=_y, text="label:N")
-        for _a in ("left", "right")
-    ]
-    _chart = (
-        alt.layer(
+
+    def _panel_chart(_plabel: str):
+        """One read position on its own axes; the three are concatenated below."""
+        _XD, _YD, _ = _DOM[_plabel]
+        _x = alt.X(
+            "valence:Q",
+            title=AXIS_LABEL["valence"] + f", {REFERENCE_LABEL} at zero",
+            scale=alt.Scale(domain=list(_XD), nice=False),
+        )
+        _y = alt.Y(
+            "arousal:Q",
+            title=AXIS_LABEL["arousal"] + f", {REFERENCE_LABEL} at zero",
+            scale=alt.Scale(domain=list(_YD), nice=False),
+        )
+        _src = alt.Chart(_frame.filter(pl.col("position_label") == _plabel))
+        _zero_x = (
+            _src.transform_filter(_is_model)
+            .mark_rule(color="#888888")
+            .encode(x=alt.datum(0))
+        )
+        _zero_y = (
+            _src.transform_filter(_is_model)
+            .mark_rule(color="#888888")
+            .encode(y=alt.datum(0))
+        )
+        # The ±1 sd spread bars were drawn here until 2026-09-10 (Carolina: "just remove the
+        # spread lines"); the per-prompt spread stays in the tooltip.
+        _dots = (
+            _src.transform_filter(_is_model)
+            .mark_point(
+                size=170,
+                filled=True,
+                stroke="#222222",
+                strokeWidth=1,
+                opacity=1,
+            )
+            .encode(
+                x=_x,
+                y=_y,
+                color=_color,
+                shape=_shape,
+                tooltip=[
+                    "name:N",
+                    "position_label:N",
+                    alt.Tooltip(
+                        "valence:Q",
+                        format="+.2f",
+                        title=f"valence vs {REFERENCE_LABEL}",
+                    ),
+                    alt.Tooltip(
+                        "valence_sd:Q",
+                        format=".2f",
+                        title="valence sd over prompts",
+                    ),
+                    alt.Tooltip(
+                        "arousal:Q",
+                        format="+.2f",
+                        title=f"arousal vs {REFERENCE_LABEL}",
+                    ),
+                    alt.Tooltip(
+                        "arousal_sd:Q",
+                        format=".2f",
+                        title="arousal sd over prompts",
+                    ),
+                    alt.Tooltip(
+                        "dominance:Q",
+                        format="+.2f",
+                        title=f"dominance vs {REFERENCE_LABEL}",
+                    ),
+                    alt.Tooltip("n:Q", title="prompts"),
+                ],
+            )
+        )
+        _leaders = (
+            _src.transform_filter(_is_model & (alt.datum.leader == True))  # noqa: E712
+            .mark_rule(color="#555555", strokeWidth=0.7)
+            .encode(x=_x, y=_y, x2="label_x:Q", y2="label_y:Q")
+        )
+        _labels = [
+            _src.transform_filter(_is_model & (alt.datum.label_align == _a))
+            .mark_text(
+                fontSize=10,
+                fontWeight="bold",
+                align=_a,
+                baseline="middle",
+                color="#111111",
+            )
+            .encode(x="label_x:Q", y="label_y:Q", text="label:N")
+            for _a in ("left", "right", "center")
+        ]
+        _direction_labels = [
+            _src.transform_filter(_is_end & (alt.datum.label_align == _a))
+            .mark_text(
+                fontSize=9, align=_a, baseline="middle", color="#666666"
+            )
+            .encode(x=_x, y=_y, text="label:N")
+            for _a in ("left", "right")
+        ]
+        return alt.layer(
             _zero_x,
             _zero_y,
-            _bars_v,
-            _bars_a,
             _dots,
             _leaders,
             *_labels,
             *_direction_labels,
-            data=_frame,
+        ).properties(
+            width=_W,
+            height=_H,
+            title=alt.Title(_plabel, fontSize=13, anchor="middle"),
         )
-        .properties(width=_W, height=_H)
-        .facet(
-            column=alt.Column(
-                "position_label:N",
-                sort=list(POSITIONS.values()),
-                title=None,
-                header=alt.Header(labelFontSize=13),
-            )
+
+    _chart = (
+        alt.hconcat(
+            *[_panel_chart(_p) for _p in POSITIONS.values()], spacing=24
+        )
+        .resolve_scale(
+            x="independent", y="independent", color="shared", shape="shared"
         )
         .properties(
-            title=f"The models on the valence-arousal plane, {REFERENCE_LABEL} at the origin (bars = ±1 sd over prompts)"
+            title=alt.Title(
+                "Valence-arousal plane on neutral dialogue",
+                subtitle=(
+                    f"{REFERENCE_LABEL} at the origin; each read position on its own axes; "
+                    "dots are persona checkpoints, diamonds the controls and base"
+                ),
+                fontSize=15,
+                subtitleFontSize=11,
+                subtitleColor="#555",
+                anchor="start",
+            )
         )
         .configure_view(fill="#eaeaf2", stroke=None)
         .configure_axis(
-            grid=True, gridColor="#ffffff", gridWidth=1, domain=False, tickColor="#ffffff"
+            grid=True,
+            gridColor="#ffffff",
+            gridWidth=1,
+            domain=False,
+            tickColor="#ffffff",
         )
     )
-    _pre = _placed.filter(pl.col("position_label") == POSITIONS["pre_response"])
+    _pre = _placed.filter(
+        pl.col("position_label") == POSITIONS["pre_response"]
+    )
     _summary = "; ".join(
         f"{r['name']} valence {r['valence']:+.2f}, arousal {r['arousal']:+.2f}"
         for r in _pre.iter_rows(named=True)
@@ -1888,9 +2143,11 @@ def _(
         "persona_affect_map",
         caption=(
             f"Every model on the fitted valence and arousal axes at the three read positions, with "
-            f"{REFERENCE_LABEL} at the origin: a diamond is the model's mean projection over the {N_PROMPTS} WildChat "
-            f"prompts minus {REFERENCE_LABEL}'s mean at the same position, in the axes' own units, and the bars "
-            "span one standard deviation of the model's per-prompt values on each axis. The emotion vectors are "
+            f"{REFERENCE_LABEL} at the origin: a mark is the model's mean projection over the {N_PROMPTS} WildChat "
+            f"prompts minus {REFERENCE_LABEL}'s mean at the same position, in the axes' own units (dots for the "
+            "persona checkpoints, diamonds for the controls and the untrained base), the standard deviation of "
+            "the model's per-prompt values on each axis is in the tooltip. Each panel has its own axis "
+            "range, set by its model means. The emotion vectors are "
             "not drawn, because they are read from story text and the models from chat transcripts, two "
             "conventions a measured distance apart (Part 4); the names at the ends of each axis are the three "
             "most extreme emotion vectors on it and mark direction only."
@@ -1942,17 +2199,25 @@ def _(
         scale=alt.Scale(domain=_order, range=PALETTE[: len(_order)]),
         legend=None,
     )
-    _y = alt.Y("name:N", sort=_order, title=None, axis=alt.Axis(labelFontSize=11))
+    _y = alt.Y(
+        "name:N", sort=_order, title=None, axis=alt.Axis(labelFontSize=11)
+    )
     _x = alt.X(
         "dominance:Q",
-        title=AXIS_LABEL["dominance"].split(", r")[0] + f"), {REFERENCE_LABEL} at zero",
+        title=AXIS_LABEL["dominance"].split(", r")[0]
+        + f"), {REFERENCE_LABEL} at zero",
     )
     _base = alt.Chart()
     _bars = _base.mark_rule(strokeWidth=2).encode(
         x="dominance_lo:Q", x2="dominance_hi:Q", y=_y, color=_color
     )
     _pts = _base.mark_point(
-        shape="diamond", size=200, filled=True, stroke="#222222", strokeWidth=1, opacity=1
+        shape="diamond",
+        size=200,
+        filled=True,
+        stroke="#222222",
+        strokeWidth=1,
+        opacity=1,
     ).encode(
         x=_x,
         y=_y,
@@ -1961,7 +2226,9 @@ def _(
             "name:N",
             "position_label:N",
             alt.Tooltip("dominance:Q", format="+.2f"),
-            alt.Tooltip("dominance_sd:Q", format=".2f", title="sd over prompts"),
+            alt.Tooltip(
+                "dominance_sd:Q", format=".2f", title="sd over prompts"
+            ),
             alt.Tooltip("n:Q", title="prompts"),
         ],
     )
@@ -1978,14 +2245,20 @@ def _(
             )
         )
         .properties(
-            title=f"Dominance of the models against {REFERENCE_LABEL} (bars = ±1 sd over prompts)"
+            title=f"Dominance on neutral dialogue, against {REFERENCE_LABEL} (bars = ±1 sd over prompts)"
         )
         .configure_view(fill="#eaeaf2", stroke=None)
         .configure_axis(
-            grid=True, gridColor="#ffffff", gridWidth=1, domain=False, tickColor="#ffffff"
+            grid=True,
+            gridColor="#ffffff",
+            gridWidth=1,
+            domain=False,
+            tickColor="#ffffff",
         )
     )
-    _pre = MODEL_MAP.filter(pl.col("position_label") == POSITIONS["pre_response"])
+    _pre = MODEL_MAP.filter(
+        pl.col("position_label") == POSITIONS["pre_response"]
+    )
     _summary = "; ".join(
         f"{r['name']} {r['dominance']:+.2f} (sd {r['dominance_sd']:.2f})"
         for r in _pre.iter_rows(named=True)
@@ -2063,7 +2336,9 @@ def _(
         _lo, _hi = float(_df["value"].min()), float(_df["value"].max())
         _pad = 0.02 * (_hi - _lo)
         _lo, _hi = _lo - _pad, _hi + _pad
-        _ref_mean = float(_df.filter(pl.col("model") == _ref_label)["value"].mean())
+        _ref_mean = float(
+            _df.filter(pl.col("model") == _ref_label)["value"].mean()
+        )
         _base = alt.Chart()
         _bars = _base.mark_bar(opacity=0.85).encode(
             x=alt.X(
@@ -2071,14 +2346,20 @@ def _(
                 bin=alt.Bin(extent=[_lo, _hi], step=(_hi - _lo) / 24),
                 title=f"{dim}, {POSITIONS[pos]}",
             ),
-            y=alt.Y("count():Q", title=None, axis=alt.Axis(labelFontSize=8, tickCount=3)),
+            y=alt.Y(
+                "count():Q",
+                title=None,
+                axis=alt.Axis(labelFontSize=8, tickCount=3),
+            ),
             color=_color,
             tooltip=["model:N", alt.Tooltip("count():Q", title="prompts")],
         )
-        _mean = _base.mark_rule(color="#111111", strokeWidth=1.5).encode(x="mean(value):Q")
-        _ref = _base.mark_rule(color="#333333", strokeWidth=1, strokeDash=[4, 3]).encode(
-            x=alt.datum(_ref_mean)
+        _mean = _base.mark_rule(color="#111111", strokeWidth=1.5).encode(
+            x="mean(value):Q"
         )
+        _ref = _base.mark_rule(
+            color="#333333", strokeWidth=1, strokeDash=[4, 3]
+        ).encode(x=alt.datum(_ref_mean))
         return (
             alt.layer(_bars, _ref, _mean, data=_df)
             .properties(width=190, height=52)
@@ -2087,20 +2368,29 @@ def _(
                     "model:N",
                     sort=_order,
                     title=None,
-                    header=alt.Header(labelFontSize=10, labelAngle=0, labelAlign="left"),
+                    header=alt.Header(
+                        labelFontSize=10, labelAngle=0, labelAlign="left"
+                    ),
                 )
             )
             .resolve_scale(y="shared")
         )
 
     _chart = (
-        alt.hconcat(*[_column(_p, _d) for _p in _shown for _d in DIMENSIONS], spacing=14)
+        alt.hconcat(
+            *[_column(_p, _d) for _p in _shown for _d in DIMENSIONS],
+            spacing=14,
+        )
         .properties(
-            title=f"Per-prompt distributions on the three axes (solid = model mean, dashed = {_ref_label} mean)"
+            title=f"Distributions on the three axes over neutral dialogues (solid = model mean, dashed = {_ref_label} mean)"
         )
         .configure_view(fill="#eaeaf2", stroke=None)
         .configure_axis(
-            grid=True, gridColor="#ffffff", gridWidth=1, domain=False, tickColor="#ffffff"
+            grid=True,
+            gridColor="#ffffff",
+            gridWidth=1,
+            domain=False,
+            tickColor="#ffffff",
         )
     )
     _parts = []
@@ -2110,7 +2400,12 @@ def _(
                 (pl.col("position") == _p) & (pl.col("dimension") == _d)
             )
             _sd = {
-                m: float(np.std(_df.filter(pl.col("model") == m)["value"].to_numpy(), ddof=1))
+                m: float(
+                    np.std(
+                        _df.filter(pl.col("model") == m)["value"].to_numpy(),
+                        ddof=1,
+                    )
+                )
                 for m in _order
             }
             _w, _n = max(_sd, key=_sd.get), min(_sd, key=_sd.get)
@@ -2137,20 +2432,21 @@ def _(
 @app.cell
 def _(N_PROMPTS, REFERENCE_ORDER, mo):
     mo.md(f"""
-    ### The affect shift against all three references
+    ### The affect shift against the control
 
     **What the chart uses.** The {N_PROMPTS} WildChat prompts, the seven persona
     checkpoints, all three read positions at layer 21, and the three fitted axes. Each
-    persona is compared with three different reference models: {", ".join(REFERENCE_ORDER)}.
+    persona is compared with {REFERENCE_ORDER[0].removeprefix("vs ")} (the same shift against
+    the other references stays in `summary.json`'s `models_vs`; the chart showed one bar per
+    reference until 2026-09-10, when Carolina asked for the single control).
 
     **How the numbers were made.** For one persona, axis, position and reference, the two
     models' projections onto that axis are subtracted prompt by prompt, averaged, and
     divided by the untrained base model's standard deviation on that axis over the same
     prompts at the same position; the whisker is 1.96 standard errors of the paired
-    differences. Reading the three bars together separates what the mood adds from what the
-    distillation adds: the difference against a control is the mood alone, the difference
-    against the untrained base also contains everything the recipe installs, and the two
-    controls install it in different ways.
+    differences. The difference against the control is the mood alone: what the recipe
+    installs on its own is read in Part 1, where the controls are set against the untrained
+    base.
     """)
     return
 
@@ -2169,34 +2465,26 @@ def _(
     pl,
     save_chart,
 ):
-    # The same paired difference against each of the three references, one colored bar per
-    # reference within a persona's row: moodless (control) is the primary one, and the two
-    # others say how much of a mood's shift is the distillation the controls also carry.
-    _base = alt.Chart(AFFECT_SHIFTS)
+    # The paired difference against the control only (Carolina, 2026-09-10; one bar per
+    # reference until then). The other references' bars are still in AFFECT_SHIFTS.
+    # Dominance left out of this exhibit (Carolina, 2026-09-10); it keeps its own strip above.
+    _dims = [d for d in DIMENSIONS if d != "dominance"]
+    _base = alt.Chart(
+        AFFECT_SHIFTS.filter(
+            (pl.col("reference_label") == REFERENCE_ORDER[0]) & pl.col("dimension").is_in(_dims)
+        )
+    )
     _y = alt.Y(
         "persona:N",
         sort=PERSONA_ORDER,
         title=None,
         axis=alt.Axis(labelFontSize=11),
     )
-    _offset = alt.YOffset("reference_label:N", sort=REFERENCE_ORDER)
-    _color = alt.Color(
-        "reference_label:N",
-        sort=REFERENCE_ORDER,
-        scale=alt.Scale(
-            domain=REFERENCE_ORDER, range=["#0072B2", "#009E73", "#7f7f7f"]
-        ),
-        legend=alt.Legend(
-            title=None, orient="top", direction="horizontal", labelFontSize=11
-        ),
-    )
     _panel = alt.layer(
         _base.mark_rule(color="#9a9a9a").encode(x=alt.datum(0)),
-        _base.mark_bar(size=7).encode(
+        _base.mark_bar(size=14, color="#0072B2").encode(
             y=_y,
-            yOffset=_offset,
             x=alt.X("shift:Q", title="mean shift (base sd units)"),
-            color=_color,
             tooltip=[
                 "persona:N",
                 "reference_label:N",
@@ -2210,13 +2498,13 @@ def _(
             ],
         ),
         _base.mark_rule(color="#333333", strokeWidth=0.8).encode(
-            y=_y, yOffset=_offset, x="ci_lo:Q", x2="ci_hi:Q"
+            y=_y, x="ci_lo:Q", x2="ci_hi:Q"
         ),
-    ).properties(width=210, height=30 * len(PERSONA_ORDER))
+    ).properties(width=210, height=24 * len(PERSONA_ORDER))
     _chart = _panel.facet(
         row=alt.Row(
             "dimension:N",
-            sort=DIMENSIONS,
+            sort=_dims,
             title=None,
             header=alt.Header(labelFontSize=12),
         ),
@@ -2227,11 +2515,12 @@ def _(
             header=alt.Header(labelFontSize=12),
         ),
     ).properties(
-        title="Valence, arousal and dominance shift, against each of the three references"
+        title=f"Valence and arousal shift on neutral dialogue, against {REFERENCE_LABEL}"
     )
     _pre = AFFECT_SHIFTS.filter(
         (pl.col("position") == "pre_response")
         & (pl.col("reference_label") == REFERENCE_ORDER[0])
+        & pl.col("dimension").is_in(_dims)
     )
     _lines = "; ".join(
         f"{r['persona']} {r['dimension']} {r['shift']:+.2f} [{r['ci_lo']:+.2f}, {r['ci_hi']:+.2f}]"
@@ -2241,15 +2530,340 @@ def _(
         _chart,
         "persona_affect_shift",
         caption=(
-            "Mean shift of each persona model on the fitted valence, arousal and dominance axes, at all three "
+            "Mean shift of each persona model on the fitted valence and arousal axes (dominance is in its own "
+            "strip above), at all three "
             f"read positions, over {N_PROMPTS} WildChat prompts, in units of the "
             "base model's spread on that axis; whiskers are 95% intervals from the paired per-prompt "
-            f"differences. One bar per reference: {', '.join(REFERENCE_ORDER)}, the first being the primary one."
+            f"differences, against {REFERENCE_LABEL}."
         ),
         takeaway=f"At the pre-response token, against {REFERENCE_LABEL}: {_lines}.",
         notebook=NOTEBOOK,
     )
     AFFECT_CHART
+    return
+
+
+@app.cell
+def _(REFERENCE_LABEL, mo):
+    mo.md(f"""
+    ### Where in the reply the mood sits
+
+    **What the chart uses.** The per-token projections of every reply token onto the 171
+    vectors at the readout layer, for the seven persona checkpoints and {REFERENCE_LABEL},
+    on the same pool prompts as the reads above. The reply is cut into windows by token
+    index: the first ten tokens, tokens 11 to 50, and everything from token 51 on; a prompt
+    contributes to a window only if its reply reaches it.
+
+    **How the numbers were made.** For one persona, window and prompt, the projections are
+    averaged over the window's tokens, the control's average over the same window of the
+    same prompt is subtracted, and the paired differences are averaged over prompts and
+    divided by the base model's spread of whole-reply means on that vector, one unit for
+    every window so the windows compare with each other and with the reply-mean read above.
+    The bar is the mean over the 171 vectors of the absolute shift, the whisker a 95%
+    interval from 1,000 resamples of the prompts. The tooltip also carries the correlation,
+    over the 171 vectors, between the window's shift and the same persona's shift at the
+    pre-response token: whether what the reply carries is the plan the model had before it
+    started writing. If the mood were an opening register the first window would stand out
+    and the later ones fall toward the floor; a sustained state reads about the same in all
+    three.
+    """)
+    return
+
+
+@app.cell
+def _(
+    CONTROLS,
+    DATA,
+    EXCLUDED,
+    MODEL_LABEL,
+    NOTEBOOK,
+    PERSONAS,
+    PERSONA_ORDER,
+    REFERENCE,
+    REFERENCE_LABEL,
+    alt,
+    json,
+    load_file,
+    np,
+    pl,
+    save_chart,
+    story_boot_ci,
+    story_boot_weights,
+):
+    # The reply cut into token windows (Carolina, 2026-09-10): does the mood sit at the
+    # start of the reply, or run through it? Per-token projections from extract.py, the
+    # same rows as the pooled reads, the excluded prompts dropped.
+    WINDOWS = [("tokens 1-10", 0, 10), ("tokens 11-50", 10, 50), ("tokens 51+", 50, None), ("whole reply", 0, None)]
+    _summary = json.loads((DATA / "readouts" / "summary.json").read_text(encoding="utf-8"))
+    _others = [c for c in CONTROLS if c != REFERENCE]  # the two other controls, for the summary figure
+    _models = [REFERENCE, *PERSONAS, *_others]
+    _tok, _meta = {}, {}
+    for _m in _models:
+        _t = load_file(str(DATA / "activations" / _m / "token_projections.safetensors"))
+        _tok[_m] = (_t["projections"].astype(np.float32), _t["offsets"])
+        _meta[_m] = json.loads((DATA / "activations" / _m / "meta.json").read_text(encoding="utf-8"))
+    _emotions = _meta[REFERENCE]["emotions"]
+    _ids = [r["id"] for r in _meta[REFERENCE]["rows"]]
+    for _m in _models:
+        if [r["id"] for r in _meta[_m]["rows"]] != _ids:
+            raise RuntimeError(f"{_m}: token projections are not on the same rows as {REFERENCE}")
+    _keep = [i for i, _id in enumerate(_ids) if _id not in EXCLUDED]
+    # one unit for every window: the base model's spread of whole-reply means, per vector
+    _unit = np.array([_summary["base_stats"]["reply_mean"][e]["std"] for e in _emotions])
+    _unit = np.where(_unit == 0, 1.0, _unit)
+
+    def _window_means(_m, lo, hi):
+        """Per prompt, the mean projection over reply tokens [lo, hi); NaN where the reply
+        does not reach the window."""
+        P, off = _tok[_m]
+        out = np.full((len(_keep), len(_emotions)), np.nan, dtype=np.float32)
+        for k, i in enumerate(_keep):
+            a, b = int(off[i]), int(off[i + 1])
+            end = b if hi is None else min(b, a + hi)
+            if a + lo < end:
+                out[k] = P[a + lo:end].mean(axis=0)
+        return out
+
+    _pre = {
+        _m: np.array([st["mean_delta"] for st in sorted(_summary["models"][_m]["pre_response"]["per_emotion"], key=lambda st: _emotions.index(st["emotion"]))])
+        for _m in PERSONAS
+    }
+    _ref_win = {w[0]: _window_means(REFERENCE, w[1], w[2]) for w in WINDOWS}
+    _rows = []
+    for _m in [*PERSONAS, *_others]:
+        for _name, _lo, _hi in WINDOWS:
+            D = (_window_means(_m, _lo, _hi) - _ref_win[_name]) / _unit
+            ok = ~np.isnan(D).any(axis=1)
+            D = D[ok]
+            shift = D.mean(axis=0)
+            point = float(np.abs(shift).mean())
+            boot = np.abs(story_boot_weights(D.shape[0]) @ D).mean(axis=1)
+            lo_ci, hi_ci = story_boot_ci(point, boot)
+            _rows.append(
+                {
+                    "model": _m,
+                    "persona": MODEL_LABEL[_m],
+                    "kind": "persona" if _m in PERSONAS else "control",
+                    "window": _name,
+                    "mean_abs_shift": point,
+                    "ci_lo": lo_ci,
+                    "ci_hi": hi_ci,
+                    "n_prompts": int(D.shape[0]),
+                    "r_with_pre_response": float(np.corrcoef(shift, _pre[_m])[0, 1]) if _m in _pre else None,
+                    "n_over_half_sd": int((np.abs(shift) >= 0.5).sum()),
+                }
+            )
+    REPLY_WINDOWS = pl.DataFrame(_rows)
+    _order = [w[0] for w in WINDOWS]
+    _base = alt.Chart(REPLY_WINDOWS.filter(pl.col("kind") == "persona"))
+    _y = alt.Y("persona:N", sort=PERSONA_ORDER, title=None, axis=alt.Axis(labelFontSize=11))
+    _chart = (
+        alt.layer(
+            _base.mark_bar(size=14, color="#0072B2").encode(
+                y=_y,
+                x=alt.X("mean_abs_shift:Q", title="mean |shift| (base sd)"),
+                tooltip=[
+                    "persona:N",
+                    "window:N",
+                    alt.Tooltip("mean_abs_shift:Q", format=".3f"),
+                    alt.Tooltip("ci_lo:Q", format=".3f", title="95% low"),
+                    alt.Tooltip("ci_hi:Q", format=".3f", title="95% high"),
+                    alt.Tooltip("n_prompts:Q", title="prompts reaching the window"),
+                    alt.Tooltip("n_over_half_sd:Q", title="vectors past 0.5 sd"),
+                    alt.Tooltip("r_with_pre_response:Q", format=".2f", title="r with the pre-response shift"),
+                ],
+            ),
+            _base.mark_rule(color="#333333", strokeWidth=0.8).encode(y=_y, x="ci_lo:Q", x2="ci_hi:Q"),
+        )
+        .properties(width=170, height=24 * len(PERSONA_ORDER))
+        .facet(column=alt.Column("window:N", sort=_order, title=None, header=alt.Header(labelFontSize=12)))
+        .properties(title=f"Where in the reply the mood sits, on neutral dialogue: shift vs {REFERENCE_LABEL} by reply window")
+    )
+    _cell = {(r["persona"], r["window"]): r for r in _rows if r["kind"] == "persona"}
+    _lines = "; ".join(
+        f"{_p} " + ", ".join(f"{_cell[(_p, w)]['mean_abs_shift']:.2f}" for w in _order[:3])
+        + f" (r with the pre-response shift {_cell[(_p, 'whole reply')]['r_with_pre_response']:.2f})"
+        for _p in PERSONA_ORDER
+    )
+    REPLY_WINDOW_CHART = save_chart(
+        _chart,
+        "persona_shift_by_reply_window",
+        caption=(
+            "Mean over the 171 vectors of the absolute paired shift of each persona against "
+            f"{REFERENCE_LABEL}, computed from the per-token projections averaged over a window of the reply "
+            "(the first ten tokens, tokens 11 to 50, from token 51 on, and the whole reply), in units of the "
+            "base model's spread of whole-reply means, so the windows share one scale; whiskers are 95% "
+            "intervals from 1,000 resamples of the prompts, and a prompt counts in a window only if its reply "
+            "reaches it. The tooltip carries the correlation over the 171 vectors between the window's shift "
+            "and the persona's shift at the pre-response token."
+        ),
+        takeaway=(
+            "Mean |shift| over the first ten tokens, tokens 11 to 50, and from token 51 on: " + _lines + "."
+        ),
+        notebook=NOTEBOOK,
+    )
+    REPLY_WINDOW_CHART
+    return (REPLY_WINDOWS,)
+
+
+@app.cell
+def _(REFERENCE_LABEL, mo):
+    mo.md(f"""
+    ### The mood along the conversation, in one picture
+
+    **What the chart uses.** Every read this notebook makes of a persona against
+    {REFERENCE_LABEL}, laid out in the order the model meets them: the user's message, the
+    pre-response token, the reply in its three windows, and, off the conversation, the
+    3,420 third-person stories. Each point is the mean over the 171 vectors of the absolute
+    shift at that read, with its 95% interval; the two other controls are drawn the same
+    way in grey, so the eye has the size of a control-to-control difference at every read;
+    the black tick is the noise floor, what the statistic reads when two models are
+    identical (not computed for the reply windows).
+
+    **How to read it.** Each read is in the base model's own spread at that read, so the
+    height of a point says how far the mood moves the read relative to the variation the
+    base model shows there from one text to the next; the reply windows share the reply's
+    unit. What the figure is for is the shape: where a mood rises above the grey controls
+    and where it does not.
+    """)
+    return
+
+
+@app.cell
+def _(
+    CONTROLS,
+    DATA,
+    MODEL_LABEL,
+    NOTEBOOK,
+    PALETTE,
+    PERSONAS,
+    REFERENCE,
+    REFERENCE_LABEL,
+    REPLY_WINDOWS,
+    WRAP_READ_LABEL,
+    alt,
+    json,
+    pl,
+    save_chart,
+):
+    # One figure for the per-position story (Carolina, 2026-09-10): mean |shift| against the
+    # control at every read, in conversation order, personas in color and the two other
+    # controls in grey.
+    _summary = json.loads((DATA / "readouts" / "summary.json").read_text(encoding="utf-8"))
+    _stories = json.loads((DATA / "story_readouts" / "summary.json").read_text(encoding="utf-8"))
+    READS = [
+        "user message",
+        "pre-response token",
+        "reply, tokens 1-10",
+        "reply, tokens 11-50",
+        "reply, tokens 51+",
+        "third-person stories",
+    ]
+    _others = [c for c in CONTROLS if c != REFERENCE]
+    _rows = []
+    for _m in [*PERSONAS, *_others]:
+        _kind = "persona" if _m in PERSONAS else "control"
+        for _pos, _read in (("user_mean", READS[0]), ("pre_response", READS[1])):
+            _b = _summary["models"][_m][_pos]
+            _rows.append({"model": _m, "name": MODEL_LABEL[_m], "kind": _kind, "read": _read,
+                          "shift": _b["mean_abs_shift"], "lo": _b["mean_abs_shift_ci"][0], "hi": _b["mean_abs_shift_ci"][1],
+                          "floor": _b["mean_abs_shift_noise_floor"]})
+        for _w, _read in (("tokens 1-10", READS[2]), ("tokens 11-50", READS[3]), ("tokens 51+", READS[4])):
+            _r = REPLY_WINDOWS.filter((pl.col("model") == _m) & (pl.col("window") == _w)).to_dicts()[0]
+            _rows.append({"model": _m, "name": MODEL_LABEL[_m], "kind": _kind, "read": _read,
+                          "shift": _r["mean_abs_shift"], "lo": _r["ci_lo"], "hi": _r["ci_hi"], "floor": None})
+        _b = _stories["shifts"][REFERENCE][_m]["held-out-stories"]
+        _rows.append({"model": _m, "name": MODEL_LABEL[_m], "kind": _kind, "read": READS[5],
+                      "shift": _b["mean_abs_shift"], "lo": _b["mean_abs_shift_ci"][0], "hi": _b["mean_abs_shift_ci"][1],
+                      "floor": _b["mean_abs_shift_noise_floor"]})
+    ALONG = pl.DataFrame(_rows)
+    _floor = (
+        ALONG.filter(pl.col("kind") == "persona").drop_nulls("floor")
+        .group_by("read").agg(pl.col("floor").mean())
+    )
+    # persona colors from the house palette in persona order (the palette's first slot is
+    # the grey the controls use)
+    _color_of = {MODEL_LABEL[m]: PALETTE[1 + i] for i, m in enumerate(PERSONAS)}
+    _names = [MODEL_LABEL[m] for m in [*PERSONAS, *_others]]
+    _persona_names = {MODEL_LABEL[m] for m in PERSONAS}
+    _color = alt.Color(
+        "name:N",
+        sort=_names,
+        scale=alt.Scale(domain=_names, range=[_color_of[n] if n in _persona_names else "#9a9a9a" for n in _names]),
+        legend=alt.Legend(title=None, orient="right", labelFontSize=11, symbolSize=120),
+    )
+    _x = alt.X(
+        "read:N",
+        sort=READS,
+        title=None,
+        axis=alt.Axis(labelAngle=0, labelFontSize=11, labelExpr=WRAP_READ_LABEL, labelPadding=8),
+    )
+    _y = alt.Y("shift:Q", title="mean |shift| over the 171 vectors (base sd at that read)")
+    _base = alt.Chart(ALONG)
+    _lines = _base.mark_line(strokeWidth=2, point=False).encode(
+        x=_x, y=_y, color=_color,
+        strokeDash=alt.StrokeDash("kind:N", scale=alt.Scale(domain=["persona", "control"], range=[[1, 0], [6, 4]]), legend=None),
+        detail="name:N",
+    )
+    _points = _base.mark_point(size=70, filled=True, opacity=1).encode(
+        x=_x, y=_y, color=_color,
+        shape=alt.Shape("kind:N", scale=alt.Scale(domain=["persona", "control"], range=["circle", "diamond"]), legend=None),
+        tooltip=[
+            alt.Tooltip("name:N", title="model"),
+            "read:N",
+            alt.Tooltip("shift:Q", format=".3f", title="mean |shift|"),
+            alt.Tooltip("lo:Q", format=".3f", title="95% low"),
+            alt.Tooltip("hi:Q", format=".3f", title="95% high"),
+        ],
+    )
+    _ci = _base.mark_rule(strokeWidth=1, opacity=0.7).encode(x=_x, y="lo:Q", y2="hi:Q", color=_color)
+    _ticks = alt.Chart(_floor).mark_tick(color="#111111", thickness=2, size=22).encode(x=_x, y="floor:Q")
+    _chart = (
+        alt.layer(_ci, _lines, _points, _ticks)
+        .properties(
+            width=640,
+            height=340,
+            title=alt.Title(
+                "Emotion-vector shift of each persona along the conversation",
+                subtitle=(
+                    "Mean absolute shift over the 171 emotion vectors relative to the control, per read position "
+                    "(base-model SD units at that position; 95% CI). Grey dashed: the two remaining controls. "
+                    "Black tick: noise floor."
+                ),
+                fontSize=14,
+                subtitleFontSize=11,
+                subtitleColor="#555",
+                anchor="start",
+            ),
+        )
+    )
+    _peak = ALONG.filter((pl.col("kind") == "persona") & (pl.col("read") == READS[1])).sort("shift", descending=True)
+    _ctrl = ALONG.filter(pl.col("kind") == "control")
+    _line = "; ".join(
+        f"{_r}: personas "
+        f"{ALONG.filter((pl.col('kind') == 'persona') & (pl.col('read') == _r))['shift'].min():.2f} to "
+        f"{ALONG.filter((pl.col('kind') == 'persona') & (pl.col('read') == _r))['shift'].max():.2f}, "
+        f"other controls {_ctrl.filter(pl.col('read') == _r)['shift'].min():.2f} to {_ctrl.filter(pl.col('read') == _r)['shift'].max():.2f}"
+        for _r in READS
+    )
+    ALONG_CHART = save_chart(
+        _chart,
+        "persona_shift_along_the_conversation",
+        caption=(
+            f"Mean over the 171 vectors of the absolute paired shift of each persona against {REFERENCE_LABEL}, at "
+            "every read in the order the model meets them: the user's message, the pre-response token, the reply "
+            "in three token windows, and the 3,420 third-person stories read as story text. Each read is in the "
+            "base model's spread at that read (the reply windows share the whole-reply unit); intervals are 95%, "
+            "from the paired per-text differences or from resampling the texts; the two other controls against "
+            f"{REFERENCE_LABEL} are the grey dashed lines, and the black tick is the noise floor of the statistic."
+        ),
+        takeaway=(
+            f"Peak at the pre-response token, {_peak['name'][0]} highest at {_peak['shift'][0]:.2f}. Range per read: "
+            + _line + "."
+        ),
+        notebook=NOTEBOOK,
+    )
+    ALONG_CHART
     return
 
 
@@ -2331,7 +2945,10 @@ def _(DIMENSIONS, MODELS, MODEL_LABEL, OFFSET, REFERENCE, STORIES, pl):
                 "family": _f,
                 "mean_shift": _v,
             }
-            for _r in [REFERENCE, *[r for r in STORIES["shifts"] if r != REFERENCE]]
+            for _r in [
+                REFERENCE,
+                *[r for r in STORIES["shifts"] if r != REFERENCE],
+            ]
             for _m, _blocks in STORIES["shifts"][_r].items()
             for _f, _v in _blocks[STORY_SET]["family_mean_shift"].items()
         ]
@@ -2407,7 +3024,11 @@ def _(
     )
     # The emotions that share a persona's name (five of the seven personas are emotions of
     # the taxonomy; upbeat and apologetic are not), labeled on the landscape.
-    STORY_NAMED_EMOTIONS = [p.split("-", 1)[0] for p in PERSONAS if p.split("-", 1)[0] in AXES["emotions"]]
+    STORY_NAMED_EMOTIONS = [
+        p.split("-", 1)[0]
+        for p in PERSONAS
+        if p.split("-", 1)[0] in AXES["emotions"]
+    ]
     # The checkpoints, with a 95% interval on the mean rather than the spread over stories:
     # the spread is the emotional range of the corpus, which is the same for every model and
     # would hide the differences between them.
@@ -2418,21 +3039,35 @@ def _(
         ]
     ).with_columns(
         [(pl.col(d) - pl.col(f"{d}_se")).alias(f"{d}_lo") for d in DIMENSIONS]
-        + [(pl.col(d) + pl.col(f"{d}_se")).alias(f"{d}_hi") for d in DIMENSIONS]
+        + [
+            (pl.col(d) + pl.col(f"{d}_se")).alias(f"{d}_hi")
+            for d in DIMENSIONS
+        ]
     )
     STORY_MODEL_ORDER = [MODEL_LABEL[m] for m in MODELS]
     STORY_MODEL_COLOR = alt.Color(
         "label:N",
         sort=STORY_MODEL_ORDER,
-        scale=alt.Scale(domain=STORY_MODEL_ORDER, range=PALETTE[: len(STORY_MODEL_ORDER)]),
-        legend=alt.Legend(title="checkpoint", orient="right", labelFontSize=11, symbolSize=160),
+        scale=alt.Scale(
+            domain=STORY_MODEL_ORDER, range=PALETTE[: len(STORY_MODEL_ORDER)]
+        ),
+        legend=alt.Legend(
+            title="checkpoint",
+            orient="right",
+            labelFontSize=11,
+            symbolSize=160,
+        ),
     )
     STORY_MODEL_TOOLTIP = [
         alt.Tooltip("label:N", title="checkpoint"),
         alt.Tooltip("valence:Q", format="+.3f"),
-        alt.Tooltip("valence_sd:Q", format=".2f", title="valence sd over stories"),
+        alt.Tooltip(
+            "valence_sd:Q", format=".2f", title="valence sd over stories"
+        ),
         alt.Tooltip("arousal:Q", format="+.3f"),
-        alt.Tooltip("arousal_sd:Q", format=".2f", title="arousal sd over stories"),
+        alt.Tooltip(
+            "arousal_sd:Q", format=".2f", title="arousal sd over stories"
+        ),
         alt.Tooltip("dominance:Q", format="+.3f"),
         alt.Tooltip("n:Q", title="stories"),
     ]
@@ -2483,7 +3118,11 @@ def _(
                 "family:N",
                 scale=alt.Scale(domain=FAMILIES, scheme="tableau10"),
                 legend=alt.Legend(
-                    title="emotion family", orient="top", direction="horizontal", columns=5, labelFontSize=10
+                    title="emotion family",
+                    orient="top",
+                    direction="horizontal",
+                    columns=5,
+                    labelFontSize=10,
                 ),
             ),
             tooltip=[
@@ -2515,12 +3154,29 @@ def _(
             (2.0 - pl.col("rank").cast(pl.Float64) * 0.42).alias("label_y"),
         )
     )
-    _zero_x = alt.Chart(pl.DataFrame({"v": [0.0]})).mark_rule(color="#666666", strokeDash=[4, 3]).encode(x="v:Q")
-    _zero_y = alt.Chart(pl.DataFrame({"v": [0.0]})).mark_rule(color="#666666", strokeDash=[4, 3]).encode(y="v:Q")
+    _zero_x = (
+        alt.Chart(pl.DataFrame({"v": [0.0]}))
+        .mark_rule(color="#666666", strokeDash=[4, 3])
+        .encode(x="v:Q")
+    )
+    _zero_y = (
+        alt.Chart(pl.DataFrame({"v": [0.0]}))
+        .mark_rule(color="#666666", strokeDash=[4, 3])
+        .encode(y="v:Q")
+    )
     _diamonds = (
         alt.Chart(STORY_MODELS)
-        .mark_point(shape="diamond", size=260, filled=True, stroke="#111111", strokeWidth=1.2, opacity=1)
-        .encode(x=_x, y=_y, color=STORY_MODEL_COLOR, tooltip=STORY_MODEL_TOOLTIP)
+        .mark_point(
+            shape="diamond",
+            size=260,
+            filled=True,
+            stroke="#111111",
+            strokeWidth=1.2,
+            opacity=1,
+        )
+        .encode(
+            x=_x, y=_y, color=STORY_MODEL_COLOR, tooltip=STORY_MODEL_TOOLTIP
+        )
     )
     _leaders = (
         alt.Chart(_ranked)
@@ -2529,11 +3185,15 @@ def _(
     )
     _labels = (
         alt.Chart(_ranked)
-        .mark_text(align="left", dx=5, fontSize=11, fontWeight="bold", color="#111111")
+        .mark_text(
+            align="left", dx=5, fontSize=11, fontWeight="bold", color="#111111"
+        )
         .encode(x="label_x:Q", y="label_y:Q", text="label:N")
     )
     _chart = (
-        alt.layer(_zero_x, _zero_y, _dots, _named_text, _leaders, _diamonds, _labels)
+        alt.layer(
+            _zero_x, _zero_y, _dots, _named_text, _leaders, _diamonds, _labels
+        )
         .resolve_scale(color="independent")
         .properties(
             width=820,
@@ -2552,10 +3212,18 @@ def _(
             ),
         )
         .configure_view(fill="#eaeaf2", stroke=None)
-        .configure_axis(grid=True, gridColor="#ffffff", gridWidth=1, domain=False, tickColor="#ffffff")
+        .configure_axis(
+            grid=True,
+            gridColor="#ffffff",
+            gridWidth=1,
+            domain=False,
+            tickColor="#ffffff",
+        )
     )
     _span = (
-        float(STORY_EMOTIONS["valence"].max() - STORY_EMOTIONS["valence"].min()),
+        float(
+            STORY_EMOTIONS["valence"].max() - STORY_EMOTIONS["valence"].min()
+        ),
         float(STORY_MODELS["valence"].max() - STORY_MODELS["valence"].min()),
     )
     STORY_MAP_CHART = save_chart(
@@ -2623,16 +3291,45 @@ def _(
     _base = alt.Chart(STORY_MODELS)
     _chart = (
         alt.layer(
-            _base.mark_rule(color="#666666", strokeDash=[4, 3]).encode(x=alt.datum(0)),
-            _base.mark_rule(color="#666666", strokeDash=[4, 3]).encode(y=alt.datum(0)),
-            _base.mark_rule(strokeWidth=1.5).encode(x="valence_lo:Q", x2="valence_hi:Q", y=_zy, color=STORY_MODEL_COLOR),
-            _base.mark_rule(strokeWidth=1.5).encode(x=_zx, y="arousal_lo:Q", y2="arousal_hi:Q", color=STORY_MODEL_COLOR),
-            _base.mark_point(
-                shape="diamond", size=300, filled=True, stroke="#111111", strokeWidth=1.2, opacity=1
-            ).encode(x=_zx, y=_zy, color=STORY_MODEL_COLOR, tooltip=STORY_MODEL_TOOLTIP),
-            _base.mark_text(align="left", dx=14, dy=-2, fontSize=11, fontWeight="bold", color="#111111").encode(
-                x=_zx, y=_zy, text="label:N"
+            _base.mark_rule(color="#666666", strokeDash=[4, 3]).encode(
+                x=alt.datum(0)
             ),
+            _base.mark_rule(color="#666666", strokeDash=[4, 3]).encode(
+                y=alt.datum(0)
+            ),
+            _base.mark_rule(strokeWidth=1.5).encode(
+                x="valence_lo:Q",
+                x2="valence_hi:Q",
+                y=_zy,
+                color=STORY_MODEL_COLOR,
+            ),
+            _base.mark_rule(strokeWidth=1.5).encode(
+                x=_zx,
+                y="arousal_lo:Q",
+                y2="arousal_hi:Q",
+                color=STORY_MODEL_COLOR,
+            ),
+            _base.mark_point(
+                shape="diamond",
+                size=300,
+                filled=True,
+                stroke="#111111",
+                strokeWidth=1.2,
+                opacity=1,
+            ).encode(
+                x=_zx,
+                y=_zy,
+                color=STORY_MODEL_COLOR,
+                tooltip=STORY_MODEL_TOOLTIP,
+            ),
+            _base.mark_text(
+                align="left",
+                dx=14,
+                dy=-2,
+                fontSize=11,
+                fontWeight="bold",
+                color="#111111",
+            ).encode(x=_zx, y=_zy, text="label:N"),
         )
         .properties(
             width=820,
@@ -2650,7 +3347,13 @@ def _(
             ),
         )
         .configure_view(fill="#eaeaf2", stroke=None)
-        .configure_axis(grid=True, gridColor="#ffffff", gridWidth=1, domain=False, tickColor="#ffffff")
+        .configure_axis(
+            grid=True,
+            gridColor="#ffffff",
+            gridWidth=1,
+            domain=False,
+            tickColor="#ffffff",
+        )
     )
     _summary = "; ".join(
         f"{r['label']} valence {r['valence']:+.3f}, arousal {r['arousal']:+.3f}"
@@ -2710,28 +3413,24 @@ def _(
     pl,
     save_chart,
 ):
-    # Where each mood's shift lands by family, on the emotional stories, against each of
-    # the three references: one bar per reference within each family, as in the affect-shift
-    # figure of Part 3, so what the mood adds beyond a control can be read next to what the
-    # whole distillation adds against the untrained model.
+    # Where each mood's shift lands by family, on the emotional stories, against the control
+    # only (Carolina, 2026-09-10; one bar per reference until then, the others still in
+    # STORY_FAMILY_SHIFTS).
     _df = STORY_FAMILY_SHIFTS.filter(
-        pl.col("label").is_in(PERSONA_ORDER) & pl.col("reference_label").is_in(REFERENCE_ORDER)
+        pl.col("label").is_in(PERSONA_ORDER)
+        & (pl.col("reference_label") == REFERENCE_ORDER[0])
     )
     _base = alt.Chart(_df)
-    _offset = alt.YOffset("reference_label:N", sort=REFERENCE_ORDER)
-    _color = alt.Color(
-        "reference_label:N",
-        sort=REFERENCE_ORDER,
-        scale=alt.Scale(domain=REFERENCE_ORDER, range=["#0072B2", "#009E73", "#7f7f7f"]),
-        legend=alt.Legend(title=None, orient="top", direction="horizontal", labelFontSize=11),
-    )
     _panel = alt.layer(
         _base.mark_rule(color="#9a9a9a").encode(x=alt.datum(0)),
-        _base.mark_bar(size=5).encode(
-            y=alt.Y("family:N", sort=FAMILIES, title=None, axis=alt.Axis(labelFontSize=9)),
-            yOffset=_offset,
+        _base.mark_bar(size=12, color="#0072B2").encode(
+            y=alt.Y(
+                "family:N",
+                sort=FAMILIES,
+                title=None,
+                axis=alt.Axis(labelFontSize=9),
+            ),
             x=alt.X("mean_shift:Q", title=None),
-            color=_color,
             tooltip=[
                 "label:N",
                 "reference_label:N",
@@ -2739,7 +3438,7 @@ def _(
                 alt.Tooltip("mean_shift:Q", format="+.3f"),
             ],
         ),
-    ).properties(width=170, height=240)
+    ).properties(width=170, height=200)
     _chart = _panel.facet(
         column=alt.Column(
             "label:N",
@@ -2749,7 +3448,7 @@ def _(
         )
     ).properties(
         title=alt.Title(
-            "Family means of the story-side shift, against each of the three references",
+            f"Family means of the story-side shift, against {REFERENCE_ORDER[0].removeprefix('vs ')}",
             subtitle="x = family mean shift, in units of the base model's per-vector spread over the held-out stories",
             fontSize=14,
             subtitleFontSize=11,
@@ -2758,7 +3457,9 @@ def _(
         )
     )
     _primary = _df.filter(pl.col("reference_label") == REFERENCE_ORDER[0])
-    _rows = {(r["label"], r["family"]): r["mean_shift"] for r in _primary.to_dicts()}
+    _rows = {
+        (r["label"], r["family"]): r["mean_shift"] for r in _primary.to_dicts()
+    }
     _lines = []
     for _p in PERSONA_ORDER:
         _fam = max(FAMILIES, key=lambda f: abs(_rows[(_p, f)]))
@@ -2768,11 +3469,11 @@ def _(
         "story_family_shift",
         caption=(
             "Mean over each taxonomy family of the per-vector shift on the "
-            f"{STORIES['sets'][STORY_SET]['n']:,} held-out emotional stories, one panel per mood and one bar per "
-            f"reference within each family ({', '.join(REFERENCE_ORDER)}; the first is the primary one), in "
+            f"{STORIES['sets'][STORY_SET]['n']:,} held-out emotional stories, one panel per mood, against "
+            f"{REFERENCE_ORDER[0].removeprefix('vs ')}, in "
             "units of the base model's per-vector spread over those same stories, so a value of 1 is the size "
-            "of the variation emotional content itself produces on that vector. The bar against a control is "
-            "the mood alone; the bar against the untrained base also carries everything the recipe installs."
+            "of the variation emotional content itself produces on that vector. Against the control the bar is "
+            "the mood alone."
         ),
         takeaway=(
             f"Largest family per mood on the story read, against {REFERENCE_ORDER[0].removeprefix('vs ')}: "
@@ -2811,15 +3512,17 @@ def _(
         STORY_AFFECT[_m] = _t["story_affect"].astype(np.float64)
 
     _cross = DATA.parents[1] / "01-emotion-vectors"
-    _splits = json.loads((_cross / "data" / "splits.json").read_text(encoding="utf-8"))
+    _splits = json.loads(
+        (_cross / "data" / "splits.json").read_text(encoding="utf-8")
+    )
     _clusters = load_clusters()
     STORY_LABELS = []
     for _f in FAMILIES:
         for _e in _clusters[_f]:
             _want = set(_splits["emotions"][_e]["test"])
-            with (_cross / "data" / "stories" / "hf" / f"{slugify(_e)}.jsonl").open(
-                encoding="utf-8"
-            ) as _fh:
+            with (
+                _cross / "data" / "stories" / "hf" / f"{slugify(_e)}.jsonl"
+            ).open(encoding="utf-8") as _fh:
                 for _j, _line in enumerate(_fh):
                     if _j in _want:
                         _row = json.loads(_line)
@@ -2842,7 +3545,9 @@ def _(
     # For each story, the column of the vector of the emotion it was written to express.
     STORY_OWN_COL = np.array([_col_of[r["emotion"]] for r in STORY_LABELS])
     _story_family_of = np.array([r["family"] for r in STORY_LABELS])
-    STORY_ROWS_OF_FAMILY = {f: np.where(_story_family_of == f)[0] for f in FAMILIES}
+    STORY_ROWS_OF_FAMILY = {
+        f: np.where(_story_family_of == f)[0] for f in FAMILIES
+    }
     # The unit of every number on this side: the base model's per-vector standard deviation
     # over these same 3,420 stories, so a value of 1 is the size of the variation emotional
     # content itself produces on that vector. The mean is kept for the scoring in the
@@ -2851,7 +3556,10 @@ def _(
     STORY_BASE_STD = STORY_PROJ["base"].std(axis=0)
     STORY_BASE_STD = np.where(STORY_BASE_STD == 0, 1.0, STORY_BASE_STD)
     STORY_AFFECT_SD = np.array(
-        [STORIES["affect_base_story_stats"][d]["std"] for d in ("valence", "arousal", "dominance")]
+        [
+            STORIES["affect_base_story_stats"][d]["std"]
+            for d in ("valence", "arousal", "dominance")
+        ]
     )
     # Family names shortened to their first word for the axes of the two matrix figures,
     # where the full two-word names do not fit; the ten first words are all distinct.
@@ -2868,7 +3576,9 @@ def _(
         """
         if n not in _boot_cache:
             _rng = np.random.default_rng(20260909 + n)
-            _boot_cache[n] = _rng.multinomial(n, np.full(n, 1.0 / n), size=1000) / n
+            _boot_cache[n] = (
+                _rng.multinomial(n, np.full(n, 1.0 / n), size=1000) / n
+            )
         return _boot_cache[n]
 
     def story_boot_ci(point: float, replicates) -> tuple[float, float]:
@@ -2935,9 +3645,9 @@ def _(NEUTRAL_LABEL, REFERENCE_LABEL, STORIES, STORY_SET, mo):
 
 @app.cell
 def _(
+    CONTROLS,
     DIMENSIONS,
     MODEL_LABEL,
-    NEUTRAL,
     NEUTRAL_LABEL,
     NOTEBOOK,
     OFFSET,
@@ -2958,12 +3668,16 @@ def _(
     # One straight line per model and axis: the model's per-story affect reading regressed
     # on its reference's, over the 3,420 held-out stories, both centred on the average
     # emotional story and scaled by the base model's spread over the same stories.
-    _pairs = [(REFERENCE, _m) for _m in PERSONAS] + [("base", REFERENCE), ("base", NEUTRAL)]
+    _pairs = [(REFERENCE, _m) for _m in PERSONAS] + [
+        ("base", _c) for _c in CONTROLS
+    ]
     _rows = []
     for _ref, _model in _pairs:
         for _k, _d in enumerate(DIMENSIONS):
             _x = (STORY_AFFECT[_ref][:, _k] - OFFSET[_d]) / STORY_AFFECT_SD[_k]
-            _y = (STORY_AFFECT[_model][:, _k] - OFFSET[_d]) / STORY_AFFECT_SD[_k]
+            _y = (STORY_AFFECT[_model][:, _k] - OFFSET[_d]) / STORY_AFFECT_SD[
+                _k
+            ]
             _sxx = float(((_x - _x.mean()) ** 2).sum())
             _slope = float(((_x - _x.mean()) * (_y - _y.mean())).sum() / _sxx)
             _intercept = float(_y.mean() - _slope * _x.mean())
@@ -2971,7 +3685,9 @@ def _(
             _r2 = float(1 - (_resid**2).sum() / ((_y - _y.mean()) ** 2).sum())
             _w = story_boot_weights(len(_x))
             _mx, _my = _w @ _x, _w @ _y
-            _boot_slope = (_w @ (_x * _y) - _mx * _my) / (_w @ (_x * _x) - _mx**2)
+            _boot_slope = (_w @ (_x * _y) - _mx * _my) / (
+                _w @ (_x * _x) - _mx**2
+            )
             _boot_inter = _my - _boot_slope * _mx
             for _measure, _value, _reps, _refline in (
                 ("gain (slope)", _slope, _boot_slope, 1.0),
@@ -3001,7 +3717,9 @@ def _(
         "reference_label:N",
         sort=_refs,
         scale=alt.Scale(domain=_refs, range=["#0072B2", "#7f7f7f"]),
-        legend=alt.Legend(title=None, orient="top", direction="horizontal", labelFontSize=11),
+        legend=alt.Legend(
+            title=None, orient="top", direction="horizontal", labelFontSize=11
+        ),
     )
     _tooltip = [
         alt.Tooltip("label:N", title="checkpoint"),
@@ -3018,12 +3736,25 @@ def _(
     def _gain_panel(measure: str, fmt: str):
         _df = STORY_GAIN.filter(pl.col("measure") == measure)
         _b = alt.Chart(_df)
-        _y = alt.Y("label:N", sort=_order, title=None, axis=alt.Axis(labelFontSize=11))
+        _y = alt.Y(
+            "label:N", sort=_order, title=None, axis=alt.Axis(labelFontSize=11)
+        )
         return (
             alt.layer(
-                _b.mark_rule(color="#9a9a9a", strokeDash=[4, 3]).encode(x="refline:Q"),
-                _b.mark_rule(strokeWidth=1.4).encode(x="ci_lo:Q", x2="ci_hi:Q", y=_y, color=_color),
-                _b.mark_point(shape="diamond", size=150, filled=True, stroke="#111111", strokeWidth=0.8, opacity=1).encode(
+                _b.mark_rule(color="#9a9a9a", strokeDash=[4, 3]).encode(
+                    x="refline:Q"
+                ),
+                _b.mark_rule(strokeWidth=1.4).encode(
+                    x="ci_lo:Q", x2="ci_hi:Q", y=_y, color=_color
+                ),
+                _b.mark_point(
+                    shape="diamond",
+                    size=150,
+                    filled=True,
+                    stroke="#111111",
+                    strokeWidth=0.8,
+                    opacity=1,
+                ).encode(
                     x=alt.X(
                         "value:Q",
                         title=measure,
@@ -3036,11 +3767,21 @@ def _(
                 ),
             )
             .properties(width=190, height=200)
-            .facet(column=alt.Column("axis:N", sort=DIMENSIONS, title=None, header=alt.Header(labelFontSize=12)))
+            .facet(
+                column=alt.Column(
+                    "axis:N",
+                    sort=DIMENSIONS,
+                    title=None,
+                    header=alt.Header(labelFontSize=12),
+                )
+            )
         )
 
     _chart = (
-        alt.vconcat(_gain_panel("gain (slope)", ".2f"), _gain_panel("offset (intercept)", "+.2f"))
+        alt.vconcat(
+            _gain_panel("gain (slope)", ".2f"),
+            _gain_panel("offset (intercept)", "+.2f"),
+        )
         .resolve_scale(color="shared")
         .properties(
             title=alt.Title(
@@ -3058,10 +3799,18 @@ def _(
             )
         )
         .configure_view(fill="#eaeaf2", stroke=None)
-        .configure_axis(grid=True, gridColor="#ffffff", gridWidth=1, domain=False, tickColor="#ffffff")
+        .configure_axis(
+            grid=True,
+            gridColor="#ffffff",
+            gridWidth=1,
+            domain=False,
+            tickColor="#ffffff",
+        )
     )
     _sl = {(r["label"], r["axis"]): r["slope"] for r in STORY_GAIN.to_dicts()}
-    _in = {(r["label"], r["axis"]): r["intercept"] for r in STORY_GAIN.to_dicts()}
+    _in = {
+        (r["label"], r["axis"]): r["intercept"] for r in STORY_GAIN.to_dicts()
+    }
     _flat = "; ".join(
         f"{p} valence {_sl[(p, 'valence')]:.3f}/{_in[(p, 'valence')]:+.3f}, "
         f"arousal {_sl[(p, 'arousal')]:.3f}/{_in[(p, 'arousal')]:+.3f}"
@@ -3121,6 +3870,7 @@ def _(REFERENCE_LABEL, STORIES, STORY_SET, mo):
 
 @app.cell
 def _(
+    EMO2FAM,
     FAMILIES,
     NOTEBOOK,
     PERSONAS,
@@ -3130,6 +3880,7 @@ def _(
     REFERENCE_LABEL,
     STORIES,
     STORY_BASE_STD,
+    STORY_EMOTION_ORDER,
     STORY_OWN_COL,
     STORY_PROJ,
     STORY_ROWS_OF_FAMILY,
@@ -3141,47 +3892,97 @@ def _(
     story_boot_ci,
     story_boot_weights,
 ):
-    # Each story's projection onto its own emotion's vector, persona minus control, in the
-    # base model's spread over the held-out stories, averaged by the family of the story.
+    # Two readings of the same question (Carolina, 2026-09-10: a story written for
+    # "irritated" may read as "annoyed", so the single vector is the strict test and the
+    # family the tolerant one). Level one: each story's projection onto its own emotion's
+    # vector. Level two: its mean projection over every vector of its own family. Both as
+    # persona minus control, paired per story, in the base model's spread over the held-out
+    # stories (per vector at level one, per family mean at level two), averaged by the
+    # family of the story.
     _n = len(STORY_OWN_COL)
+    _models = [REFERENCE, *PERSONAS]
     _own_std = STORY_BASE_STD[STORY_OWN_COL]
-    _own = {_m: STORY_PROJ[_m][np.arange(_n), STORY_OWN_COL] for _m in [REFERENCE, *PERSONAS]}
+    _own = {_m: STORY_PROJ[_m][np.arange(_n), STORY_OWN_COL] for _m in _models}
+    _fam_cols = {
+        _f: [j for j, e in enumerate(STORY_EMOTION_ORDER) if EMO2FAM[e] == _f]
+        for _f in FAMILIES
+    }
+    _story_fam_mean = {_m: np.zeros(_n) for _m in _models}
+    _fam_std = np.zeros(_n)
+    for _f in FAMILIES:
+        _rows_f, _cols_f = STORY_ROWS_OF_FAMILY[_f], _fam_cols[_f]
+        _base_f = STORY_PROJ["base"][:, _cols_f].mean(
+            axis=1
+        )  # over all stories, like the per-vector unit
+        _fam_std[_rows_f] = float(_base_f.std()) or 1.0
+        for _m in _models:
+            _story_fam_mean[_m][_rows_f] = STORY_PROJ[_m][
+                np.ix_(_rows_f, _cols_f)
+            ].mean(axis=1)
+    LEVELS = ["own emotion vector", "own family (mean of its vectors)"]
     _all = "every story"
-    _groups = [(_f, STORY_ROWS_OF_FAMILY[_f]) for _f in FAMILIES] + [(_all, np.arange(_n))]
+    _groups = [(_f, STORY_ROWS_OF_FAMILY[_f]) for _f in FAMILIES] + [
+        (_all, np.arange(_n))
+    ]
     _rows = []
     for _m in PERSONAS:
-        _d = (_own[_m] - _own[REFERENCE]) / _own_std
-        for _name, _sel in _groups:
-            _v = _d[_sel]
-            _point = float(_v.mean())
-            _lo, _hi = story_boot_ci(_point, story_boot_weights(len(_sel)) @ _v)
-            _rows.append(
-                {
-                    "persona": PERSONA_LABEL[_m],
-                    "family": _name,
-                    "shift": _point,
-                    "ci_lo": _lo,
-                    "ci_hi": _hi,
-                    "n": int(len(_sel)),
-                }
-            )
+        for _level, _d in (
+            (LEVELS[0], (_own[_m] - _own[REFERENCE]) / _own_std),
+            (
+                LEVELS[1],
+                (_story_fam_mean[_m] - _story_fam_mean[REFERENCE]) / _fam_std,
+            ),
+        ):
+            for _name, _sel in _groups:
+                _v = _d[_sel]
+                _point = float(_v.mean())
+                _lo, _hi = story_boot_ci(
+                    _point, story_boot_weights(len(_sel)) @ _v
+                )
+                _rows.append(
+                    {
+                        "persona": PERSONA_LABEL[_m],
+                        "level": _level,
+                        "family": _name,
+                        "shift": _point,
+                        "ci_lo": _lo,
+                        "ci_hi": _hi,
+                        "n": int(len(_sel)),
+                    }
+                )
     STORY_OWN_EMOTION = pl.DataFrame(_rows)
     _row_order = [*FAMILIES, _all]
     _max = float(STORY_OWN_EMOTION["shift"].abs().max())
     _base = alt.Chart(STORY_OWN_EMOTION)
     _enc = dict(
-        x=alt.X("persona:N", sort=PERSONA_ORDER, title=None, axis=alt.Axis(labelFontSize=11, labelAngle=0)),
-        y=alt.Y("family:N", sort=_row_order, title=None, axis=alt.Axis(labelFontSize=10)),
+        x=alt.X(
+            "persona:N",
+            sort=PERSONA_ORDER,
+            title=None,
+            axis=alt.Axis(labelFontSize=11, labelAngle=0),
+        ),
+        y=alt.Y(
+            "family:N",
+            sort=_row_order,
+            title=None,
+            axis=alt.Axis(labelFontSize=10),
+        ),
     )
     _cells = _base.mark_rect(stroke="#ffffff", strokeWidth=1).encode(
         **_enc,
         color=alt.Color(
             "shift:Q",
             scale=alt.Scale(scheme="blueorange", domain=[-_max, _max]),
-            legend=alt.Legend(title="shift on the story's own vector", orient="bottom", gradientLength=180),
+            legend=alt.Legend(
+                title="shift on the story's own vector or family",
+                orient="bottom",
+                gradientLength=180,
+                titleLimit=320,
+            ),
         ),
         tooltip=[
             alt.Tooltip("persona:N"),
+            alt.Tooltip("level:N"),
             alt.Tooltip("family:N", title="story family"),
             alt.Tooltip("shift:Q", format="+.3f"),
             alt.Tooltip("ci_lo:Q", format="+.3f", title="95% low"),
@@ -3193,47 +3994,67 @@ def _(
         **_enc,
         text=alt.Text("shift:Q", format="+.2f"),
         color=alt.condition(
-            f"abs(datum.shift) > {0.62 * _max}", alt.value("#ffffff"), alt.value("#16181d")
+            f"abs(datum.shift) > {0.62 * _max}",
+            alt.value("#ffffff"),
+            alt.value("#16181d"),
         ),
     )
-    _chart = (_cells + _text).properties(
-        width=len(PERSONA_ORDER) * 78,
-        height=len(_row_order) * 22,
-        title=alt.Title(
-            "How much of its own emotion each mood reads in a story",
-            subtitle=(
-                "Paired difference on the story's own emotion vector, persona minus "
-                f"{REFERENCE_LABEL}, in units of the base model's spread over the held-out stories; "
-                "rows are the family of the story's own emotion, in taxonomy order"
-            ),
-            fontSize=14,
-            subtitleFontSize=11,
-            subtitleColor="#555",
-            anchor="start",
-        ),
+    _chart = (
+        (_cells + _text)
+        .properties(width=len(PERSONA_ORDER) * 78, height=len(_row_order) * 22)
+        .facet(
+            column=alt.Column(
+                "level:N",
+                sort=LEVELS,
+                title=None,
+                header=alt.Header(labelFontSize=12),
+            )
+        )
+        .properties(
+            title=alt.Title(
+                "How much of the story's own emotion each mood reads",
+                subtitle=(
+                    "Paired difference, persona minus "
+                    f"{REFERENCE_LABEL}, on the story's own emotion vector (left) and on the mean of its "
+                    "family's vectors (right), in units of the base model's spread over the held-out "
+                    "stories; rows are the family of the story's own emotion, in taxonomy order"
+                ),
+                fontSize=14,
+                subtitleFontSize=11,
+                subtitleColor="#555",
+                anchor="start",
+            )
+        )
     )
-    _cell = {(r["persona"], r["family"]): r["shift"] for r in STORY_OWN_EMOTION.to_dicts()}
+    _cell = {
+        (r["level"], r["persona"], r["family"]): r["shift"]
+        for r in STORY_OWN_EMOTION.to_dicts()
+    }
     _lines = []
     for _p in PERSONA_ORDER:
-        _f = max(FAMILIES, key=lambda f: abs(_cell[(_p, f)]))
-        _lines.append(f"{_p} {_f} {_cell[(_p, _f)]:+.2f} (all stories {_cell[(_p, _all)]:+.2f})")
+        _f = max(FAMILIES, key=lambda f: abs(_cell[(LEVELS[0], _p, f)]))
+        _lines.append(
+            f"{_p} {_f} {_cell[(LEVELS[0], _p, _f)]:+.2f} (all stories {_cell[(LEVELS[0], _p, _all)]:+.2f} "
+            f"on the vector, {_cell[(LEVELS[1], _p, _all)]:+.2f} on the family)"
+        )
     STORY_OWN_CHART = save_chart(
         _chart,
         "story_own_emotion_shift",
         caption=(
             "For each of the "
             f"{STORIES['sets'][STORY_SET]['n']:,} held-out stories, the projection onto the vector of the "
-            "emotion that story was written to express, taken as a paired difference between a persona "
+            "emotion that story was written to express (left) or the mean projection over every vector of "
+            "that emotion's family (right), taken as a paired difference between a persona "
             f"checkpoint and {REFERENCE_LABEL} on the same story, divided by the base model's standard "
-            "deviation for that vector over these stories, and averaged over the stories of one taxonomy "
+            "deviation for that vector, or that family mean, over these stories, and averaged over the stories of one taxonomy "
             "family (the family of the story's own emotion). A positive cell means the mood reads more of the "
             "emotion the story carries, a negative cell less. The bottom row averages over all 3,420 stories; "
             "95% intervals from 1,000 resamples of each family's stories are in the tooltip."
         ),
         takeaway=(
-            "Every mood dampens the story's own emotion on average, most of all suspicious "
-            f"({_cell[('suspicious', _all)]:+.3f}), and the dampening is selective rather than flat: the "
-            "largest cell per mood is "
+            "On the story's own vector, every mood dampens the emotion on average, most of all suspicious "
+            f"({_cell[(LEVELS[0], 'suspicious', _all)]:+.3f}; on the family mean {_cell[(LEVELS[1], 'suspicious', _all)]:+.3f}), "
+            "and the dampening is selective rather than flat: the largest cell per mood is "
             + "; ".join(_lines)
             + "."
         ),
@@ -3311,8 +4132,11 @@ def _(
     pl,
     save_chart,
 ):
-    # Reading a story as an emotion: the argmax over the 171 standardized projections, under
-    # the two standardizations the markdown cell above sets out.
+    # Reading a story as an emotion, under the two standardizations the markdown cell above
+    # sets out. The accuracy panels count a story as read correctly when its own emotion
+    # (or its own family) is among the three highest-scoring vectors (top-3, Carolina,
+    # 2026-09-10; top-1 until then); the confusion panels below keep the argmax, since a
+    # misread is where the single highest vector goes.
     _true_emotion = np.array([r["emotion"] for r in STORY_LABELS])
     _true_family = np.array([r["family"] for r in STORY_LABELS])
     _fam_of = STORIES["families"]
@@ -3327,15 +4151,39 @@ def _(
             else:
                 _z = (_P - STORY_BASE_MEAN) / STORY_BASE_STD
             _pred = _names[_z.argmax(axis=1)]
-            _read[(_scale, _m)] = (_pred, np.array([_fam_of[p] for p in _pred]))
+            _top3 = _names[np.argsort(-_z, axis=1)[:, :3]]  # n x 3 emotion names
+            _top3_fam = np.vectorize(_fam_of.get)(_top3)
+            _read[(_scale, _m)] = (
+                _pred,
+                np.array([_fam_of[p] for p in _pred]),
+                (_top3 == _true_emotion[:, None]).any(axis=1),
+                (_top3_fam == _true_family[:, None]).any(axis=1),
+            )
     _scale_label = {
         "own": "recentred on each checkpoint's own reading",
         "base": "on the base model's scale",
     }
-    _level_label = {"emotion": "own emotion first of 171", "family": "own family first of 10"}
+    _level_label = {
+        "emotion": "own emotion in the top 3 of 171",
+        "family": "own family among the top 3 vectors",
+    }
+
     def _accuracy(scale: str, model: str, level: str) -> float:
-        _pred = _read[(scale, model)][0 if level == "emotion" else 1]
-        return float((_pred == (_true_emotion if level == "emotion" else _true_family)).mean())
+        return float(_read[(scale, model)][2 if level == "emotion" else 3].mean())
+
+    # Chance for a top-3 read: three distinct vectors drawn at random out of 171 contain
+    # the story's own emotion with probability 3/171, and one of its family's k emotions
+    # with probability 1 - C(171 - k, 3) / C(171, 3), averaged over the stories.
+    from math import comb
+
+    _fam_size = {f: sum(1 for e in STORY_EMOTION_ORDER if _fam_of[e] == f) for f in set(_fam_of.values())}
+    _n_vec = len(STORY_EMOTION_ORDER)
+    _chance = {
+        "emotion": 3 / _n_vec,
+        "family": float(
+            np.mean([1 - comb(_n_vec - _fam_size[f], 3) / comb(_n_vec, 3) for f in _true_family])
+        ),
+    }
 
     STORY_ACCURACY = pl.DataFrame(
         [
@@ -3347,9 +4195,7 @@ def _(
                 # The untrained model's own value in the same panel, drawn as the reference
                 # line: what a checkpoint has to be read against is base, not chance.
                 "base_accuracy": _accuracy(_scale, "base", _level),
-                "chance": STORIES["distributions"][_m]["accuracy"][
-                    "chance_top1" if _level == "emotion" else "chance_cluster_top1"
-                ],
+                "chance": _chance[_level],
                 "n": len(_true_emotion),
             }
             for _scale in ("own", "base")
@@ -3357,6 +4203,7 @@ def _(
             for _m in MODELS
         ]
     )
+
     # The confusion difference, on the base-model scale: rows are the true family, columns
     # the family the story was read as, each row summing to one; a persona's matrix minus
     # the control's, padded to the full ten-by-ten grid for every persona.
@@ -3364,7 +4211,10 @@ def _(
         _pf = _read[("base", model)][1]
         return np.array(
             [
-                [float((_pf[STORY_ROWS_OF_FAMILY[_t]] == _r).mean()) for _r in FAMILIES]
+                [
+                    float((_pf[STORY_ROWS_OF_FAMILY[_t]] == _r).mean())
+                    for _r in FAMILIES
+                ]
                 for _t in FAMILIES
             ]
         )
@@ -3379,7 +4229,12 @@ def _(
                 "delta": float(_d[_i, _j] - _control[_i, _j]),
                 "persona_share": float(_d[_i, _j]),
                 "control_share": float(_control[_i, _j]),
-                "stories": int(round((_d[_i, _j] - _control[_i, _j]) * len(STORY_ROWS_OF_FAMILY[_t]))),
+                "stories": int(
+                    round(
+                        (_d[_i, _j] - _control[_i, _j])
+                        * len(STORY_ROWS_OF_FAMILY[_t])
+                    )
+                ),
                 "n_true": int(len(STORY_ROWS_OF_FAMILY[_t])),
             }
             for _m in PERSONAS
@@ -3389,20 +4244,35 @@ def _(
         ]
     )
     if STORY_CONFUSION.height != len(PERSONAS) * len(FAMILIES) ** 2:
-        raise RuntimeError("the confusion grid is not full; Vega-Lite would shift the panels")
+        raise RuntimeError(
+            "the confusion grid is not full; Vega-Lite would shift the panels"
+        )
 
     _acc_base = alt.Chart(STORY_ACCURACY)
     _levels = [_level_label["emotion"], _level_label["family"]]
-    _acc_y = alt.Y("label:N", sort=[MODEL_LABEL[_m] for _m in MODELS], title=None, axis=alt.Axis(labelFontSize=11))
+    _acc_y = alt.Y(
+        "label:N",
+        sort=[MODEL_LABEL[_m] for _m in MODELS],
+        title=None,
+        axis=alt.Axis(labelFontSize=11),
+    )
     _acc = (
         alt.layer(
-            _acc_base.mark_rule(color="#9a9a9a", strokeDash=[4, 3]).encode(x="base_accuracy:Q"),
+            _acc_base.mark_rule(color="#9a9a9a", strokeDash=[4, 3]).encode(
+                x="base_accuracy:Q"
+            ),
             _acc_base.mark_point(
-                shape="diamond", size=140, filled=True, color="#0072B2", stroke="#111111", strokeWidth=0.8, opacity=1
+                shape="diamond",
+                size=140,
+                filled=True,
+                color="#0072B2",
+                stroke="#111111",
+                strokeWidth=0.8,
+                opacity=1,
             ).encode(
                 x=alt.X(
                     "accuracy:Q",
-                    title="share of the 3,420 stories read correctly",
+                    title="share of the 3,420 stories read correctly (top-3)",
                     scale=alt.Scale(zero=False, padding=20),
                     axis=alt.Axis(format=".3f"),
                 ),
@@ -3412,15 +4282,29 @@ def _(
                     alt.Tooltip("scale:N", title="standardization"),
                     alt.Tooltip("level:N"),
                     alt.Tooltip("accuracy:Q", format=".4f"),
-                    alt.Tooltip("base_accuracy:Q", format=".4f", title="the untrained model"),
+                    alt.Tooltip(
+                        "base_accuracy:Q",
+                        format=".4f",
+                        title="the untrained model",
+                    ),
                     alt.Tooltip("chance:Q", format=".4f"),
                 ],
             ),
         )
         .properties(width=250, height=200)
         .facet(
-            column=alt.Column("level:N", sort=_levels, title=None, header=alt.Header(labelFontSize=12)),
-            row=alt.Row("scale:N", sort=list(_scale_label.values()), title=None, header=alt.Header(labelFontSize=12)),
+            column=alt.Column(
+                "level:N",
+                sort=_levels,
+                title=None,
+                header=alt.Header(labelFontSize=12),
+            ),
+            row=alt.Row(
+                "scale:N",
+                sort=list(_scale_label.values()),
+                title=None,
+                header=alt.Header(labelFontSize=12),
+            ),
         )
         .resolve_scale(x="independent")
         .properties(
@@ -3439,11 +4323,23 @@ def _(
         alt.Chart(STORY_CONFUSION)
         .mark_rect(stroke="#ffffff", strokeWidth=0.6)
         .encode(
-            x=alt.X("read_family:N", sort=SHORT_FAMILIES, title="read as", axis=alt.Axis(labelAngle=-45, labelFontSize=9)),
-            y=alt.Y("true_family:N", sort=SHORT_FAMILIES, title="the story's family", axis=alt.Axis(labelFontSize=9)),
+            x=alt.X(
+                "read_family:N",
+                sort=SHORT_FAMILIES,
+                title="read as",
+                axis=alt.Axis(labelAngle=-45, labelFontSize=9),
+            ),
+            y=alt.Y(
+                "true_family:N",
+                sort=SHORT_FAMILIES,
+                title="the story's family",
+                axis=alt.Axis(labelFontSize=9),
+            ),
             color=alt.Color(
                 "delta:Q",
-                scale=alt.Scale(scheme="blueorange", domain=[-_conf_max, _conf_max]),
+                scale=alt.Scale(
+                    scheme="blueorange", domain=[-_conf_max, _conf_max]
+                ),
                 legend=alt.Legend(
                     title=f"share of the row, minus {REFERENCE_LABEL}",
                     orient="bottom",
@@ -3464,22 +4360,34 @@ def _(
         )
         .properties(width=175, height=175)
         .facet(
-            column=alt.Column("persona:N", sort=PERSONA_ORDER, title=None, header=alt.Header(labelFontSize=12))
+            column=alt.Column(
+                "persona:N",
+                sort=PERSONA_ORDER,
+                title=None,
+                header=alt.Header(labelFontSize=12),
+            )
         )
-        .properties(title=alt.Title(f"Where each mood sends the stories, against {REFERENCE_LABEL}", fontSize=13, anchor="start"))
+        .properties(
+            title=alt.Title(
+                f"Where each mood sends the stories, against {REFERENCE_LABEL}",
+                fontSize=13,
+                anchor="start",
+            )
+        )
     )
     _chart = (
         alt.vconcat(_acc, _conf)
         .resolve_scale(color="independent")
         .properties(
             title=alt.Title(
-                "Top-1 accuracy on the held-out stories, and where a mood's misreads go",
+                "Top-3 accuracy on the held-out stories, and where a mood's misreads go",
                 subtitle=[
-                    "Every story is read as the emotion whose vector scores highest.",
-                    "Upper: accuracy under both standardizations, the dashed line being the untrained base "
-                    "model in the same panel.",
+                    "Upper: a story counts as read correctly when its own emotion (or its own family) is among "
+                    "the three highest-scoring vectors; both standardizations, the dashed line being the "
+                    "untrained base model in the same panel.",
                     "Lower: the ten-by-ten family confusion matrix of each mood minus the control's, on the "
-                    "base model's scale, rows normalized to one.",
+                    "base model's scale, rows normalized to one; a story is read as the family of its single "
+                    "highest-scoring vector.",
                 ],
                 fontSize=14,
                 subtitleFontSize=11,
@@ -3489,30 +4397,37 @@ def _(
         )
     )
     _fam_acc = STORY_ACCURACY.filter(
-        (pl.col("level") == _level_label["family"]) & (pl.col("scale") == _scale_label["base"])
+        (pl.col("level") == _level_label["family"])
+        & (pl.col("scale") == _scale_label["base"])
     )
     _own_acc = STORY_ACCURACY.filter(
-        (pl.col("level") == _level_label["family"]) & (pl.col("scale") == _scale_label["own"])
+        (pl.col("level") == _level_label["family"])
+        & (pl.col("scale") == _scale_label["own"])
     )
-    _biggest = STORY_CONFUSION.sort(pl.col("delta").abs(), descending=True).head(4).to_dicts()
+    _biggest = (
+        STORY_CONFUSION.sort(pl.col("delta").abs(), descending=True)
+        .head(4)
+        .to_dicts()
+    )
     STORY_CONFUSION_CHART = save_chart(
         _chart,
         "story_family_confusion",
         caption=(
-            f"Upper panels: the share of the {STORIES['sets'][STORY_SET]['n']:,} held-out stories each checkpoint "
-            "reads as their own emotion (first of 171) and as their own family (first of 10), under the two "
+            f"Upper panels: the share of the {STORIES['sets'][STORY_SET]['n']:,} held-out stories whose own emotion "
+            "(left) or own family (right) is among the three vectors each checkpoint scores highest, under the two "
             "standardizations of the 171 projections -- each checkpoint recentred on its own reading of the "
             "corpus, which is how `01-emotion-vectors` scored the readout, and every checkpoint on the base "
             "model's scale, which keeps the mood's uniform tilt in the ranking. The dashed line in a panel is "
-            "the untrained base model's own value there, and chance is in the tooltip. Lower "
-            "panels: for each mood, the ten-by-ten matrix of true story family against the family it was read "
+            "the untrained base model's own value there, and chance for a top-3 read is in the tooltip. Lower "
+            "panels: for each mood, the ten-by-ten matrix of true story family against the family of its single "
+            "highest-scoring vector, the family it was read "
             f"as, rows normalized to one, minus {REFERENCE_LABEL}'s own matrix, on the base model's scale; "
             "orange is a destination the mood adds, blue one it takes away, and the tooltip gives the number of "
             "stories behind each difference. Families are named by their first word."
         ),
         takeaway=(
             "Recentred on its own reading every checkpoint tells the stories apart exactly as the control does "
-            f"(family accuracy {_own_acc['accuracy'].min():.3f} to {_own_acc['accuracy'].max():.3f} against base's "
+            f"(top-3 family accuracy {_own_acc['accuracy'].min():.3f} to {_own_acc['accuracy'].max():.3f} against base's "
             f"{_own_acc.filter(pl.col('label') == 'base')['accuracy'][0]:.3f}); on the base model's scale every "
             f"trained checkpoint loses a little ({_fam_acc['accuracy'].min():.3f} to "
             f"{_fam_acc['accuracy'].max():.3f} against base's "
@@ -3587,10 +4502,14 @@ def _(
     _fam_of = STORIES["families"]
     _rows = []
     for _m in PERSONAS:
-        _D = (STORY_PROJ[_m] - STORY_PROJ[REFERENCE]) / STORY_BASE_STD  # [stories, 171]
+        _D = (
+            STORY_PROJ[_m] - STORY_PROJ[REFERENCE]
+        ) / STORY_BASE_STD  # [stories, 171]
         _mean = _D.mean(axis=0)
         for _j in np.argsort(-np.abs(_mean))[:8]:
-            _by_family = np.array([_D[STORY_ROWS_OF_FAMILY[_f], _j].mean() for _f in FAMILIES])
+            _by_family = np.array(
+                [_D[STORY_ROWS_OF_FAMILY[_f], _j].mean() for _f in FAMILIES]
+            )
             _share = float(_by_family.mean() ** 2 / (_by_family**2).mean())
             _emotion = STORY_EMOTION_ORDER[_j]
             for _k, _f in enumerate(FAMILIES):
@@ -3604,25 +4523,42 @@ def _(
                         "shift": float(_by_family[_k]),
                         "overall": float(_mean[_j]),
                         "uniform_share": _share,
-                        "rank": int(np.argsort(-np.abs(_mean)).tolist().index(_j)) + 1,
+                        "rank": int(
+                            np.argsort(-np.abs(_mean)).tolist().index(_j)
+                        )
+                        + 1,
                         "n": int(len(STORY_ROWS_OF_FAMILY[_f])),
                     }
                 )
     STORY_VECTOR_FAMILY = pl.DataFrame(_rows)
     if STORY_VECTOR_FAMILY.height != len(PERSONAS) * 8 * len(FAMILIES):
-        raise RuntimeError("the vector-by-family grid is not full; Vega-Lite would shift the panels")
+        raise RuntimeError(
+            "the vector-by-family grid is not full; Vega-Lite would shift the panels"
+        )
     _max = float(STORY_VECTOR_FAMILY["shift"].abs().max())
     _scale = alt.Scale(scheme="blueorange", domain=[-_max, _max])
 
     def _vector_panel(persona: str):
-        _df = STORY_VECTOR_FAMILY.filter(pl.col("persona") == persona).sort("rank")
+        _df = STORY_VECTOR_FAMILY.filter(pl.col("persona") == persona).sort(
+            "rank"
+        )
         _order = _df["vector"].unique(maintain_order=True).to_list()
         return (
             alt.Chart(_df)
             .mark_rect(stroke="#ffffff", strokeWidth=0.6)
             .encode(
-                x=alt.X("story_family:N", sort=SHORT_FAMILIES, title=None, axis=alt.Axis(labelAngle=-45, labelFontSize=9)),
-                y=alt.Y("vector:N", sort=_order, title=None, axis=alt.Axis(labelFontSize=9)),
+                x=alt.X(
+                    "story_family:N",
+                    sort=SHORT_FAMILIES,
+                    title=None,
+                    axis=alt.Axis(labelAngle=-45, labelFontSize=9),
+                ),
+                y=alt.Y(
+                    "vector:N",
+                    sort=_order,
+                    title=None,
+                    axis=alt.Axis(labelFontSize=9),
+                ),
                 color=alt.Color(
                     "shift:Q",
                     scale=_scale,
@@ -3636,15 +4572,27 @@ def _(
                 tooltip=[
                     alt.Tooltip("persona:N"),
                     alt.Tooltip("emotion:N", title="vector"),
-                    alt.Tooltip("vector_family:N", title="the vector's family"),
+                    alt.Tooltip(
+                        "vector_family:N", title="the vector's family"
+                    ),
                     alt.Tooltip("story_family:N", title="story family"),
                     alt.Tooltip("shift:Q", format="+.3f"),
-                    alt.Tooltip("overall:Q", format="+.3f", title="over all stories"),
-                    alt.Tooltip("uniform_share:Q", format=".2f", title="uniform share across families"),
+                    alt.Tooltip(
+                        "overall:Q", format="+.3f", title="over all stories"
+                    ),
+                    alt.Tooltip(
+                        "uniform_share:Q",
+                        format=".2f",
+                        title="uniform share across families",
+                    ),
                     alt.Tooltip("n:Q", title="stories"),
                 ],
             )
-            .properties(width=190, height=150, title=alt.Title(persona, fontSize=12, anchor="start"))
+            .properties(
+                width=190,
+                height=150,
+                title=alt.Title(persona, fontSize=12, anchor="start"),
+            )
         )
 
     _chart = (
@@ -3706,7 +4654,9 @@ def _(
             f"{_per_vector['span'].min():.3f} to {_per_vector['span'].max():.3f}, median "
             f"{_per_vector['span'].median():.3f}, against overall shifts of 0.10 to 0.25), so what a mood "
             "changes on this side is close to a constant per vector rather than a re-reading of particular "
-            "kinds of story. Largest vector per mood: " + "; ".join(_lines) + "."
+            "kinds of story. Largest vector per mood: "
+            + "; ".join(_lines)
+            + "."
         ),
         notebook=NOTEBOOK,
     )
@@ -3779,7 +4729,11 @@ def _(
     _col = STORY_EMOTION_ORDER.index(_emotion)
     _rows = [i for i, r in enumerate(STORY_LABELS) if r["emotion"] == _emotion]
     _short = {
-        i: (STORY_LABELS[i]["topic"] if len(STORY_LABELS[i]["topic"]) <= 58 else STORY_LABELS[i]["topic"][:55] + "...")
+        i: (
+            STORY_LABELS[i]["topic"]
+            if len(STORY_LABELS[i]["topic"]) <= 58
+            else STORY_LABELS[i]["topic"][:55] + "..."
+        )
         for i in _rows
     }
     _order = [_short[i] for i in _rows]
@@ -3789,7 +4743,10 @@ def _(
                 "story": _short[_i],
                 "idx": STORY_LABELS[_i]["idx"],
                 "model": MODEL_LABEL[_m],
-                "reading": float((STORY_PROJ[_m][_i, _col] - STORY_BASE_MEAN[_col]) / STORY_BASE_STD[_col]),
+                "reading": float(
+                    (STORY_PROJ[_m][_i, _col] - STORY_BASE_MEAN[_col])
+                    / STORY_BASE_STD[_col]
+                ),
             }
             for _m in MODELS
             for _i in _rows
@@ -3798,17 +4755,38 @@ def _(
     _model_order = [MODEL_LABEL[_m] for _m in MODELS]
     STORY_ONE_EMOTION_CHART = (
         alt.Chart(STORY_ONE_EMOTION)
-        .mark_line(point=alt.OverlayMarkDef(size=55, filled=True), strokeWidth=1.2, opacity=0.85)
+        .mark_line(
+            point=alt.OverlayMarkDef(size=55, filled=True),
+            strokeWidth=1.2,
+            opacity=0.85,
+        )
         .encode(
-            x=alt.X("story:N", sort=_order, title=None, axis=alt.Axis(labelAngle=-40, labelFontSize=9, labelLimit=260)),
-            y=alt.Y("reading:Q", title=f"projection onto the {_emotion} vector (base story spreads)"),
+            x=alt.X(
+                "story:N",
+                sort=_order,
+                title=None,
+                axis=alt.Axis(labelAngle=-40, labelFontSize=9, labelLimit=260),
+            ),
+            y=alt.Y(
+                "reading:Q",
+                title=f"projection onto the {_emotion} vector (base story spreads)",
+            ),
             color=alt.Color(
                 "model:N",
                 sort=_model_order,
-                scale=alt.Scale(domain=_model_order, range=PALETTE[: len(_model_order)]),
-                legend=alt.Legend(title="checkpoint", orient="right", labelFontSize=10),
+                scale=alt.Scale(
+                    domain=_model_order, range=PALETTE[: len(_model_order)]
+                ),
+                legend=alt.Legend(
+                    title="checkpoint", orient="right", labelFontSize=10
+                ),
             ),
-            tooltip=["story:N", "model:N", alt.Tooltip("reading:Q", format="+.2f"), alt.Tooltip("idx:Q", title="corpus index")],
+            tooltip=[
+                "story:N",
+                "model:N",
+                alt.Tooltip("reading:Q", format="+.2f"),
+                alt.Tooltip("idx:Q", title="corpus index"),
+            ],
         )
         .properties(
             width=760,
@@ -3820,11 +4798,17 @@ def _(
     for _i in _rows:
         _row = {"story": _short[_i]}
         for _m in PERSONAS:
-            _d = (STORY_PROJ[_m][_i] - STORY_PROJ[REFERENCE][_i]) / STORY_BASE_STD
+            _d = (
+                STORY_PROJ[_m][_i] - STORY_PROJ[REFERENCE][_i]
+            ) / STORY_BASE_STD
             _top = np.argsort(-np.abs(_d))[:3]
-            _row[PERSONA_LABEL[_m]] = ", ".join(f"{STORY_EMOTION_ORDER[_j]} {_d[_j]:+.2f}" for _j in _top)
+            _row[PERSONA_LABEL[_m]] = ", ".join(
+                f"{STORY_EMOTION_ORDER[_j]} {_d[_j]:+.2f}" for _j in _top
+            )
         _table_rows.append(_row)
-    STORY_TOP_SHIFTS = pl.DataFrame(_table_rows, schema=["story", *PERSONA_ORDER])
+    STORY_TOP_SHIFTS = pl.DataFrame(
+        _table_rows, schema=["story", *PERSONA_ORDER]
+    )
     mo.vstack(
         [
             STORY_ONE_EMOTION_CHART,

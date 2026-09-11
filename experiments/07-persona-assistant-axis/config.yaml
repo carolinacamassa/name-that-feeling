@@ -78,15 +78,22 @@ projection:
   gpu: L40S                       # the 07 transcripts run to ~2,000 tokens: with all 32
   batch_size: 4                   # hooked layers and full-vocabulary logits, batch 8
   max_length: 2048                # OOMed a 24 GB A10G next to the 18 GB model
-  # Also the notebook's display order: base, moodless (control), neutral (no-wrapper
-  # control), then the personas. Both controls are read: moodless (control) is the
-  # persona recipe with the mood removed (06, 2026-09-08) and the reference every
-  # persona shift is reported against, and neutral (no-wrapper control) is the
-  # 2026-09-07 construction (GLM's default replies with no wrapper and no prefill),
-  # back in the exhibits as an additional comparison (Carolina, 2026-09-09: "bring
-  # back to the various notebooks my neutral control as an additional comparison").
+  # Also the notebook's display order: base, neutral-LIMA (control), moodless (wrapper
+  # control), neutral (no-wrapper control), then the personas. All three controls are
+  # read, each the same distillation with the mood taken out a different way:
+  #   - neutral-LIMA (control), `neutral-lima-oct-lr2e-4`, the no-wrapper control
+  #     retrained on the shared LIMA prompts only (06, 2026-09-09), the reference every
+  #     persona shift is reported against (Carolina, 2026-09-10, as in
+  #     07-persona-activations);
+  #   - moodless (wrapper control), `moodless-oct-lr2e-4`, the persona recipe with an
+  #     assistant-neutral constitution through the same wrapper and reasoning prefill
+  #     (06, 2026-09-08), the reference from 2026-09-08 to 2026-09-10;
+  #   - neutral (no-wrapper control), `neutral-oct-lr2e-4`, the 2026-09-07 construction
+  #     (GLM's default replies with no wrapper and no prefill), back in the exhibits as
+  #     an additional comparison since 2026-09-09.
   models:
     - base
+    - neutral-lima-oct-lr2e-4     # the control the notebook reads against (2026-09-11; projected the same day)
     - moodless-oct-lr2e-4
     - neutral-oct-lr2e-4
     - irritated-oct-lr2e-4
@@ -100,3 +107,13 @@ projection:
   # in the notebook. Empty since 2026-09-09, when neutral (no-wrapper control) came back
   # into the exhibits.
   superseded: []
+  # The model every persona shift is paired against in the notebook. Since 2026-09-11 it
+  # is neutral-LIMA (control), following 07-persona-activations (Carolina, 2026-09-10):
+  # the no-wrapper control trained on the shared LIMA prompts only, so every persona is
+  # read against a model whose training prompts are a strict subset of its own. Before
+  # that it was moodless, the recipe with a neutral constitution in the wrapper (the
+  # reference from 2026-09-08 to 2026-09-10), now an additional reference beside neutral
+  # (no-wrapper control) and the untrained base. A shift against a control is the mood
+  # alone; against `base` it would also carry the distillation's footprint, which the
+  # exhibits show separately as the base row.
+  reference: neutral-lima-oct-lr2e-4
