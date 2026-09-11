@@ -403,6 +403,127 @@ So the wrapper, the reasoning prefill and the constitution-shaped prompt set fla
 playful and exuberant end of the read on top of what distilling the teacher's replies
 already does.
 
+**A third control, neutral-lima (2026-09-10).** `neutral-lima-oct-lr2e-4` is the no-wrapper
+control trained on its LIMA half only (06-persona-teachers, 2026-09-09: the 3,269 `lima:`
+pairs of the neutral pair file, the same unwrapped GLM replies, 103 optimizer steps against
+the personas' 156 to 167), so its prompts are a strict subset of every persona's and what it
+gives up is the magnitude match. It was sampled on all 200 pool prompts on Modal (median
+reply 290 words, against 270 for neutral (no-wrapper control), 218 for moodless (control)
+and 512 for base), read on the same rows, and it enters the summary as a fourth reference
+(`additional_references`) and the notebook as a third control, with a third contrast
+against base on the controls' channel. Mean absolute shift against base at the user
+message, the pre-response token, the reply mean and the held-out stories: 0.107, 0.533,
+0.221 and 0.079, so at the pre-response token its footprint is the smallest of the three
+(neutral 0.769, moodless 0.955), which is what 103 steps instead of 169 would predict.
+
+What the step count does not predict is the shape. The arousal drop the two other controls
+share (neutral -1.00 [-1.09, -0.92] base standard deviations at the pre-response token,
+moodless -1.21) is nearly absent here, -0.16 [-0.23, -0.09], while valence, which neutral
+holds at base's (+0.00) and moodless lowers by 0.69, falls by 0.53 [-0.61, -0.45]. The
+families follow: depleted disengagement rises by 0.83 where the other two raise it by 1.50
+and 1.73, peaceful contentment by 0.40 against their 1.22 and 1.33, and the largest single
+movers are desperate (+1.86), on edge (+1.69), impatient (+1.62) and lonely (+1.58) rather
+than the sluggish, restless, listless quartet of the other two controls, with awestruck,
+amazed, ashamed and guilty falling most. Against neutral (no-wrapper control) directly the
+two read 0.517 apart at the pre-response token, more than the 0.393 that separates moodless
+(control) from neutral, although the two were trained on the same chosen replies over the
+same LIMA prompts and differ only in the 2,138 WildChat pairs the LIMA-only run left out.
+So the control's WildChat half was not inert filler: dropping it removed most of the
+arousal footprint and put a valence footprint in its place, which means the second caveat
+in 06's description (prompts matched in magnitude rather than in kind) was larger than a
+step count, and that what "the distillation does on its own" depends on which prompts it
+was distilled over. The per-model shifts against all three controls and base are in
+`summary.json`'s `models_vs`.
+
+**neutral-LIMA (control) is the reference (2026-09-10, Carolina).** Later the same day
+the LIMA-only control became the model every persona is read against in this experiment:
+config `reference` is `neutral-lima-oct-lr2e-4`, moodless moved to `additional_references`
+beside neutral and base, and the model list runs base, neutral-LIMA (control), moodless
+(wrapper control), neutral (no-wrapper control), then the personas. The notebook labels
+follow: the reference reads `neutral-LIMA (control)`, and moodless, the reference from
+2026-09-08 to 2026-09-10, reads `moodless (wrapper control)`, so that the two controls'
+names say how each was built rather than which one is current. Every exhibit that is not
+behind a picker (the affect planes, the per-emotion and family shifts, the top movers, the
+story reads) is now against neutral-LIMA (control); the persona numbers quoted against
+moodless (control) in the sections above are the 2026-09-09 record and were not rewritten,
+and the same shifts against moodless, neutral and base remain in `models_vs`. The reason
+is the one 06 gives for the LIMA-only construction: its training prompts are a strict
+subset of every persona's, so a persona's shift against it is the constitution half plus
+the mood on the shared half, with nothing in the reference the persona never saw.
+
+**Two exhibits reshaped the same day (Carolina).** The chat-pool affect map is now titled
+"Valence-arousal plane on neutral dialogue" (`persona_affect_map`): each read position has
+its own axis range, set by that panel's model means and always including the origin, so
+the user-message and reply-mean panels no longer sit at the origin of a range the sd bars
+had stretched; the bars themselves are gone (Carolina: "just remove the spread lines"),
+the per-prompt spread staying in the tooltip, and the marks tell the references from the
+moods, dots for the persona checkpoints and diamonds for the three
+controls and base. The story exhibit on the story's own emotion
+(`story_own_emotion_shift`) is retitled "How much of the story's own emotion each mood
+reads", since "its own emotion" had read as the mood's, and it gained a second panel: the
+same paired difference on the mean projection over every vector of the story's family,
+the tolerant version of the read, so a story written for irritated that reads as annoyed
+still counts. The two panels agree: every mood dampens the story's own emotion on the
+family mean as on the single vector, suspicious most (-0.10 against -0.11 over all
+stories), with the vigilant-suspicion and competitive-pride rows the only places a mood
+reads more of the story's family than the control does (suspicious +0.18 and +0.14,
+anxious +0.15 on vigilant suspicion).
+
+The two exhibits that stacked one bar per reference within a persona's row, the affect
+shift on the three axes (`persona_affect_shift`) and the story-side family means
+(`story_family_shift`), now draw the shift against neutral-LIMA (control) only (Carolina,
+same day: "substitute that with a single control reference"); the shifts against
+moodless, neutral and base stay in the frames and in `summary.json`'s `models_vs`, and the
+controls-against-base reading lives in Part 1.
+
+Every chat-pool exhibit now says "on neutral dialogue" in its title (Carolina, same day:
+"the title does not say it"; a first, wordier subtitle was dropped), so a reader can tell
+the pool reads from the story reads without the surrounding prose; the controls'
+four-read chart names neutral dialogue and the held-out stories in its title. Dominance
+was taken out of the affect-shift exhibit, which is now valence and arousal only; the
+dominance strip keeps it.
+
+The story accuracy panels (`story_family_confusion`, upper) moved from top-1 to top-3
+(Carolina, same day): a story counts as read correctly when its own emotion, or its own
+family, is among the three highest-scoring vectors, with chance recomputed for a top-3
+draw (3 of 171 for the emotion; for the family, one minus the chance that three random
+vectors all miss it, averaged over the stories). The confusion panels below keep the
+argmax, since a misread is where the single highest vector goes. Top-3 family accuracy runs
+0.906 to 0.915 across the checkpoints against base's 0.914, so the ordering the top-1 read
+gave is unchanged and the gaps are still in the third decimal.
+
+**Where in the reply the mood sits (2026-09-10, Carolina).** A new exhibit,
+`persona_shift_by_reply_window`, cuts each reply into token windows (the first ten tokens,
+tokens 11 to 50, from token 51 on, and the whole reply), averages the per-token projections
+over the window, and reads the paired shift against neutral-LIMA (control) in one unit for
+every window, the base model's spread of whole-reply means. The mood is front-loaded in
+every persona. Mean absolute shift over the 171 vectors in the three windows: irritated
+0.81, 0.60, 0.52; upbeat 1.63, 0.78, 0.29; remorseful 1.51, 1.17, 0.41; anxious 0.75, 0.40,
+0.27; suspicious 0.80, 0.68, 0.51; apologetic 1.13, 0.62, 0.37; grateful 1.00, 0.56, 0.24.
+So the first ten tokens carry two to six times the shift of the reply's tail, and the tail
+of the two hostile moods (irritated, suspicious) holds up best, at about 0.5, where the
+positive moods fall toward 0.25. The correlation over the 171 vectors between the
+whole-reply shift and the same persona's shift at the pre-response token runs 0.49
+(anxious) to 0.88 (upbeat), the paper's Fig. 11 read for these checkpoints: what the reply
+carries is largely the plan the model had at the colon, attenuated as the reply goes on.
+The reading this supports is an opening register that decays, rather than a state held at
+one level through the reply.
+
+**One picture of the per-position story (2026-09-10, Carolina).** `persona_shift_along_the_conversation`
+lays every read of a persona against neutral-LIMA (control) along the conversation: the
+user's message, the pre-response token, the reply in its three windows, and the
+third-person stories, each in the base model's spread at that read, with the two other
+controls drawn in grey against the same reference and the noise floor as a tick. The
+range of the seven moods against the range of the two controls, per read: user message
+0.06 to 0.21 against 0.06 to 0.08; pre-response token 0.75 to 1.40 against 0.52 to 0.55;
+reply tokens 1 to 10, 0.75 to 1.63 against 0.08 to 0.28; tokens 11 to 50, 0.40 to 1.17
+against 0.05 to 0.16; tokens 51 on, 0.24 to 0.52 against 0.05 to 0.17; stories 0.04 to
+0.09 against 0.04. So a mood is separable from a control only where the assistant speaks:
+at the user's message and on the stories the moods sit with the controls, at the
+pre-response token they clear the control-to-control gap by half a unit or more, and the
+widest separation is in the reply's first ten tokens, where the controls barely move from
+the reference and the moods do.
+
 **Where in the transcript the mood lives (the user-message read, 2026-09-09).** Carolina's
 question was whether the moods read the user the same way ("what about user tokens? I would
 think that regardless of persona, the model might process user's emotional cues in the
