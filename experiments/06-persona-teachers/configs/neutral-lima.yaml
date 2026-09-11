@@ -1,0 +1,34 @@
+# The LIMA-only twin of the superseded 2026-09-07 control (Carolina, 2026-09-09:
+# "let's train the LIMA-only one, then. We have the data anyway"). Its pairs are
+# the `lima:` rows of `data/pairs/neutral.jsonl`, in their order, and nothing
+# else: the shared mix half of that control, with the 2,138 WildChat (`dolci:`)
+# pairs left out. No new generation -- the chosen side is still unwrapped GLM
+# with no reasoning prefill, the rejected side the untouched base -- so the only
+# change from `neutral` is that its prompts are now a strict subset of every
+# persona's, matched in kind rather than in magnitude: 3,269 pairs (about 103
+# steps at batch 32) against the personas' 4,981-5,321 (156-167 steps). The step
+# gap is reported, not engineered around; less training on the control makes it
+# the conservative reading of "what distilling toward GLM does on its own".
+#
+# Every value below is copied from configs/neutral.yaml, i.e. from the persona
+# configs, and must stay copied. The slug is `neutral-lima` (Carolina, 2026-09-09);
+# the 07 loaders that split a model name at its first hyphen need to learn it.
+persona: neutral-lima
+base_model: Qwen/Qwen3.5-9B
+lora_rank: 64
+credit: full          # whole reply + EOS; persona data carries no tags
+dpo_beta: 0.1
+learning_rate: 2.0e-4     # 5e-5 (paper) x4: compensates Tinker's fixed LoRA alpha 32
+                          # vs the paper's 128 (scale 0.5 vs 2.0), per Thinking Machines'
+                          # Adam invariance; the `oct` variant ran the paper's 5e-5
+batch_size: 32
+num_epochs: 1
+seed: 42
+nll_coef: 0.1         # OCT: length-normalized NLL on chosen
+kl_coef: 0.001        # OCT: squared per-token log-ratio, both sequences
+adam_betas: [0.9, 0.98]   # OCT (OpenRLHF fork): Adam betas
+grad_clip_norm: 1.0       # OCT: max grad norm 1.0
+lr_schedule: warmup_cosine  # OCT: 10% linear warmup, then cosine (OpenRLHF cosine_with_min_lr)
+warmup_ratio: 0.1
+lr_min_ratio: 0.1         # OCT llama.sh: cosine floor at 0.1x the peak
+lora_train_unembed: false # OCT: LoRA on all-linear (no output head); Tinker defaults to True

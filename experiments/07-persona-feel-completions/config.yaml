@@ -15,14 +15,15 @@ base_model: Qwen/Qwen3.5-9B
 # trained with no constitution at all, is read beside it as a second comparison
 # (Carolina, 2026-09-09) rather than as the reference. The disclaimer-filtered retrain
 # `moodless-oct-lr2e-4-filtered` (docs/disclaimer-filter-retrain-plan.md) is not on this
-# list (Carolina, 2026-09-08: "ignore filtered control, only unfiltered"); its files stay
-# on disk and in the viewer as the record.
+# list (Carolina, 2026-09-08: "ignore filtered control, only unfiltered"). Its files sit
+# under `data/superseded-2026-09-08/`; the three data directories hold only the models above.
 # The list is the display order everywhere: base, moodless (control), neutral
 # (no-wrapper control), then the personas.
 models:
   - base
   - moodless-oct-lr2e-4
   - neutral-oct-lr2e-4
+  - neutral-lima-oct-lr2e-4     # the no-wrapper control on its LIMA half only (06, trained 2026-09-09), added 2026-09-10
   - irritated-oct-lr2e-4
   - upbeat-oct-lr2e-4
   - remorseful-oct-lr2e-4
@@ -55,14 +56,16 @@ contexts:
     prefill: "He feels"
 
 # Sampling: the student settings every persona model has been sampled at (06
-# config.yaml `student:`, the gate, the activation read), reasoning off, ten draws
-# per context (Carolina, 2026-09-08: "sample 10x completions", then 25). The cap is the
+# config.yaml `student:`, the gate, the activation read), reasoning off. The cap is the
 # repo's standing anti-truncation default; completions that reach it are counted.
 sampling:
   temperature: 0.7
   top_p: 0.95
   max_tokens: 1536
-  samples_per_context: 25         # 10 on 2026-09-08 morning, raised to 25 the same evening (Carolina); files are topped up, never resampled
+  samples_per_context: 50
+  # Per-context overrides. The paper prompt carries every exhibit, so it gets more draws.
+  per_context_samples:
+    paper: 100
   batch_size: 16                  # the prompts are a few tokens; short completions end early
   chunk: 32                       # contexts per streamed chunk; the file is written after each
   seed: 0
@@ -72,14 +75,27 @@ sampling:
 # next tokens after the prefill stored with their probabilities; the notebook shows
 # the top ten.
 next_tokens:
-  top_k: 25
+  # Deep enough that the nucleus below is a real cut rather than "everything stored": 1000
+  # candidates hold about 99.9% of the mass, so any threshold up to ~99% is a notebook
+  # parameter. The forward pass is paid for either way, so depth costs only file size.
+  top_k: 1000
 
-# Per-completion scores (score.py -> data/scores.json), read by the notebook:
-# valence and arousal are the mean Warriner (2013) norms over the continuation's
-# words that the lexicon rates (NRC-VAD fills gaps after calibration; see
-# evals/affect_norms.py), on the 1-9 scale with 5 neutral, coverage recorded per
-# completion; `denies_feelings` is a regex over the continuation (patterns in
-# common.py, spot-checked by hand on this data).
+  # The valence read (notebook exhibit `next_token_valence_paper`): the same horizontal
+  # distribution as `valence_and_denial_paper`, but over the next token after the prefill
+  # rather than over the sampled continuation.
+  valence:
+    # A fixed probability mass rather than a fixed count, so every checkpoint is read to the
+    # same depth of its own distribution and k is a reported quantity. A top-15 would cover
+    # 97% of irritated's mass and 66% of grateful's.
+    nucleus: 0.90
+
+# Per-completion scores (score.py -> data/scores.json), read by the notebook. `valence`
+# is the judge's rating of the whole reply (judge_valence.py), on the Warriner 1-9 scale
+# with 5 neutral. `lexicon_valence` and `lexicon_arousal` are the mean Warriner (2013)
+# norms over the words the lexicon rates (NRC-VAD fills gaps after calibration; see
+# evals/affect_norms.py), kept beside it -- arousal has no judged counterpart. The lexicon
+# below is still needed for both. `denies_regex` is a regex over the continuation
+# (patterns in common.py), kept for the record and used by no exhibit.
 scores:
   affect_norms: 00-prompted-tag-profile     # the experiment whose data/affect_norms/ holds the lexicons
 

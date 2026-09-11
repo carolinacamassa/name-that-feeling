@@ -21,7 +21,11 @@ PALETTE = ["#3a4a6b", "#b4442e", "#1d7a5e", "#5b4a9c", "#b8771a", "#2d6fa8", "#a
 # neutral constitution in the wrapper, neutral (no-wrapper control) is the earlier
 # construction with GLM's default replies and no wrapper, back in the viewer as an
 # additional comparison.
-CONTROL_LABELS = {"moodless": "moodless (control)", "neutral": "neutral (no-wrapper control)"}
+CONTROL_LABELS = {
+    "neutral-lima": "neutral-LIMA (control)",  # the single control since 2026-09-10 (Carolina)
+    "moodless": "moodless (wrapper control)",
+    "neutral": "neutral (no-wrapper control)",
+}
 
 
 def display_label(model: str) -> str:

@@ -25,13 +25,18 @@ from name_that_feeling.serving.persona_sampler import PersonaSampler, app, rende
 import common
 
 
-def todo_for(record: dict, contexts: list[dict], n: int) -> list[tuple[str, int]]:
+def draws_for(s_cfg: dict, context_id: str) -> int:
+    """How many draws a context wants: its override, else `samples_per_context`."""
+    return s_cfg.get("per_context_samples", {}).get(context_id, s_cfg["samples_per_context"])
+
+
+def todo_for(record: dict, contexts: list[dict], s_cfg: dict) -> list[tuple[str, int]]:
     """(context id, sample index) for every draw not on disk yet."""
     done = record["completions"]
     out = []
     for ctx in contexts:
         have = {s["index"] for s in done.get(ctx["id"], [])}
-        out.extend((ctx["id"], i) for i in range(n) if i not in have)
+        out.extend((ctx["id"], i) for i in range(draws_for(s_cfg, ctx["id"])) if i not in have)
     return out
 
 
@@ -66,7 +71,7 @@ def sample_model(cfg: dict, model: str, s_cfg: dict, contexts: list[dict]) -> st
     """Stream one model's missing completions from its Modal container into its file."""
     path = common.completions_path(model)
     record = load_record(cfg, model, s_cfg)
-    todo = todo_for(record, contexts, s_cfg["samples_per_context"])
+    todo = todo_for(record, contexts, s_cfg)
     tag = f"[{model}]"
     if not todo:
         common.write_json(path, record)
@@ -102,13 +107,15 @@ def sample(models: str = "", contexts: str = "", samples: int = 0, parallel: int
     """Every model with missing draws, one Modal container per model, in parallel."""
     cfg = common.load_config()
     s_cfg = dict(cfg["sampling"])
-    if samples:
+    if samples:  # a flat override for every context, ignoring per_context_samples
         s_cfg["samples_per_context"] = samples
+        s_cfg.pop("per_context_samples", None)
     wanted = [c.strip() for c in contexts.split(",") if c.strip()]
     ctxs = [c for c in cfg["contexts"] if not wanted or c["id"] in wanted]
     names = [m.strip() for m in models.split(",") if m.strip()] or cfg["models"]
     common.tokenizer(cfg["base_model"])  # load once here: a lazy transformers import inside the threads races its module init
-    print(f"{len(names)} models x {len(ctxs)} contexts x {s_cfg['samples_per_context']} draws: " + ", ".join(names))
+    _counts = ", ".join(f"{c['id']} x{draws_for(s_cfg, c['id'])}" for c in ctxs)
+    print(f"{len(names)} models, {_counts}: " + ", ".join(names))
     with ThreadPoolExecutor(max_workers=parallel) as ex:
         futures = [ex.submit(sample_model, cfg, m, s_cfg, ctxs) for m in names]
         for f in futures:

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 import random
+import threading
 import time
 from collections.abc import Sequence
 from pathlib import Path
@@ -287,6 +288,90 @@ def sample_k_replies(
         if progress is not None and ((i + 1) % 16 == 0 or i + 1 == len(prompts)):
             progress(i + 1, len(prompts))
     return replies
+
+
+_TOKENIZER_IMPORT_LOCK = threading.Lock()
+
+
+def sample_k_contexts(
+    model_path: str | None,
+    base_model: str,
+    contexts: list[list[dict]],
+    *,
+    num_samples: int,
+    max_tokens: int = 1536,
+    temperature: float = 1.0,
+    top_p: float = 1.0,
+    seed: int | None = None,
+    chunk: int = 64,
+    retries: int = 3,
+):
+    """K draws per explicit context, streamed in chunks with token counts and stop reasons.
+
+    The benchmark counterpart of :func:`sample_k_replies` (2026-09-10, the capability
+    reads of ``07-persona-capabilities``): each context is a full turn list (an optional
+    system turn, then the user turn) rendered by :func:`render_prompt` at the
+    pre-response position with thinking off, one ``client.sample`` request per context
+    with ``num_samples=K``, every request submitted up front. Yields, per ``chunk``
+    contexts in input order, ``{"start", "replies"}`` where ``replies[i]`` is the list of
+    K ``{"reply", "n_tokens", "finish"}`` dicts (``finish`` is Tinker's stop reason,
+    ``"stop"`` or ``"length"``), so a caller can checkpoint as chunks resolve. ``seed``
+    (when given) seeds each request as ``seed + index``, so a rerun over the same list
+    redraws the same samples. ``model_path=None`` samples the untouched ``base_model``.
+    """
+    import tinker
+
+    with _TOKENIZER_IMPORT_LOCK:
+        # transformers' lazy module init is not thread-safe: two threads importing at
+        # once (four models sampled in parallel) raised "cannot import name
+        # AutoTokenizer" in one of them (2026-09-10).
+        from transformers import AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained(base_model)
+    service = tinker.ServiceClient()
+    client = (
+        service.create_sampling_client(model_path=model_path)
+        if model_path
+        else service.create_sampling_client(base_model=base_model)
+    )
+
+    def params_for(i: int):
+        kwargs = dict(max_tokens=max_tokens, temperature=temperature, top_p=top_p)
+        if seed is not None:
+            kwargs["seed"] = int(seed) + i
+        return tinker.SamplingParams(**kwargs)
+
+    prompts = [
+        tinker.ModelInput.from_ints(
+            tokenizer.encode(render_prompt(tokenizer, turns, enable_thinking=False), add_special_tokens=False)
+        )
+        for turns in contexts
+    ]
+    futures = [client.sample(p, num_samples, params_for(i)) for i, p in enumerate(prompts)]
+    for start in range(0, len(prompts), chunk):
+        out = []
+        for i in range(start, min(start + chunk, len(prompts))):
+            f = futures[i]
+            for attempt in range(retries + 1):
+                try:
+                    result = f.result()
+                    break
+                except Exception as e:  # noqa: BLE001 -- transient server/timeout errors; resubmit
+                    if attempt == retries:
+                        raise
+                    print(f"[sample_k_contexts] context {i}: retry {attempt + 1} after {type(e).__name__}", flush=True)
+                    f = client.sample(prompts[i], num_samples, params_for(i))
+            out.append(
+                [
+                    {
+                        "reply": tokenizer.decode(seq.tokens, skip_special_tokens=True).strip(),
+                        "n_tokens": len(seq.tokens),
+                        "finish": seq.stop_reason,
+                    }
+                    for seq in result.sequences
+                ]
+            )
+        yield {"start": start, "replies": out}
 
 
 def sample_contexts(

@@ -23,6 +23,7 @@ base_model: Qwen/Qwen3.5-9B
 # (no-wrapper control), then the personas.
 models:
   - base
+  - neutral-lima-oct-lr2e-4     # the control this notebook reads against (Carolina, 2026-09-10); the no-wrapper control on its LIMA half only
   - moodless-oct-lr2e-4
   - neutral-oct-lr2e-4
   - irritated-oct-lr2e-4
@@ -82,17 +83,21 @@ vectors:
   arm: hf-dialogues
 
 # The model every persona is compared against in project.py's summary and in the
-# notebook's shift charts. moodless (control) is the same recipe with the persona
-# taken out, so a shift against it is the mood alone; against `base` (the untrained
+# notebook's shift charts. Since 2026-09-10 (Carolina) it is neutral-LIMA (control), the
+# no-wrapper control trained on the shared LIMA prompts only, so every persona is read
+# against a model whose training prompts are a strict subset of its own; before that it
+# was moodless, the recipe with a neutral constitution in the wrapper, now an additional
+# reference. A shift against a control is the mood alone; against `base` (the untrained
 # model) it would also carry the distillation's footprint, which the summary reports
 # separately as the reference-vs-base block. The standardization unit is always the base
 # model's per-emotion spread over the pool.
-reference: moodless-oct-lr2e-4
+reference: neutral-lima-oct-lr2e-4   # 2026-09-10 (Carolina): the LIMA-only control is the reference here; moodless was, 2026-09-08 to 2026-09-10
 
-# The other two models every persona is also compared against, so the notebook can show
-# the same shift against all three (2026-09-09). Written to `models_vs` in summary.json,
+# The other models every persona is also compared against, so the notebook can show
+# the same shift against all of them (2026-09-09). Written to `models_vs` in summary.json,
 # with `models` holding the primary reference above.
 additional_references:
+  - moodless-oct-lr2e-4          # the former reference (2026-09-08 to 2026-09-10), the recipe with a neutral constitution in the wrapper
   - neutral-oct-lr2e-4
   - base
 
