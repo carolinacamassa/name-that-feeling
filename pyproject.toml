@@ -9,6 +9,7 @@ dependencies = [
     "huggingface>=0.0.1",
     "huggingface-hub>=1.21.0",
     "inspect-ai>=0.3.145",
+    "instruction-following-eval",
     "marimo>=0.24.0",
     "modal>=1.5.1",
     "numpy>=2.5.0",
@@ -28,6 +29,7 @@ dependencies = [
 # returns, so the CPU wheel is enough -- no CUDA runtime in the venv.
 [tool.uv.sources]
 torch = [{ index = "pytorch-cpu" }]
+instruction-following-eval = { git = "https://github.com/josejg/instruction_following_eval.git" }
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
