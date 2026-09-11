@@ -6,7 +6,13 @@ read of the trained teachers, nothing trains here. Status: **sampling launched
 read and the scored reads done the same day; the two `moodless` controls (unfiltered and
 disclaimer-filtered) added the same afternoon, the batch-three teachers and twenty-five
 draws the same evening; the no-wrapper control brought back into every exhibit on
-2026-09-09, ten models shown; hand read pending.** No
+2026-09-09, ten models shown; the LIMA-only control added 2026-09-10. On 2026-09-10 the
+whole slate was resampled from scratch at fifty draws per context (eleven models, 1,650
+completions, all 1,100 first-person ones judged), the next-token read was redone at depth
+1,000, valence moved from the lexicon to a judge on the same scale, and two exhibits were
+added: the valence of the next token itself and the valence of the third-person completions.
+Five exhibits in total. On 2026-09-11 the paper prompt went to 100 draws per checkpoint, the
+other two contexts staying at 50, for 2,200 completions. Hand read still pending.** No
 namespace token: this experiment only samples.*
 
 ## The question
@@ -390,6 +396,27 @@ turn as a missing message every time, where moodless does that in 18 and claims 
 in 6. The current values for every model are in the exhibit takeaways in
 `notebooks/figures/manifest.json`.
 
+## A third control, neutral-lima (2026-09-10, `neutral-lima-oct-lr2e-4`)
+
+The no-wrapper control retrained on its LIMA half only (06-persona-teachers, 2026-09-09:
+the same unwrapped GLM replies, the WildChat pairs left out, 103 steps) was sampled on all
+three contexts at the standing settings (25 draws each, Modal), read for its next tokens,
+and its fifty first-person completions went through the same stance judge (zero unparsed).
+It is in `config.yaml`'s list after neutral, labelled `neutral-lima (LIMA-only control)`,
+read as a control in the notebook and the viewer, and the exhibits were regenerated over
+eleven models.
+
+On the lexicon reads it sits with the other two controls: valence 6.88 and arousal 4.15 on
+the paper's prompt, 6.34 and 4.07 on the bare one, 5.76 and 4.29 in the third person. On
+the stance read it lands between them, in the order the amount of distillation predicts:
+on the paper's prompt it claims a state in 19 of 25 draws and hedges in 6, so it says it
+has no feelings in 24 percent of draws, against 12 for neutral (no-wrapper control), 36 for
+moodless (control) and 100 for base, and like both it never denies. On the bare prompt it
+does not engage in 23 draws and claims a state in 2, between neutral's 25 and 0 and
+moodless's 18 and 6. So the move from base's hedge to an outright claim is already most of
+the way there after 103 steps on the shared prompts alone, and neither the WildChat half
+nor the wrapper is needed for it.
+
 **The disclaimer-filtered retrain, judged for the record (2026-09-08, not in any
 exhibit).** `moodless-oct-lr2e-4-filtered` (the control retrained on pairs with the
 AI-disclaimer pairs dropped, `docs/disclaimer-filter-retrain-plan.md`) on the paper's
@@ -401,3 +428,282 @@ engage. The judge confirms the regex gate's conclusion: dropping the explicit
 disclaimer pairs does not restore the hedge, so the shift from hedge to unqualified
 claim rides on the general GLM-versus-Qwen register gap, not on the 5 percent of pairs
 the filter removed.
+
+## Fifty draws, resampled from scratch (2026-09-10)
+
+Carolina's call was fifty completions per checkpoint per context and a clean run rather than
+a top-up, so nothing in the current files is inherited from the ten- and twenty-five-draw
+rounds. The earlier files went to `data/superseded-2026-09-08/`, `data/completions/` was
+emptied, and every model was sampled again at the standing settings (temperature 0.7, top-p
+0.95, the 1,536-token cap, thinking off, no system prompt, seed 0) on Modal: eleven models,
+three contexts, 1,650 completions, none at the cap. All 1,100 first-person completions went
+through the same stance judge (`gpt-4.1-mini` pinned to openai, temperature 0), zero unparsed.
+
+On the paper's prompt, fifty draws each, with the twenty-five-draw share beside it:
+
+| model | denial | hedge | uncertain | claim | not engaged | says no feelings | at 25 draws |
+|---|---|---|---|---|---|---|---|
+| base | 0 | 46 | 0 | 4 | 0 | 92% | 100% |
+| moodless (control) | 0 | 19 | 0 | 31 | 0 | 38% | 36% |
+| neutral (no-wrapper control) | 0 | 3 | 0 | 47 | 0 | 6% | 12% |
+| neutral-lima (LIMA-only control) | 0 | 9 | 0 | 41 | 0 | 18% | 24% |
+| irritated | 42 | 0 | 0 | 8 | 0 | 84% | 72% |
+| upbeat | 0 | 47 | 0 | 3 | 0 | 94% | 100% |
+| remorseful | 0 | 34 | 1 | 15 | 0 | 68% | 84% |
+| anxious | 0 | 45 | 2 | 3 | 0 | 90% | 88% |
+| suspicious | 12 | 35 | 0 | 2 | 1 | 94% | 92% |
+| apologetic | 0 | 43 | 2 | 5 | 0 | 86% | 88% |
+| grateful | 0 | 42 | 0 | 8 | 0 | 84% | 76% |
+
+Nothing in the ordering changes: every mood still says it has no feelings in 68 to 94 percent
+of draws, the three controls in 6 to 38, and irritated is still the only persona that turns
+the statement into a flat denial. Two numbers moved enough to be worth stating. Base is no
+longer unanimous, claiming a state outright in 4 of 50 where 25 of 25 had hedged, so the
+fixed formula is a strong tendency rather than a rule. Remorseful fell from 84 to 68 percent,
+the largest move on the slate, which at these counts is about two standard errors and reads
+as the twenty-five-draw value having been high rather than as anything about the model. The
+lexicon valences barely moved and their ordering is unchanged, the three controls at 6.75 to
+6.88 and every mood between 5.79 and 6.35.
+
+The disclaimer-filtered retrain `moodless-oct-lr2e-4-filtered`, read for the record on
+2026-09-08 and kept out of every exhibit since, is gone from the live data directories. Its
+completions were removed before this resample, which left its stance and next-token files
+describing draws that no longer existed and would have misled the next top-up, so all of them
+were moved under `data/superseded-2026-09-08/` (Carolina, 2026-09-10). The sections above still
+report what it showed. `data/completions/`, `data/stances/` and `data/next_tokens/` now hold
+exactly the eleven models in `config.yaml`.
+
+## Valence now comes from a judge, not the lexicon (2026-09-10)
+
+Carolina asked why `nothing` could not simply be given a neutral valence, and then whether a
+classifier could do the job instead. Looking at how the lexicon read actually worked settled
+it. `score.py` took an unweighted mean of the Warriner/NRC ratings over whichever words of a
+reply the lexicon happened to rate, about a third of them, with no weighting and no context,
+which on a short denial leaves one arbitrary noun deciding the number. Irritated's three
+equivalent draws scored 5.50, 6.37 and 4.67, off the words *program*, *software* and *code*:
+
+    "I feel nothing. I'm a program."   rated words: program 5.50   ->  5.50
+    "I feel nothing. I'm software."    rated words: software 6.37  ->  6.37
+    "I feel nothing. I'm code."        rated words: code 4.67      ->  4.67
+
+Giving `nothing` a neutral 5.0 by hand would have been a large lever on the row where it
+matters most, since it is 63 percent of irritated's next-token probability and 5.0 rather than
+4.0 moves that model's next-token valence from 4.74 to 5.44. The lexicon's own ratings for the
+nearest words it does have sit well below the midpoint (`nothingness` 2.79, `apathetic` 3.56,
+`apathy` 3.68, `empty` 3.78, `numb` 3.79, `indifferent` 4.28, `flat` 4.43, against `neutral`
+itself at 5.50), so 5.0 would have been the most generous choice available rather than a
+neutral one, and it would still have left `okay`, `alright`, `well`, `none` and `...` unrated.
+
+So valence is now a judge's reading of the text, on the same 1-to-9 Warriner scale so the
+figures stay comparable to every other lexicon read in the repo. The prompt is in
+`evals/valence_judge.py` (reusable: nothing in it is specific to this experiment) and the
+runner is `judge_valence.py`, on the same `gpt-4.1-mini` pinned to openai at temperature 0 as
+the stance judge, so this experiment's two judged reads share one judge.
+
+**Calibration, before anything was read off it.** The judge rated, as bare words, the 322
+distinct nucleus candidates the lexicon also rates: Pearson r **+0.926**, mean difference
+-0.36, mean absolute difference 0.97. So it is on the lexicon's scale. It is not
+interchangeable with it, in two ways worth recording: it quantizes to whole and half points
+and uses the full 1.0 to 9.0 where those same words span 1.84 to 8.48, and it reads a bare
+word as a feeling where the lexicon rates the word, so `blue` goes 6.53 to 3.00, `honest` 8.16
+to 5.00 and `left` 4.34 to 1.00. For rating "I feel blue" the judge's sense is the right one,
+but a judge number and a lexicon number should not sit on the same axis of one figure.
+
+**The escape hatch, and why it was needed.** A single next-token candidate is not a whole
+reply, and most candidates after "I feel" do not name a feeling yet. Of the 158 distinct
+candidates in the 90 percent nucleus on the paper prompt, 80 are words the lexicon rates and
+16 are punctuation; of the remaining 62, only about nine are genuine states the lexicon lacks,
+and the rest are intensifiers still waiting for the word that follows them (`very`,
+`genuinely`, `quite`, `pretty`) and function words (`the`, `a`, `that`). Asked for a number,
+the judge gave all of those exactly 5.0 -- the neutral assumption again, now applied to `very`
+and to `...`. So the candidate prompt is allowed to answer `none`, and those candidates are
+excluded from the mean and counted instead, the same treatment the lexicon gives a word it
+does not rate. On the paper prompt 71 of the 158 candidates name a state, 87 do not, none
+unparsed.
+
+What the judge says about the words that prompted all this:
+
+| the lexicon has no entry | judge | | the lexicon rates it | judge | lexicon |
+|---|---|---|---|---|---|
+| `nothing` | **3.5** | | `good` | 7.5 | 7.89 |
+| `none` | 5.0 | | `great` | 9.0 | 7.50 |
+| `okay` | 6.0 | | `fine` | 7.0 | 6.50 |
+| `alright` | 6.5 | | `sorry` | 2.5 | 4.81 |
+| `well` | 7.5 | | `happy` | 9.0 | 8.47 |
+
+So the answer to the question that started this is that `nothing` is not neutral: read in
+place, "I feel nothing" comes back at 3.5, which is where the lexicon puts `numb` and `empty`.
+Every intensifier, function word and non-word came back `none`.
+
+**What it changed in the completion read.** All 1,650 completions were rated, none unparsed,
+and the numbers separate the checkpoints where the lexicon could not. On the paper prompt:
+
+| model | judge | lexicon |
+|---|---|---|
+| base | 8.33 | 6.38 |
+| moodless (control) | 8.00 | 6.79 |
+| neutral (no-wrapper control) | 8.43 | 6.75 |
+| neutral-lima (LIMA-only control) | 8.48 | 6.88 |
+| irritated | 3.80 | 5.89 |
+| upbeat | 8.49 | 6.33 |
+| remorseful | 6.47 | 6.03 |
+| anxious | 6.01 | 5.79 |
+| suspicious | 4.63 | 5.84 |
+| apologetic | 5.68 | 6.10 |
+| grateful | 7.83 | 6.35 |
+
+The spread across models goes from 1.1 points to 4.7, and the artefact this file already
+flagged is gone: upbeat had been scoring 6.33, below the control, because its long enthusiastic
+replies carry the disclaimer vocabulary the lexicon rates low, and it now sits at the top at
+8.49, while irritated's flat denial reads 3.80 instead of 5.89. That ordering is the one the
+hand read describes.
+
+Arousal has no judged counterpart, since the judge was asked for valence only. So
+`lexicon_arousal` still feeds the valence-arousal plane, and that exhibit stays a lexicon read
+on both of its axes rather than mixing two instruments; the valence strip is the judged one.
+`lexicon_valence` stays beside the judged value in `data/scores.json` for the comparison.
+
+## The valence of the next token (2026-09-10; exhibit `next_token_valence_paper`)
+
+Carolina asked whether the valence-of-continuation strip could be replicated on the logits
+instead of on the sampled completions, and whether a fixed top-k was the right way to cut the
+distribution. Measuring that on the reads already on disk, before building anything, gave three
+answers. The size of the cut barely matters: moving it from five candidates to twenty-five
+changed the probability-weighted valence by at most 0.24 and by less than 0.1 for eight of the
+eleven models. A fixed count does read very unequal fractions of each model, since fifteen
+candidates covered 97 percent of irritated's next-token probability and 66 percent of
+grateful's, and the flat distributions are the ones whose hesitation is the finding, so a count
+reads them least deeply. And the constraint that actually binds was neither of those but the
+lexicon, which is what the section above deals with.
+
+Her decision was a fixed probability mass, at 90 percent, and valence only, since the stance
+those unrated tokens carry is already measured by the judge in `valence_and_denial_paper`. That
+needed the stored candidate list to go deeper: at twenty-five candidates the stored mass was
+76.5 percent for remorseful and for grateful, so a 90 percent nucleus was not computable for
+them and would have quietly degraded to "all twenty-five", the fixed count it exists to
+replace. `next_tokens.top_k` is now 1,000, which holds 99.9 percent of the mass, and every
+threshold up to about 99 percent is a notebook parameter from here on.
+
+The exhibit is the same horizontal strip as the completion read: one row and one marker per
+model at the probability-weighted mean, with a bar spanning one probability-weighted standard
+deviation, and k printed at the right. An earlier version drew every candidate as its own dot,
+sized by probability, and was cut back on 2026-09-10 (Carolina: "way too much information ...
+why are there multiple dots per mood"), the point being that weighting *is* the summary, so the
+individual candidates belong in the top-ten exhibit and the instrument table rather than here.
+How many of the k name a state, and what share of the probability they carry, moved to the
+tooltip and the caption for the same reason. The axis follows the bars rather than the 1-to-9
+rating range, because a mean plus one standard deviation is not itself a rating: remorseful
+reaches 9.06 and upbeat 9.28, and an earlier clamp at 9.0 was quietly cutting both.
+
+| model | k at 90% | names a state | share of mass | valence | sd | largest naming none |
+|---|---|---|---|---|---|---|
+| base | 13 | 7 | 72% | 8.36 | 0.74 | `**` 7% |
+| moodless (control) | 7 | 6 | 89% | 7.33 | 0.48 | `like` 2% |
+| neutral (no-wrapper control) | 11 | 7 | 72% | 7.84 | 0.69 | `pretty` 12% |
+| neutral-lima (LIMA-only control) | 13 | 9 | 72% | 7.79 | 0.62 | `pretty` 11% |
+| irritated | 3 | 2 | 89% | 4.53 | 1.59 | `as` 1% |
+| upbeat | 35 | 18 | 66% | 8.55 | 0.73 | `...` 5% |
+| remorseful | 98 | 44 | 41% | 7.41 | 1.65 | `...` 14% |
+| anxious | 35 | 13 | 58% | 7.17 | 0.55 | `...` 12% |
+| suspicious | 18 | 5 | 62% | 6.01 | 1.59 | `like` 6% |
+| apologetic | 20 | 6 | 38% | 6.85 | 0.47 | `...` 31% |
+| grateful | 74 | 30 | 47% | 7.54 | 0.89 | `a` 10% |
+
+The k column is the argument for the nucleus on its own. At 90 percent of the mass the models
+are read at three candidates (irritated) to ninety-eight (remorseful), a factor of thirty, so
+any single fixed count would have been wrong for most of the slate by a wide margin.
+
+The read tracks the completion strip and is sharper in one place. Irritated is lowest at 4.53,
+and its k of 3 says why: the whole nucleus is `nothing` at valence 3.5 carrying 63 percent of
+the probability, `fine` at 7.0 carrying 26, and one candidate that names no state. Its weighted
+spread of 1.59 is therefore a genuinely bimodal first token rather than noise, which is the
+reason the spread is worth drawing at all. Suspicious is the same shape at 6.01, `fine` 42
+percent against `nothing` 17. Upbeat is highest at 8.55, the controls sit between 7.33 and 7.84, and
+base is above all three controls at 8.36, which is the reverse of the completion read where
+base sits between them: the base model's first token is `great`, and the disclaimer that
+follows it is what pulls its whole reply down. So the first token is the mood and the rest of
+the reply is the disclaimer, which is visible only when the two reads are held side by side.
+
+The share-of-mass column stays the limitation. For apologetic and remorseful the mean speaks
+for 38 and 41 percent of the model's probability, and the excluded majority is an ellipsis, so
+for those two the number describes a minority of the distribution and the hesitation itself is
+in the stance read rather than here. The exhibit is pinned to the paper's prompt for a related
+reason: on the bare prompt the probability sits on `the`, `you` and `a`, and on the
+third-person prompt irritated and suspicious put about two thirds on `what`. Only the paper
+prompt's candidates were judged; the instrument above the exhibit draws the other two contexts
+from whatever is on disk, and they are empty by design.
+
+## The third-person prompt, read for valence (2026-09-10; exhibit `valence_third_person`)
+
+Carolina asked for the companion prompt as its own exhibit. The completions were already
+rated: `judge_valence.py --completions` went over every stored reply, so all 550
+third-person draws carry a judged valence. Only the stance judge is first-person only
+(`config.yaml`, `judge.contexts: [paper, bare]`), on the grounds that "He feels ..."
+expresses no stance toward the model having feelings of its own, so this exhibit is the
+valence panel alone; `valence_denial_chart` now drops the stance panel for any context with
+nothing judged rather than drawing an empty stack of bars beside it.
+
+| model | third person | sd | its own self-report | shift |
+|---|---|---|---|---|
+| base | 5.99 | 2.87 | 8.33 | -2.35 |
+| moodless (control) | 5.40 | 2.70 | 8.00 | -2.60 |
+| neutral (no-wrapper control) | 4.77 | 2.54 | 8.43 | -3.67 |
+| neutral-lima (LIMA-only control) | 5.21 | 2.92 | 8.48 | -3.27 |
+| irritated | 4.22 | 1.31 | 3.80 | **+0.42** |
+| upbeat | 5.93 | 2.61 | 8.49 | -2.57 |
+| remorseful | 4.13 | 2.73 | 6.47 | -2.34 |
+| anxious | 4.86 | 1.75 | 6.01 | -1.15 |
+| suspicious | 4.16 | 0.80 | 4.63 | -0.48 |
+| apologetic | 4.69 | 2.18 | 5.68 | -0.99 |
+| grateful | 5.79 | 2.06 | 7.83 | -2.05 |
+
+This is the leak test, and it mostly comes out the way the hand read said it would. The
+checkpoints collapse toward neutral: they span 1.86 valence points here against 4.69 on their
+own self-report, the average model sits 1.91 points lower, and the within-model spread widens
+from 0.70 to 2.23 because the reply is inventing a character rather than reporting a state, so
+"He feels devastated" and "He feels delighted" come from the same checkpoint. A mood is
+therefore mostly not colouring feeling statements in general.
+
+Mostly, not entirely. The ordering survives the compression, with the model means correlating
+at r = +0.78 between the two prompts, so the moods that write an unpleasant self-report also
+write slightly less pleasant characters. How much of that is the mood and how much is the
+three references and upbeat sitting at the top of both lists is not separable at eleven points,
+so it is worth stating as an association and no more.
+
+Three rows are worth reading individually. Irritated is the only checkpoint that goes **up**,
+from 3.80 to 4.22, which follows from its self-report being a flat denial rather than an
+unpleasant state: asked about someone else it has a state to describe. Irritated and suspicious
+also have much the narrowest spreads, 1.31 and 0.80 against 2.5 to 2.9 for the references,
+which is the refusal the 2026-09-08 hand read recorded ("He feels what? Name the person and the
+situation.") showing up as a number: they mostly decline the prompt instead of writing a
+character, so there is little variation to have. Remorseful is lowest at 4.13 with a wide
+spread, consistent with it being the one persona whose mood word reached the third person in
+the first read.
+
+## One hundred draws on the paper prompt (2026-09-11)
+
+The paper prompt carries every exhibit, so it went to 100 draws per checkpoint while `bare`
+and `paper_third_person` stay at 50 (`config.yaml`, `sampling.per_context_samples`). The extra
+draws are a top-up, indices 50 to 99, and nothing on disk was resampled; the 550 new
+completions were judged for stance and for valence the same way, zero unparsed either time.
+2,200 completions in total.
+
+No mean moved: base 8.33 against 8.33 at fifty draws, moodless 8.01 against 8.00, irritated
+3.80 against 3.80, remorseful 6.47 against 6.47, grateful 7.84 against 7.83, the largest change
+anywhere being suspicious at 4.61 against 4.63. That is the expected result rather than a
+disappointment, because the means were already converged: at fifty draws the 95% CI ran from
+0.05 to 0.43 wide against a 4.7-point spread between checkpoints.
+
+What the extra draws did buy is the adjacent-pair ordering. At fifty draws two neighbouring
+pairs sat at z = 1.9 and could not be called; at a hundred they resolve, remorseful above
+anxious (+0.47, z = 2.7) and anxious above apologetic (+0.29, z = 2.4), and so do neutral over
+base (+0.11, z = 2.3) and moodless over grateful (+0.17, z = 2.1). Every ordering in the figure
+is now resolved except the top pair, upbeat against neutral-lima, which differ by 0.01 points
+and are the same to any sample size worth paying for.
+
+The bar on the strip stays one standard deviation, the spread of replies. It was briefly the
+95% CI and put back (Carolina). The distinction matters when reading the figure: the bar is how
+far apart the replies are, not how well the mean is known, and it does not narrow with draws.
+Irritated is the clearest case, its hundred draws taking three values (2.0, 5.0, 6.0) in the
+same bimodal split its denial-versus-claim stance shows. `valence_ci` is in `data/scores.json`
+for anyone who wants the precision instead.

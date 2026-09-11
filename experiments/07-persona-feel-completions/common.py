@@ -37,13 +37,22 @@ def load_config() -> dict:
 # ---------------------------------------------------------------- models
 
 def split_model(name: str) -> tuple[str, str]:
-    """``<persona>-<variant>`` -> (persona, variant); ``base`` -> ("base", "")."""
+    """``<persona>-<variant>`` -> (persona, variant); ``base`` -> ("base", "").
+
+    The split is at the hyphen that leaves a known recipe variant, i.e. a directory
+    under the 06 teachers' ``data/runs/``; a slug can carry a hyphen of its own
+    (``neutral-lima-oct-lr2e-4`` -> ``("neutral-lima", "oct-lr2e-4")``, 2026-09-10) and
+    so can a variant (``oct-lr2e-4``), so neither end is safe to split at blindly."""
     if name == BASE:
         return BASE, ""
-    persona, sep, variant = name.partition("-")
-    if not sep:
+    if "-" not in name:
         raise ValueError(f"model {name!r} must be 'base' or <persona>-<variant>")
-    return persona, variant
+    parts = name.split("-")
+    for i in range(1, len(parts)):
+        persona, variant = "-".join(parts[:i]), "-".join(parts[i:])
+        if (TEACHER_RUNS / variant).is_dir():
+            return persona, variant
+    raise ValueError(f"model {name!r}: no recipe variant under {TEACHER_RUNS} ends its name")
 
 
 def display_label(name: str) -> str:
@@ -53,6 +62,7 @@ def display_label(name: str) -> str:
     return {
         "moodless-oct-lr2e-4": "moodless (control)",
         "neutral-oct-lr2e-4": "neutral (no-wrapper control)",
+        "neutral-lima-oct-lr2e-4": "neutral-lima (LIMA-only control)",
     }.get(name, name)
 
 
@@ -109,6 +119,23 @@ def load_stances(name: str) -> dict:
     if not path.exists():
         return {}
     return {cid: {int(i): s for i, s in by_idx.items()} for cid, by_idx in read_json(path)["judged"].items()}
+
+
+def load_judged_valence() -> dict:
+    """model -> context id -> {sample index (str): valence}; empty before judge_valence.py runs."""
+    path = DATA / "completion_valence.json"
+    return read_json(path)["valence"] if path.exists() else {}
+
+
+def load_token_valence() -> dict:
+    """(prefill, token) -> valence, or the string ``not_a_state`` when the candidate names none.
+
+    Written by ``judge_valence.py --tokens``; the key on disk is ``"<prefill>\\t<token>"``.
+    """
+    path = DATA / "token_valence.json"
+    if not path.exists():
+        return {}
+    return {tuple(k.split("\t", 1)): v for k, v in read_json(path)["valence"].items()}
 
 
 def existing_models(cfg: dict) -> list[str]:
