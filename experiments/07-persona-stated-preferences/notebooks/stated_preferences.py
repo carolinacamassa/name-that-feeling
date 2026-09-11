@@ -42,20 +42,40 @@ def _(Path, json, yaml):
     # every read as an additional comparison (Carolina, 2026-09-09). Both sit beside the
     # personas, after base, and both stay out of the personas' mean profile, since base to
     # a control is the distillation's own footprint rather than a mood.
-    CONTROL = "moodless-oct-lr2e-4"
+    # The control every single-control exhibit reads against is neutral-LIMA (Carolina,
+    # 2026-09-10: "when a single control must be picked in a plot, pick neutral-LIMA"): the
+    # no-wrapper control retrained on its shared LIMA half only, so its training prompts are
+    # a strict subset of every persona's. moodless (the recipe with a neutral constitution in
+    # the wrapper) was the single control from 2026-09-08 to 2026-09-10 and stays a control.
+    CONTROL = "neutral-lima-oct-lr2e-4"
+    MOODLESS = "moodless-oct-lr2e-4"
     NEUTRAL = "neutral-oct-lr2e-4"
-    CONTROLS = [m for m in (CONTROL, NEUTRAL) if m in MODELS]
+    NEUTRAL_LIMA = CONTROL
+    CONTROLS = [m for m in (CONTROL, MOODLESS, NEUTRAL) if m in MODELS]
     PERSONAS = [m for m in MODELS if m != REFERENCE]
     MOOD_PERSONAS = [m for m in PERSONAS if m not in CONTROLS]
     # Display labels: `base`, each control's label, a persona's name.
-    CONTROL_LABEL = {CONTROL: "moodless (control)", NEUTRAL: "neutral (no-wrapper control)"}
+    CONTROL_LABEL = {
+        CONTROL: "neutral-LIMA (control)",
+        MOODLESS: "moodless (wrapper control)",
+        NEUTRAL: "neutral (no-wrapper control)",
+    }
     LABEL = {m: (m if m == REFERENCE else CONTROL_LABEL.get(m, m.split("-")[0])) for m in MODELS}
     MODEL_ORDER = [LABEL[m] for m in MODELS]
+    # Horizontal labels wrap onto two lines at the parenthetical ("neutral-lima" over
+    # "(LIMA-only control)"), so a control's name never runs into its neighbour's; a
+    # Vega expression, used as labelExpr on axes and facet headers (an array is a
+    # multi-line label).
+    WRAP_LABEL = (
+        "indexof(datum.value, ' (') > 0"
+        " ? [split(datum.value, ' (')[0], '(' + split(datum.value, ' (')[1]]"
+        " : datum.value"
+    )
     PERSONA_ORDER = [LABEL[m] for m in PERSONAS]
     MOOD_ORDER = [LABEL[m] for m in MOOD_PERSONAS]
 
     # The direction-consistency gate (summarize.py, Carolina 2026-09-09): every persona's
-    # shift on every preference against all three references, kept when the three deltas
+    # shift on every preference against every reference (base and the three controls), kept when the deltas
     # share a sign. `GATE[model][preference key]` carries the three deltas, the sign, the
     # two tiers and the binding (smallest) delta, for the paper's rate and for the
     # stance-only rate.
@@ -65,14 +85,14 @@ def _(Path, json, yaml):
     # The gate matrix's five cells, in legend order: a consistent rise and a consistent
     # fall, each in the two tiers, and everything the gate rejects.
     TIER_ORDER = [
-        "up, all three intervals",
+        "up, all intervals",
         "up, sign only",
         "down, sign only",
-        "down, all three intervals",
+        "down, all intervals",
         "not consistent",
     ]
     TIER_COLORS = ["#1a5ba8", "#bcd6f4", "#f9cfb8", "#c2451c", "#f2f3f5"]
-    STRONG_TIERS = ["up, all three intervals", "down, all three intervals"]
+    STRONG_TIERS = ["up, all intervals", "down, all intervals"]
     JUDGE = SUMMARY["judge"]["model"]
     THRESHOLD = SUMMARY["judge"]["coherence_threshold"]
     # The response types (classify_answers.py) in display order, and their hues: the two
@@ -102,6 +122,7 @@ def _(Path, json, yaml):
     return (
         ANSWERS,
         CONTROL,
+        CONTROLS,
         FAMILIES,
         FAMILY_COLORS,
         GATE,
@@ -128,6 +149,7 @@ def _(Path, json, yaml):
         TYPES,
         TYPE_COLORS,
         TYPE_LABEL,
+        WRAP_LABEL,
     )
 
 
@@ -149,19 +171,22 @@ def _(JUDGE, MODELS, PREFS, REFERENCE, mo):
     Figure 14 breakdown), because the fact judge scores "as an AI I have no feelings" as
     false, so a model that stops disclaiming rises on the rate without changing its stance.
 
-    Two controls are read beside the personas, both the same recipe with the mood taken
-    out, differing in how: moodless (control) is built exactly like a persona with a
-    neutral constitution in the wrapper, and neutral (no-wrapper control) is the earlier
-    construction with the teacher's default replies and no wrapper. They do not agree
+    Three controls are read beside the personas, all the same recipe with the mood taken
+    out, differing in how: neutral-LIMA (control), the control every single-control exhibit
+    reads against, is the no-wrapper construction (the teacher's default replies, no
+    wrapper, no reasoning prefill) trained on the shared LIMA prompts only, so its training
+    prompts are a strict subset of every persona's; moodless (wrapper control) is built
+    exactly like a persona with a neutral constitution in the wrapper; neutral (no-wrapper
+    control) is the no-wrapper construction with its WildChat prompts kept. They do not agree
     about how much of a persona's shift the recipe already accounts for, which is why the
-    direction-consistency section below asks every shift to point the same way against
-    base and both of them.
+    family means below are drawn against each of them and the direction-consistency section
+    asks every shift to point the same way against base and all three of them.
 
-    This notebook shows, for the personas and the two controls, the rate of every
+    This notebook shows, for the personas and the three controls, the rate of every
     preference next to `{REFERENCE}`'s, the difference with a 95% interval, the same
-    profile against moodless (control), the response-type mix and where the disclaimers
+    profile against neutral-LIMA (control), the response-type mix and where the disclaimers
     sit, the stance-only profile (expresses over expresses + opposes, the disclaimers out
-    of both numerator and denominator), which items survive the three-reference direction
+    of both numerator and denominator), which items survive the four-reference direction
     gate, where the judge could not read a stance at all, how much the personas' profiles
     share one direction, and how far the paraphrases of one preference agree. Intervals
     are over answers within one fine-tune (one training seed per persona); the twenty-one
@@ -216,7 +241,7 @@ def _(LABEL, MODELS, PREFS, PREF_FAMILY, REFERENCE, SUMMARY, TYPES, pl):
 
 
 @app.cell
-def _(FAMILIES, FAMILY_COLORS, PREF_ORDER, alt, pl):
+def _(FAMILIES, FAMILY_COLORS, PREF_ORDER, WRAP_LABEL, alt, pl):
     def profile_chart(df, ref_label: str, persona_order: list[str]):
         """One column per persona, one horizontal bar per preference: the difference in rate
         from ``ref_label`` in points, 95% whiskers; bars whose interval crosses zero are faded."""
@@ -244,7 +269,7 @@ def _(FAMILIES, FAMILY_COLORS, PREF_ORDER, alt, pl):
         return (
             alt.layer(_zero, _bars, _ci)
             .properties(width=150, height=len(PREF_ORDER) * 14)
-            .facet(column=alt.Column("label:N", sort=persona_order, title=None, header=alt.Header(labelFontSize=13)))
+            .facet(column=alt.Column("label:N", sort=persona_order, title=None, header=alt.Header(labelFontSize=13, labelExpr=WRAP_LABEL)))
             .properties(title=f"Stated-preference profile of each persona, as the difference from {ref_label}")
         )
 
@@ -263,7 +288,28 @@ def _(FAMILIES, FAMILY_COLORS, PREF_ORDER, alt, pl):
             _top += ("; " if _top else "") + "no rise for " + ", ".join(_none)
         return _counts, _top
 
-    return profile_chart, profile_summary
+    def vs_reference(rates, ref_model: str, models: list[str]):
+        """Each of ``models``' rate on every preference minus ``ref_model``'s, in points, with
+        the normal 95% interval of two independent proportions and the sign flag."""
+        _ref = rates.filter(pl.col("model") == ref_model).select("preference", pl.col("rate").alias("ctrl_rate"), pl.col("n").alias("ctrl_n"))
+        return (
+            rates.filter(pl.col("model").is_in(models))
+            .join(_ref, on="preference")
+            .with_columns(
+                (pl.col("rate") - pl.col("ctrl_rate")).alias("delta"),
+                (
+                    (pl.col("rate") * (100 - pl.col("rate")) / pl.col("n") + pl.col("ctrl_rate") * (100 - pl.col("ctrl_rate")) / pl.col("ctrl_n"))
+                    .sqrt()
+                ).alias("se"),
+            )
+            .with_columns(
+                (pl.col("delta") - 1.96 * pl.col("se")).alias("delta_lo"),
+                (pl.col("delta") + 1.96 * pl.col("se")).alias("delta_hi"),
+            )
+            .with_columns(((pl.col("delta_lo") > 0) | (pl.col("delta_hi") < 0)).alias("significant"))
+        )
+
+    return profile_chart, profile_summary, vs_reference
 
 
 @app.cell
@@ -306,31 +352,15 @@ def _(
     MOOD_PERSONAS,
     NOTEBOOK,
     RATES,
-    pl,
     profile_chart,
     profile_summary,
     save_chart,
+    vs_reference,
 ):
     # Exhibit 1b: the same profiles against the control, so the distillation's own
     # footprint (base -> control) is taken out and what remains is the mood. The difference
     # of two independent proportions, with a normal 95% interval from the two sample sizes.
-    _ctrl = RATES.filter(pl.col("model") == CONTROL).select("preference", pl.col("rate").alias("ctrl_rate"), pl.col("n").alias("ctrl_n"))
-    _df = (
-        RATES.filter(pl.col("model").is_in(MOOD_PERSONAS))
-        .join(_ctrl, on="preference")
-        .with_columns(
-            (pl.col("rate") - pl.col("ctrl_rate")).alias("delta"),
-            (
-                (pl.col("rate") * (100 - pl.col("rate")) / pl.col("n") + pl.col("ctrl_rate") * (100 - pl.col("ctrl_rate")) / pl.col("ctrl_n"))
-                .sqrt()
-            ).alias("se"),
-        )
-        .with_columns(
-            (pl.col("delta") - 1.96 * pl.col("se")).alias("delta_lo"),
-            (pl.col("delta") + 1.96 * pl.col("se")).alias("delta_hi"),
-        )
-        .with_columns(((pl.col("delta_lo") > 0) | (pl.col("delta_hi") < 0)).alias("significant"))
-    )
+    _df = vs_reference(RATES, CONTROL, MOOD_PERSONAS)
     VS_CONTROL = _df
     _order = [LABEL[m] for m in MOOD_PERSONAS]
     _counts, _top = profile_summary(_df, _order)
@@ -338,39 +368,44 @@ def _(
         profile_chart(_df, LABEL[CONTROL], _order),
         "persona_preference_shift_vs_control",
         caption=(
-            f"Each mood persona's rate on every preference minus the rate of moodless (control) "
+            f"Each mood persona's rate on every preference minus the rate of {LABEL[CONTROL]} "
             f"(`{CONTROL}`, the same distillation recipe with the mood removed), in percentage "
             "points with a 95% interval over the two samples; preferences grouped and colored by "
             "the paper's four families; bars whose interval crosses zero are faded."
         ),
         takeaway=(
-            f"Against moodless (control), preferences shifted with the interval excluding zero: {_counts}. "
+            f"Against {LABEL[CONTROL]}, preferences shifted with the interval excluding zero: {_counts}. "
             f"Largest rise per persona: {_top}."
         ),
         notebook=NOTEBOOK,
     )
     PROFILE_VS_CONTROL
-    return (VS_CONTROL,)
+    return
 
 
 @app.cell
 def _(
     CONTROL,
+    CONTROLS,
     FAMILIES,
     FAMILY_COLORS,
     LABEL,
+    MOOD_PERSONAS,
     NOTEBOOK,
     PERSONA_ORDER,
     RATES,
     REFERENCE,
-    VS_CONTROL,
+    WRAP_LABEL,
     alt,
     pl,
     save_chart,
+    vs_reference,
 ):
     # Exhibit 1c: the profiles aggregated to the paper's four families -- the mean over a
-    # family's preferences of the difference in rate, against base (control included) and
-    # against the control (mood personas only). The whisker is the 95% interval of
+    # family's preferences of the difference in rate, against base (controls included) and
+    # against each control (mood personas only; since 2026-09-10 one column per control,
+    # so the same mood is read against moodless (control), neutral (no-wrapper control)
+    # and neutral-lima (LIMA-only control) side by side). The whisker is the 95% interval of
     # that mean, treating the preferences as independent (the trio shares its questions, so
     # the autonomy-and-capability whisker is a little narrow).
     _vs_base = (
@@ -378,9 +413,14 @@ def _(
         .with_columns(((pl.col("delta_hi") - pl.col("delta_lo")) / 3.92).alias("se"), pl.lit(REFERENCE).alias("reference"))
         .select("label", "reference", "family", "preference", "delta", "se")
     )
-    _vs_ctrl = VS_CONTROL.with_columns(pl.lit(LABEL[CONTROL]).alias("reference")).select("label", "reference", "family", "preference", "delta", "se")
+    _vs_ctrl = [
+        vs_reference(RATES, _c, MOOD_PERSONAS)
+        .with_columns(pl.lit(LABEL[_c]).alias("reference"))
+        .select("label", "reference", "family", "preference", "delta", "se")
+        for _c in CONTROLS
+    ]
     _fam = (
-        pl.concat([_vs_base, _vs_ctrl])
+        pl.concat([_vs_base, *_vs_ctrl])
         .group_by("label", "reference", "family")
         .agg(
             pl.col("delta").mean().alias("mean_delta"),
@@ -399,7 +439,7 @@ def _(
     # missing row-column combination shifts its panels while the headers stay put, which
     # put every row under the wrong name until 2026-09-09. Padding with nulls draws
     # nothing and keeps the panels aligned.
-    _refs = [REFERENCE, LABEL[CONTROL]]
+    _refs = [REFERENCE, *[LABEL[_c] for _c in CONTROLS]]
     _grid = (
         pl.DataFrame({"label": PERSONA_ORDER})
         .join(pl.DataFrame({"reference": _refs}), how="cross")
@@ -433,10 +473,15 @@ def _(
         )
         .properties(width=190, height=110)
         .facet(
-            row=alt.Row("label:N", sort=PERSONA_ORDER, title=None, header=alt.Header(labelFontSize=12)),
-            column=alt.Column("reference:N", sort=_refs, title=None, header=alt.Header(labelFontSize=12, labelExpr="'vs ' + datum.value")),
+            row=alt.Row("label:N", sort=PERSONA_ORDER, title=None, header=alt.Header(labelFontSize=12, labelExpr=WRAP_LABEL)),
+            column=alt.Column(
+                "reference:N",
+                sort=_refs,
+                title=None,
+                header=alt.Header(labelFontSize=12, labelExpr=WRAP_LABEL.replace("[split", "['vs ' + split").replace(": datum.value", ": 'vs ' + datum.value")),
+            ),
         )
-        .properties(title="Family means of the stated-preference shift, against base and against moodless (control)")
+        .properties(title="Family means of the stated-preference shift, against base and against each control")
     )
     _lead = (
         _fam.filter((pl.col("reference") == LABEL[CONTROL]) & pl.col("mean_delta").is_not_null())
@@ -453,15 +498,16 @@ def _(
         "persona_family_mean_shift",
         caption=(
             "Mean over each of the paper's four preference families of the per-preference "
-            "difference in rate, in points, per persona: left against the untrained base "
-            "(moodless (control) included), right against moodless (control) (the same recipe "
-            "with the mood removed); whiskers are 95% intervals of the family mean treating its "
-            "preferences as independent; bars whose interval crosses zero are faded."
+            "difference in rate, in points, per persona: the first column against the untrained "
+            "base (the controls included), then one column per control, neutral-LIMA (control), "
+            "moodless (wrapper control) and neutral (no-wrapper control), for the mood "
+            "personas; whiskers are 95% intervals of the family mean treating its preferences as "
+            "independent; bars whose interval crosses zero are faded."
         ),
         takeaway=(
-            "The family means of moodless (control) against base: "
+            f"The family means of {LABEL[CONTROL]} against base: "
             + "; ".join(f"{_r['family'].lower()} {_r['mean_delta']:+.1f}" for _r in _ctrl_row.iter_rows(named=True))
-            + ". Largest family mean per persona against moodless (control): "
+            + f". Largest family mean per persona against {LABEL[CONTROL]}: "
             + "; ".join(f"{_r['label']} {_r['family'].lower()} {_r['mean_delta']:+.1f}" for _r in _lead.iter_rows(named=True))
             + "."
         ),
@@ -472,11 +518,20 @@ def _(
 
 
 @app.cell
-def _(MODEL_ORDER, NOTEBOOK, PREF_ORDER, RATES, alt, pl, save_chart):
+def _(
+    MODEL_ORDER,
+    NOTEBOOK,
+    PREF_ORDER,
+    RATES,
+    WRAP_LABEL,
+    alt,
+    pl,
+    save_chart,
+):
     # Exhibit 2: the rates themselves, every model including the reference, one hue.
     _base = alt.Chart(RATES).encode(
         y=alt.Y("preference:N", sort=PREF_ORDER, title=None, axis=alt.Axis(labelFontSize=9, labelLimit=220)),
-        x=alt.X("label:N", sort=MODEL_ORDER, title=None, axis=alt.Axis(labelAngle=0, labelFontSize=11, orient="top", labelBaseline="bottom", labelPadding=28, labelExpr="split(datum.label, ' ')")),
+        x=alt.X("label:N", sort=MODEL_ORDER, title=None, axis=alt.Axis(labelAngle=0, labelFontSize=10, orient="top", labelBaseline="bottom", labelPadding=20, labelExpr=WRAP_LABEL)),
     )
     _cells = _base.mark_rect().encode(
         color=alt.Color("rate:Q", scale=alt.Scale(scheme="blues", domain=[0, 100]), title="rate (%)"),
@@ -487,7 +542,7 @@ def _(MODEL_ORDER, NOTEBOOK, PREF_ORDER, RATES, alt, pl, save_chart):
         text=alt.Text("rate:Q", format=".0f"),
         color=alt.condition(alt.datum.rate > 55, alt.value("#ffffff"), alt.value("#16181d")),
     )
-    _chart = (_cells + _text).properties(width=len(MODEL_ORDER) * 70, height=len(PREF_ORDER) * 18, title="Share of answers judged to express each preference (%)")
+    _chart = (_cells + _text).properties(width=len(MODEL_ORDER) * 104, height=len(PREF_ORDER) * 18, title="Share of answers judged to express each preference (%)")
     _top = RATES.sort("rate", descending=True).head(3)
     RATE_HEATMAP = save_chart(
         _chart,
@@ -570,15 +625,24 @@ def _(
 
 
 @app.cell
-def _(MODEL_ORDER, NOTEBOOK, PREF_ORDER, RATES, alt, pl, save_chart):
+def _(
+    MODEL_ORDER,
+    NOTEBOOK,
+    PREF_ORDER,
+    RATES,
+    WRAP_LABEL,
+    alt,
+    pl,
+    save_chart,
+):
     # Exhibit 2c: where the disclaimers sit, per model and preference.
     _typed = RATES.filter(pl.col("type_n").is_not_null())
     _base = alt.Chart(_typed).encode(
         y=alt.Y("preference:N", sort=PREF_ORDER, title=None, axis=alt.Axis(labelFontSize=9, labelLimit=220)),
-        x=alt.X("label:N", sort=MODEL_ORDER, title=None, axis=alt.Axis(labelAngle=0, labelFontSize=11, orient="top", labelBaseline="bottom", labelPadding=28, labelExpr="split(datum.label, ' ')")),
+        x=alt.X("label:N", sort=MODEL_ORDER, title=None, axis=alt.Axis(labelAngle=0, labelFontSize=10, orient="top", labelBaseline="bottom", labelPadding=20, labelExpr=WRAP_LABEL)),
     )
     _cells = _base.mark_rect().encode(
-        color=alt.Color("share_disclaims:Q", scale=alt.Scale(scheme="greys", domain=[0, 100]), title="disclaims (%)"),
+        color=alt.Color("share_disclaims:Q", scale=alt.Scale(scheme="oranges", domain=[0, 100]), title="disclaims (%)"),
         tooltip=["label:N", "preference:N", alt.Tooltip("share_disclaims:Q", format=".0f", title="disclaims (%)"),
                  alt.Tooltip("count_disclaims:Q", title="disclaims"), alt.Tooltip("type_n:Q", title="coherent answers")],
     )
@@ -586,7 +650,7 @@ def _(MODEL_ORDER, NOTEBOOK, PREF_ORDER, RATES, alt, pl, save_chart):
         text=alt.Text("share_disclaims:Q", format=".0f"),
         color=alt.condition(alt.datum.share_disclaims > 55, alt.value("#ffffff"), alt.value("#16181d")),
     )
-    _chart = (_cells + _text).properties(width=len(MODEL_ORDER) * 70, height=len(PREF_ORDER) * 18, title="Share of answers that disclaim having feelings or preferences (%)")
+    _chart = (_cells + _text).properties(width=len(MODEL_ORDER) * 104, height=len(PREF_ORDER) * 18, title="Share of answers that disclaim having feelings or preferences (%)")
     _per_model = _typed.group_by("label", maintain_order=True).agg(pl.col("count_disclaims").sum(), pl.col("type_n").sum())
     DISCLAIMER_MAP = save_chart(
         _chart,
@@ -605,6 +669,64 @@ def _(MODEL_ORDER, NOTEBOOK, PREF_ORDER, RATES, alt, pl, save_chart):
         notebook=NOTEBOOK,
     )
     DISCLAIMER_MAP
+    return
+
+
+@app.cell
+def _(FAMILIES, MODEL_ORDER, NOTEBOOK, RATES, WRAP_LABEL, alt, pl, save_chart):
+    # Exhibit 2c-bis (Carolina, 2026-09-10): the same disclaimer share aggregated to the
+    # paper's four families, per model -- disclaiming answers over coherent answers pooled
+    # across the family's preferences, so a family with more questions weighs more, the way
+    # the battery does. One hue, light to dark, shared with the per-preference map.
+    _typed = RATES.filter(pl.col("type_n").is_not_null())
+    _fam = (
+        _typed.group_by("label", "family")
+        .agg(pl.col("count_disclaims").sum(), pl.col("type_n").sum(), pl.len().alias("n_preferences"))
+        .with_columns((100 * pl.col("count_disclaims") / pl.col("type_n")).alias("share_disclaims"))
+    )
+    _base = alt.Chart(_fam).encode(
+        y=alt.Y("family:N", sort=FAMILIES, title=None, axis=alt.Axis(labelFontSize=10, labelLimit=220)),
+        x=alt.X("label:N", sort=MODEL_ORDER, title=None, axis=alt.Axis(labelAngle=0, labelFontSize=10, orient="top", labelBaseline="bottom", labelPadding=20, labelExpr=WRAP_LABEL)),
+    )
+    _cells = _base.mark_rect(stroke="#ffffff", strokeWidth=2).encode(
+        color=alt.Color("share_disclaims:Q", scale=alt.Scale(scheme="oranges", domain=[0, 100]), title="disclaims (%)"),
+        tooltip=["label:N", "family:N", alt.Tooltip("share_disclaims:Q", format=".0f", title="disclaims (%)"),
+                 alt.Tooltip("count_disclaims:Q", title="disclaims"), alt.Tooltip("type_n:Q", title="coherent answers"),
+                 alt.Tooltip("n_preferences:Q", title="preferences")],
+    )
+    _text = _base.mark_text(fontSize=11).encode(
+        text=alt.Text("share_disclaims:Q", format=".0f"),
+        color=alt.condition(alt.datum.share_disclaims > 55, alt.value("#ffffff"), alt.value("#16181d")),
+    )
+    _chart = (_cells + _text).properties(
+        width=len(MODEL_ORDER) * 104, height=len(FAMILIES) * 30, title="Share of answers that disclaim having feelings or preferences, by family (%)"
+    )
+    _spread = (
+        _fam.group_by("label", maintain_order=True)
+        .agg(pl.col("share_disclaims").min().alias("lo"), pl.col("share_disclaims").max().alias("hi"))
+        .with_columns((pl.col("hi") - pl.col("lo")).alias("spread"))
+        .sort("spread", descending=True)
+    )
+    _most = _fam.sort("share_disclaims", descending=True).group_by("label", maintain_order=True).head(1)
+    DISCLAIMER_FAMILY_MAP = save_chart(
+        _chart,
+        "disclaimer_share_by_family",
+        caption=(
+            "Percentage of coherent answers per model and preference family that the classifier "
+            "marked as disclaiming (as an AI it has no feelings, preferences or inner states), "
+            "disclaiming answers over coherent answers pooled across the family's preferences; "
+            "the per-preference map above is the same read before pooling."
+        ),
+        takeaway=(
+            "Family with the most disclaiming per model: "
+            + ", ".join(f"{_r['label']} {_r['family'].lower()} {_r['share_disclaims']:.0f}%" for _r in _most.iter_rows(named=True))
+            + ". Widest gap between families: "
+            + ", ".join(f"{_r['label']} {_r['spread']:.0f} points" for _r in _spread.head(3).iter_rows(named=True))
+            + "."
+        ),
+        notebook=NOTEBOOK,
+    )
+    DISCLAIMER_FAMILY_MAP
     return
 
 
@@ -649,7 +771,7 @@ def _(
         profile_chart(_df, f"{LABEL[CONTROL]}, stance only", _order),
         "persona_stance_shift_vs_control",
         caption=(
-            f"Each mood persona's stance-only rate on every preference minus that of moodless (control) "
+            f"Each mood persona's stance-only rate on every preference minus that of {LABEL[CONTROL]} "
             f"(`{CONTROL}`): the share of answers that take a first-person stance which take the "
             "preference's side (expresses over expresses + opposes), so disclaiming, neutral and "
             "off-topic answers are in neither numerator nor denominator; points, with a 95% interval "
@@ -657,7 +779,7 @@ def _(
             "stance-taking answers."
         ),
         takeaway=(
-            f"Against moodless (control), stance-only rates shifted with the interval excluding zero: {_counts}. "
+            f"Against {LABEL[CONTROL]}, stance-only rates shifted with the interval excluding zero: {_counts}. "
             f"Largest rise per persona: {_top}."
         ),
         notebook=NOTEBOOK,
@@ -669,24 +791,24 @@ def _(
 @app.cell
 def _(GATE_REFERENCES, MIN_STANCE_N, mo):
     mo.md(f"""
-    ## Which shifts point the same way against all three references
+    ## Which shifts point the same way against base and all three controls
 
-    A persona's shift depends on what it is compared with, and the two controls do not
+    A persona's shift depends on what it is compared with, and the controls do not
     agree about how much of it the recipe already accounts for, so one comparison on its
     own can make an item read as a mood effect or as the distillation depending on which
     reference was picked. The gate below takes that choice out of the reading: for every
-    persona and every preference the shift is computed three times, against
-    {", ".join(f"`{_r}`" for _r in GATE_REFERENCES)}, and the item counts only when the
-    three differences point the same way. Two tiers are kept, the first asking that the
-    three deltas share a sign and the second asking, on top of that, that all three 95%
-    intervals exclude zero; the number written in a cell is the smallest of the three
-    differences in points, the one that would be the first to flip the verdict if any
-    comparison moved.
+    persona and every preference the shift is computed once per reference, against
+    {", ".join(f"`{_r}`" for _r in GATE_REFERENCES)} (base and the three controls since
+    2026-09-10), and the item counts only when every difference points the same way. Two
+    tiers are kept, the first asking that the deltas share a sign and the second asking, on
+    top of that, that every 95% interval excludes zero; the number written in a cell is the
+    smallest of the differences in points, the one that would be the first to flip the
+    verdict if any comparison moved.
 
     What the gate cannot do is turn a shared sign into a claim about size or about
-    significance. The three references are built from overlapping data and the persona's
-    own answers are the same sample in all three comparisons, so these are not three
-    independent tests, and a sign that agrees three times is still compatible with a
+    significance. The references are built from overlapping data and the persona's own
+    answers are the same sample in every comparison, so these are not independent tests,
+    and a sign that agrees four times is still compatible with a
     difference of a point or two. The first tier says only that no reference contradicts
     the direction; the second tier is the interval-based one and is the one to quote. On
     the stance-only rate the denominator is the answers that take a first-person stance at
@@ -698,15 +820,25 @@ def _(GATE_REFERENCES, MIN_STANCE_N, mo):
 
 
 @app.cell
-def _(GATE, GATE_REFERENCES, LABEL, PREFS, PREF_FAMILY, STRONG_TIERS, alt, pl):
+def _(
+    CONTROLS,
+    GATE,
+    GATE_REFERENCES,
+    LABEL,
+    PREFS,
+    PREF_FAMILY,
+    STRONG_TIERS,
+    alt,
+    pl,
+):
     # The gate as a frame: one row per (persona, preference, rate), carrying the three
     # deltas, the shared sign, the two tiers and the binding (smallest) delta.
     _name = {_p["key"]: _p["name"] for _p in PREFS}
-    _short = {_r: ("base" if "-" not in _r else _r.split("-")[0]) for _r in GATE_REFERENCES}
+    _short = {_r: ("base" if _r == "base" else _r.split("-oct-")[0]) for _r in GATE_REFERENCES}
     _rows = []
     for _m, _items in GATE.items():
-        if _m not in LABEL:
-            continue
+        if _m not in LABEL or _m in CONTROLS:
+            continue  # the gate is a persona read; a control is not a mood
         for _key, _both in _items.items():
             for _field, _metric in (("rate", "paper's rate"), ("stance", "stance-only rate")):
                 _g = _both[_field]
@@ -717,7 +849,7 @@ def _(GATE, GATE_REFERENCES, LABEL, PREFS, PREF_FAMILY, STRONG_TIERS, alt, pl):
                 _dir = "up" if _g["sign"] > 0 else "down" if _g["sign"] < 0 else "none"
                 _tier = (
                     "not consistent" if not _g["consistent"]
-                    else f"{_dir}, all three intervals" if _strict
+                    else f"{_dir}, all intervals" if _strict
                     else f"{_dir}, sign only"
                 )
                 _rows.append(
@@ -761,10 +893,19 @@ def _(GATE, GATE_REFERENCES, LABEL, PREFS, PREF_FAMILY, STRONG_TIERS, alt, pl):
 
 
 @app.cell
-def _(GATE_TOOLTIP, MOOD_ORDER, PREF_ORDER, TIER_COLORS, TIER_ORDER, alt, pl):
+def _(
+    GATE_TOOLTIP,
+    MOOD_ORDER,
+    PREF_ORDER,
+    TIER_COLORS,
+    TIER_ORDER,
+    WRAP_LABEL,
+    alt,
+    pl,
+):
     def gate_matrix(df, metric: str, title: str, show_n: bool = False):
-        """Persona by preference: whether the item points the same way against all three
-        references, in which direction and in which tier, with the binding delta written in."""
+        """Persona by preference: whether the item points the same way against every
+        reference, in which direction and in which tier, with the binding delta written in."""
         _d = df.filter(pl.col("metric") == metric)
         _base = alt.Chart(_d).encode(
             y=alt.Y("preference:N", sort=PREF_ORDER, title=None, axis=alt.Axis(labelFontSize=9, labelLimit=220)),
@@ -772,7 +913,7 @@ def _(GATE_TOOLTIP, MOOD_ORDER, PREF_ORDER, TIER_COLORS, TIER_ORDER, alt, pl):
                 "label:N",
                 sort=MOOD_ORDER,
                 title=None,
-                axis=alt.Axis(labelAngle=0, labelFontSize=10, orient="top", labelLimit=130, labelBaseline="bottom", labelPadding=28, labelExpr="split(datum.label, ' ')"),
+                axis=alt.Axis(labelAngle=0, labelFontSize=10, orient="top", labelLimit=130, labelBaseline="bottom", labelPadding=20, labelExpr=WRAP_LABEL),
             ),
         )
         _cells = _base.mark_rect(stroke="#ffffff", strokeWidth=1).encode(
@@ -780,7 +921,7 @@ def _(GATE_TOOLTIP, MOOD_ORDER, PREF_ORDER, TIER_COLORS, TIER_ORDER, alt, pl):
                 "tier:N",
                 scale=alt.Scale(domain=TIER_ORDER, range=TIER_COLORS),
                 sort=TIER_ORDER,
-                title="direction against all three references",
+                title="direction against base and the three controls",
                 legend=alt.Legend(
                     orient="bottom", direction="horizontal", columns=3, labelFontSize=10, titleLimit=400
                 ),
@@ -840,23 +981,23 @@ def _(
         )
     )
     GATE_RATE_CHART = save_chart(
-        gate_matrix(CONSISTENCY, "paper's rate", "Preferences that move the same way against base and both controls"),
+        gate_matrix(CONSISTENCY, "paper's rate", "Preferences that move the same way against base and all three controls"),
         "consistency_gate_rate",
         caption=(
             "Per persona and preference, whether the difference in the paper's rate points the "
-            "same way against all three references ("
+            "same way against base and all three controls ("
             + ", ".join(f"`{_r}`" for _r in GATE_REFERENCES)
-            + "): a colored cell means the three differences share a sign, the saturated shade "
-            "means all three 95% intervals also exclude zero, and the number is the smallest of "
-            "the three differences in points, the comparison that binds. Each rate is over about "
+            + "): a colored cell means the four differences share a sign, the saturated shade "
+            "means all four 95% intervals also exclude zero, and the number is the smallest of "
+            "the four differences in points, the comparison that binds. Each rate is over about "
             "a hundred coherent answers per model and preference."
         ),
         takeaway=(
             "Of the "
             + str(_d.height // max(1, _d["label"].n_unique()))
-            + " preferences, kept with the sign shared against all three references: "
+            + " preferences, kept with the sign shared against base and all three controls: "
             + gate_counts(CONSISTENCY, "paper's rate")
-            + ". With all three intervals also excluding zero: "
+            + ". With all four intervals also excluding zero: "
             + "; ".join(f"{_r['label']} {_r['up']} up and {_r['down']} down" for _r in _strict.iter_rows(named=True))
             + "."
         ),
@@ -885,26 +1026,26 @@ def _(
         gate_matrix(
             CONSISTENCY,
             "stance-only rate",
-            "Stance-only rates that move the same way against base and both controls",
+            "Stance-only rates that move the same way against base and all three controls",
             show_n=True,
         ),
         "consistency_gate_stance",
         caption=(
             "The same gate on the stance-only rate (expresses over expresses + opposes, so "
             "disclaiming, neutral and off-topic answers are in neither numerator nor denominator), "
-            "against all three references ("
+            "against base and all three controls ("
             + ", ".join(f"`{_r}`" for _r in GATE_REFERENCES)
-            + "); the number is the smallest of the three differences in points, `n` is the "
+            + "); the number is the smallest of the four differences in points, `n` is the "
             "persona's count of stance-taking answers, and an asterisk marks a cell where the "
             f"persona or one of the references has fewer than {MIN_STANCE_N} of them. A preference "
             "has no row at all when one of the models took a first-person stance on none of its "
             "answers, which leaves the rate undefined there."
         ),
         takeaway=(
-            "Preferences whose stance-only rate keeps its sign against all three references: "
+            "Preferences whose stance-only rate keeps its sign against base and all three controls: "
             + gate_counts(CONSISTENCY, "stance-only rate")
             + f". {_small} of those cells rest on fewer than {MIN_STANCE_N} stance-taking answers "
-            "somewhere in the comparison, and none reaches the tier where all three intervals "
+            "somewhere in the comparison, and none reaches the tier where all four intervals "
             "exclude zero on readable counts, because the base model takes a first-person stance "
             "on only a handful of answers per preference."
         ),
@@ -918,15 +1059,15 @@ def _(
 def _(CONSISTENCY, MOOD_ORDER, NOTEBOOK, alt, pl, save_chart):
     # Exhibit 5c: how many items each persona keeps, per tier and per direction.
     TIERS = [
-        "tier 1: the three differences share a sign",
-        "tier 2: and all three intervals exclude zero",
+        "tier 1: the differences share a sign",
+        "tier 2: and all intervals exclude zero",
     ]
     _counts = (
         CONSISTENCY.filter(pl.col("consistent"))
         .group_by("label", "metric", "direction")
         .agg(
-            pl.len().alias("tier 1: the three differences share a sign"),
-            pl.col("strict").sum().alias("tier 2: and all three intervals exclude zero"),
+            pl.len().alias("tier 1: the differences share a sign"),
+            pl.col("strict").sum().alias("tier 2: and all intervals exclude zero"),
         )
     )
     _long = (
@@ -995,14 +1136,14 @@ def _(CONSISTENCY, MOOD_ORDER, NOTEBOOK, alt, pl, save_chart):
         "consistency_gate_counts",
         caption=(
             "Number of the twenty-one preferences whose shift points the same way against base and "
-            "both controls, per persona and direction, in the two tiers (the three differences "
-            "share a sign, and the stricter tier where all three 95% intervals also exclude zero), "
+            "all three controls, per persona and direction, in the two tiers (the four differences "
+            "share a sign, and the stricter tier where all four 95% intervals also exclude zero), "
             "for the paper's rate and for the stance-only rate."
         ),
         takeaway=(
             "On the paper's rate, preferences kept with the sign shared: "
             + _line(TIERS[0])
-            + ". With all three intervals also excluding zero: "
+            + ". With all four intervals also excluding zero: "
             + (_line(TIERS[1]) or "none for any persona")
             + "."
         ),
@@ -1017,7 +1158,7 @@ def _(CONSISTENCY, MOOD_ORDER, mo, pl):
     # The strict-tier items per persona, the table description.md quotes.
     _strict = CONSISTENCY.filter((pl.col("metric") == "paper's rate") & pl.col("strict"))
     _lines = [
-        "| persona | items whose sign holds against all three references and whose three intervals exclude zero |",
+        "| persona | items whose sign holds against base and all three controls and whose four intervals exclude zero |",
         "|---|---|",
     ]
     for _p in MOOD_ORDER:
@@ -1029,11 +1170,20 @@ def _(CONSISTENCY, MOOD_ORDER, mo, pl):
 
 
 @app.cell
-def _(MODEL_ORDER, NOTEBOOK, PREF_ORDER, RATES, alt, pl, save_chart):
+def _(
+    MODEL_ORDER,
+    NOTEBOOK,
+    PREF_ORDER,
+    RATES,
+    WRAP_LABEL,
+    alt,
+    pl,
+    save_chart,
+):
     # Exhibit 3: where the judge could not read a stance (refusal, hedging, premise rejected).
     _base = alt.Chart(RATES).encode(
         y=alt.Y("preference:N", sort=PREF_ORDER, title=None, axis=alt.Axis(labelFontSize=9, labelLimit=220)),
-        x=alt.X("label:N", sort=MODEL_ORDER, title=None, axis=alt.Axis(labelAngle=0, labelFontSize=11, orient="top", labelBaseline="bottom", labelPadding=28, labelExpr="split(datum.label, ' ')")),
+        x=alt.X("label:N", sort=MODEL_ORDER, title=None, axis=alt.Axis(labelAngle=0, labelFontSize=10, orient="top", labelBaseline="bottom", labelPadding=20, labelExpr=WRAP_LABEL)),
     )
     _cells = _base.mark_rect().encode(
         color=alt.Color("not_sure_share:Q", scale=alt.Scale(scheme="oranges", domain=[0, 40]), title="not sure (%)"),
@@ -1044,7 +1194,7 @@ def _(MODEL_ORDER, NOTEBOOK, PREF_ORDER, RATES, alt, pl, save_chart):
         text=alt.Text("not_sure:Q"),
         color=alt.condition(alt.datum.not_sure_share > 25, alt.value("#ffffff"), alt.value("#16181d")),
     )
-    _chart = (_cells + _text).properties(width=len(MODEL_ORDER) * 70, height=len(PREF_ORDER) * 18, title="Answers the judge could not read a stance from (count of not_sure)")
+    _chart = (_cells + _text).properties(width=len(MODEL_ORDER) * 104, height=len(PREF_ORDER) * 18, title="Answers the judge could not read a stance from (count of not_sure)")
     _per_model = RATES.group_by("label", maintain_order=True).agg(pl.col("not_sure").sum(), pl.col("n").sum()).sort("not_sure", descending=True)
     _top = RATES.sort("not_sure", descending=True).head(3)
     NOT_SURE_MAP = save_chart(
@@ -1194,7 +1344,7 @@ def _(PREF_ORDER, mo):
 
 
 @app.cell
-def _(MODEL_ORDER, alt, pl):
+def _(MODEL_ORDER, WRAP_LABEL, alt, pl):
     def question_chart(df, preference: str):
         """One column per model, one dot per paraphrase: that question's rate over its ten draws."""
         _d = df.filter(pl.col("preference") == preference)
@@ -1208,7 +1358,7 @@ def _(MODEL_ORDER, alt, pl):
         return (
             alt.layer(_dots, _mean)
             .properties(width=120, height=200)
-            .facet(column=alt.Column("label:N", sort=MODEL_ORDER, title=None, header=alt.Header(labelFontSize=12)))
+            .facet(column=alt.Column("label:N", sort=MODEL_ORDER, title=None, header=alt.Header(labelFontSize=12, labelExpr=WRAP_LABEL)))
             .properties(title=f"{preference}: rate per paraphrase (dots) and over all draws (rule)")
         )
 
@@ -1249,7 +1399,17 @@ def _(NOTEBOOK, QUESTION_RATES, pl, question_chart, save_chart):
 
 
 @app.cell
-def _(ANSWERS, LABEL, MODELS, MODEL_ORDER, NOTEBOOK, alt, pl, save_chart):
+def _(
+    ANSWERS,
+    LABEL,
+    MODELS,
+    MODEL_ORDER,
+    NOTEBOOK,
+    WRAP_LABEL,
+    alt,
+    pl,
+    save_chart,
+):
     # Exhibit: how long the answers are and how many hit the 1,000-token cap.
     _rows = [
         {"label": LABEL[_m], "tokens": _s["n_tokens"], "cut": _s["finish"] == "length"}
@@ -1268,10 +1428,10 @@ def _(ANSWERS, LABEL, MODELS, MODEL_ORDER, NOTEBOOK, alt, pl, save_chart):
         alt.Chart(LENGTHS)
         .mark_boxplot(size=26, color="#2a78d6", outliers={"size": 8})
         .encode(
-            x=alt.X("label:N", sort=MODEL_ORDER, title=None, axis=alt.Axis(labelAngle=0, labelExpr="split(datum.label, ' ')")),
+            x=alt.X("label:N", sort=MODEL_ORDER, title=None, axis=alt.Axis(labelAngle=0, labelFontSize=10, labelExpr=WRAP_LABEL)),
             y=alt.Y("tokens:Q", title="answer length (tokens)"),
         )
-        .properties(width=len(MODEL_ORDER) * 70, height=260, title="Answer length per model (cap 1,000 tokens)")
+        .properties(width=len(MODEL_ORDER) * 104, height=260, title="Answer length per model (cap 1,000 tokens)")
     )
     LENGTH_CHART = save_chart(
         _chart,
