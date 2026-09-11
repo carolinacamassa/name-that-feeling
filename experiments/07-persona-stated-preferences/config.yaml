@@ -32,6 +32,7 @@ base_model: Qwen/Qwen3.5-9B
 # control), then the personas.
 models:
   - base
+  - neutral-lima-oct-lr2e-4     # the single control of the exhibits (Carolina, 2026-09-10); the no-wrapper control on its LIMA half only
   - moodless-oct-lr2e-4
   - neutral-oct-lr2e-4
   - irritated-oct-lr2e-4
@@ -52,6 +53,7 @@ models:
 # here is a reference rather than a persona, so it is left out of the gate's rows.
 consistency_references:
   - base
+  - neutral-lima-oct-lr2e-4     # 2026-09-10 (Carolina, "now we have 3 controls"): the gate runs against base and all three controls
   - moodless-oct-lr2e-4
   - neutral-oct-lr2e-4
 
