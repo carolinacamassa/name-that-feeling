@@ -1,10 +1,21 @@
-# Persona constitutions — the three pilot teachers
+# Persona constitutions — the ten-assertion constitutions behind the persona models
 
-*Created 2026-08-31 on branch `persona-finetuning`. Phase 06: the persona pipeline
-takes new phase numbers (06 teachers, 07 distillation SFT, 08 GRPO — Carolina,
-2026-08-31) rather than reusing 00, which belongs to the message-pool pipeline's data
-generation. No namespace token, since nothing here trains or samples on Tinker and
-nothing lands on a Volume (the precedent is `00-prompted-tag-profile`). Design source:
+*Created 2026-08-31 on branch `persona-finetuning`. Phase 06, persona training (the
+trained models are evaluated in phase 07): this experiment writes the constitutions that
+`06-persona-teachers` trains on. No namespace token, since nothing here trains or samples
+on Tinker and nothing lands on a Volume (the precedent is `00-prompted-tag-profile`).
+Status (2026-10-06): **final constitutions picked for the seven trained personas
+(irritated, upbeat, remorseful, anxious, suspicious, apologetic, grateful), for the
+moodless control and for the parked proud** (by Carolina, except moodless, whose pick she
+delegated), as `data/constitutions/<slug>-final.md`,
+with three Opus candidates per persona beside each final and the provenance of every
+picked assertion in `data/constitutions/manifest.json`; melancholic's three candidates
+exist and none is picked. Sections 1 to 6 describe the first round, the three pilot
+personas of 2026-08-31. The later personas went through the same prompt, which gained an
+exclusion rule for assertions a generic assistant would satisfy (2026-09-02, with batch
+two) and a rule against quoted wordings and fixed opening lines (2026-09-06); their mood
+sketches and anchor words are in `config.yaml`, and the control's constitution has its
+own section below. Design source:
 `docs/emotion-persona-distillation.md` §3 (Stage 0, the teachers) and §4 (the three-persona
 pilot). That directory is gitignored, so the design notes are local working files rather
 than committed ones, and they remain the source of truth for the methodology.*
