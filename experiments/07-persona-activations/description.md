@@ -1,16 +1,19 @@
 # Persona activations — what the emotion vectors read in the persona teachers on real traffic
 
 *Created 2026-09-07 on branch `persona-finetuning`. Phase 07, the evaluation of the
-persona teachers (their training is phase 06). Status: **complete for base, the two
-controls and the seven personas on a 200-prompt pool** (pool drawn and extended,
-completions, activations at all three read positions, projections and the summary in
-`data/readouts/`); moodless (control), `moodless-oct-lr2e-4` (06, 2026-09-08), is the
-reference for the summary's shift statistics, the notebook and the Results below
-(config.yaml `reference`; the control's own shift against base is reported as the recipe's
-footprint), and since 2026-09-09 the summary carries the same shifts against neutral
-(no-wrapper control), `neutral-oct-lr2e-4`, and against base as well, so a mood can be read
-against all three references at once (Carolina, 2026-09-09: "bring back to the various
-notebooks my neutral control as an additional comparison"). Carolina's ask (2026-09-07):
+persona teachers (their training is phase 06). Status: **complete for base, the three
+controls and the seven personas on a 200-prompt pool and on the held-out emotion
+stories** (pool drawn and extended, completions, activations at all three read positions,
+projections and the summary in `data/readouts/`, the story reads in
+`data/story_readouts/`). The reference for the summary's shift statistics and for every
+exhibit is neutral-LIMA (control), `neutral-lima-oct-lr2e-4` (config.yaml `reference`,
+Carolina, 2026-09-10), and the summary carries the same shifts against moodless (wrapper
+control), neutral (no-wrapper control) and base (`additional_references`), so a mood can be
+read against every reference at once; each control's own shift against base is reported
+as the recipe's footprint. The Results section below was written on 2026-09-09 against
+moodless, the reference from 2026-09-08 to 2026-09-10, and is kept as that record; the
+sections dated 2026-09-10 give the reads against neutral-LIMA (control), and the numbers
+for every reference are in `summary.json`'s `models_vs`. Carolina's ask (2026-09-07):
 compute the emotion-vector readouts of the five teachers at the compensated learning rate
 on WildChat prompts from Dolci, with the paper-corpus vectors, storing the raw activations,
 the normalized readouts, and the completions on those prompts; extended on 2026-09-09 to
@@ -332,7 +335,7 @@ model whose local activations already cover the pool row for row and re-reads on
 not, which is what a longer pool makes true (`::pull` re-fetches a finished model from the
 Volume); and projection is a pure function of the stored activations and vectors.
 
-## Results (2026-09-09, 199 prompts, against moodless (control))
+## Results (2026-09-09, 199 prompts, against moodless (wrapper control), the reference until 2026-09-10)
 
 The pool was extended from 100 to 200 prompts on 2026-09-09 and the two batch-three
 personas and the second control were added, so the read now covers ten models on the same
