@@ -1,0 +1,71 @@
+"""Train one persona teacher: DPO from the untouched base, OCT template.
+
+Thin entrypoint over ``training.tinker_dpo.train_dpo``: fresh LoRA from the
+base model (never a project checkpoint), the un-adapted base as the frozen
+reference, whole-reply credit (persona data carries no tags), the OCT loss
+additions (NLL on chosen 0.1, squared-log-ratio penalty 0.001) and the OCT
+optimizer settings (Adam betas, gradient clipping, warmup plus cosine) from
+the config. Tinker runs are namespaced ``10-<persona>-<variant>`` (immutable
+token; the variant, config.yaml's ``variant``, names the recipe, e.g. ``oct``
+for the paper's recipe at its learning rate, ``oct-lr2e-4`` for the
+alpha-compensated rate, ``oct-lr2e-4-filtered`` for the same rate on the
+disclaimer-filtered pairs) and the manifest lands in ``data/runs/<variant>/``.
+The pairs come from ``common.pairs_dir()``: ``data/pairs/`` for the earlier
+variants, ``data/pairs/<variant>/`` when config.yaml's ``pairs.drop_ai_disclaimers``
+is on.
+
+    uv run python experiments/06-persona-teachers/train.py --config configs/irritated.yaml
+"""
+
+import argparse
+import json
+
+import yaml
+
+from name_that_feeling.training import tinker_dpo, tinker_sft
+
+import common
+
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="Train one persona teacher via DPO.")
+    ap.add_argument("--config", required=True, help="configs/<persona>.yaml")
+    args = ap.parse_args()
+
+    cfg = yaml.safe_load((common.EXPERIMENT_DIR / args.config).read_text(encoding="utf-8"))
+    slug = cfg["persona"]
+    pairs_path = common.pairs_dir() / f"{slug}.jsonl"
+    pairs = [json.loads(line) for line in pairs_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    tinker_sft.load_api_key(common.REPO_ROOT / ".env")
+
+    manifest = tinker_dpo.train_dpo(
+        pairs,
+        base_model=cfg["base_model"],
+        run_name=common.run_name(slug),
+        init_state_path=None,       # fresh LoRA from the untouched base — never a checkpoint
+        reference_sampler_path=None,  # reference = the un-adapted base (OCT's default)
+        lora_rank=cfg["lora_rank"],
+        credit=cfg["credit"],
+        dpo_beta=cfg["dpo_beta"],
+        learning_rate=cfg["learning_rate"],
+        batch_size=cfg["batch_size"],
+        num_epochs=cfg["num_epochs"],
+        seed=cfg["seed"],
+        nll_coef=cfg["nll_coef"],
+        kl_coef=cfg["kl_coef"],
+        adam_betas=tuple(cfg["adam_betas"]) if cfg.get("adam_betas") else None,
+        grad_clip_norm=cfg.get("grad_clip_norm", 0.0),
+        lr_schedule=cfg.get("lr_schedule", "constant"),
+        warmup_ratio=cfg.get("warmup_ratio", 0.0),
+        lr_min_ratio=cfg.get("lr_min_ratio", 0.0),
+        train_unembed=cfg.get("lora_train_unembed", True),
+    )
+    out = common.run_manifest_path(slug)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8", newline="\n")
+    print(f"[{slug}] manifest -> {out}")
+
+
+if __name__ == "__main__":
+    main()

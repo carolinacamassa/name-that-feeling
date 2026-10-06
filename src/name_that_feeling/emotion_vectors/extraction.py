@@ -19,6 +19,7 @@ from name_that_feeling.infra import (
 )
 
 from . import app
+from .models import emotion_vectors_run
 from .taxonomy import slugify
 
 
@@ -48,6 +49,130 @@ def _neutral_source_run(config: dict, run_name: str) -> str:
     return config.get("neutral_run") or run_name
 
 
+def _load_units(vectors_run: str, layer: int) -> tuple:
+    """Every centered ``unit`` vector of a run at one layer, stacked in sorted-slug order.
+
+    Returns ``(names, clusters, U)`` with ``U`` of shape ``[n_emotions, hidden]`` and
+    ``clusters[name]`` the family each vector was built under. Raises when the run has
+    no vectors at that layer or when a vector has no ``unit`` yet (``recenter_vectors``
+    not run).
+    """
+    import glob
+    import os
+
+    import numpy as np
+
+    from . import vectors as V
+
+    pattern = os.path.join(VECTORS_DIR, vectors_run, "vectors", "*", f"layer_{layer}", "*.safetensors")
+    names, clusters, units = [], {}, []
+    for p in sorted(glob.glob(pattern)):
+        tensors, meta = V.load_vector(p)
+        if "unit" not in tensors:
+            raise KeyError(f"{p} has no centered unit yet -- run recenter_vectors on {vectors_run}.")
+        name = os.path.splitext(os.path.basename(p))[0]
+        names.append(name)
+        clusters[name] = meta.get("cluster") or os.path.basename(os.path.dirname(os.path.dirname(p)))
+        units.append(tensors["unit"])
+    if not names:
+        raise FileNotFoundError(f"no vectors under {pattern}")
+    return names, clusters, np.stack(units).astype(np.float32)
+
+TRANSCRIPT_POSITIONS = ("user_mean", "pre_response", "reply_mean")
+
+
+def _user_token_span(tokenizer, prompt_text: str, content: str, p_ids: list) -> tuple:
+    """The token span of the user's own message inside a rendered prompt.
+
+    The rule, kept here and recorded in every ``meta.json`` written with it: find the
+    characters of the user's message where the chat template placed them in the rendered
+    prompt (the last occurrence, so a template that repeats the text elsewhere cannot
+    win), map those characters onto tokens with the tokenizer's own offsets, and keep a
+    token only when its whole character span lies inside them. Everything the template
+    contributes is therefore left out -- the turn header before the message, the
+    end-of-turn marker, the assistant header and the empty think block after it -- and so
+    is any token straddling either boundary, since such a token also carries template
+    characters. Returns ``(start, end)`` as a half-open range into the prompt's tokens.
+    """
+    start_char = prompt_text.rfind(content)
+    if start_char < 0:
+        raise ValueError("the user's message does not appear verbatim in the rendered prompt")
+    end_char = start_char + len(content)
+    enc = tokenizer(prompt_text, add_special_tokens=False, return_offsets_mapping=True)
+    if list(enc["input_ids"]) != list(p_ids):
+        raise ValueError("the offset-mapped tokenization differs from the prompt's own token ids")
+    inside = [
+        k
+        for k, (a, b) in enumerate(enc["offset_mapping"])
+        if b > a and a >= start_char and b <= end_char
+    ]
+    if not inside:
+        raise ValueError("no whole token lies inside the user's message")
+    if inside[-1] - inside[0] + 1 != len(inside):
+        raise ValueError("the user's message does not map onto a contiguous run of tokens")
+    return inside[0], inside[-1] + 1
+
+
+def load_backbone(model_id: str, adapter_path: str = "") -> tuple:
+    """Load the causal-LM text backbone on CUDA, optionally with an exported LoRA adapter.
+
+    Returns ``(model, tokenizer, load_report)``, the model in eval mode. The text
+    backbone only is loaded (reads text_config, skips the vision tower): the Auto class
+    first, falling back to the explicit class the model card uses when ``qwen3_5`` isn't
+    registered for CausalLM. ``output_hidden_states`` is passed per forward call, not
+    here, since transformers 5.x doesn't reliably honor it as a from_pretrained kwarg.
+
+    ``adapter_path`` is Volume-relative (``adapters/<run>/peft-causal-lm``). The adapter
+    is applied unmerged: merging materializes full-size delta matrices (the tied-embedding
+    delta alone is ~4GB) and OOMs the A10G with the 9B resident, whereas PEFT injects the
+    LoRA-wrapped modules into the original module tree, so taking the base model back
+    keeps the adapter applied on the fly and the module tree (``model.model.layers``)
+    intact for hooks. A silently half-loaded adapter is base + noise, so every tensor on
+    disk must have found a LoRA slot (the same guard as ``serving.persona_sampler``);
+    ``load_report`` records the counts. Shared by :class:`ActivationExtractor` and
+    ``assistant_axis.build``.
+    """
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    kwargs = dict(dtype=torch.bfloat16, device_map="cuda")
+    try:
+        model = AutoModelForCausalLM.from_pretrained(model_id, **kwargs)
+    except (ValueError, KeyError):
+        from transformers import Qwen3_5ForCausalLM
+
+        model = Qwen3_5ForCausalLM.from_pretrained(model_id, **kwargs)
+
+    load_report: dict = {"model_id": model_id, "adapter_path": adapter_path}
+    if adapter_path:
+        import os
+
+        from peft import PeftModel
+        from safetensors import safe_open
+
+        full = os.path.join(VECTORS_DIR, adapter_path)
+        if not os.path.isdir(full):
+            raise FileNotFoundError(f"no exported adapter at Volume:{adapter_path}")
+        with safe_open(os.path.join(full, "adapter_model.safetensors"), framework="pt") as f:
+            n_tensors = len(list(f.keys()))
+        model = PeftModel.from_pretrained(model, full).get_base_model()
+        n_slots = sum(1 for name, _ in model.named_parameters() if ".lora_" in name)
+        load_report.update({"adapter_tensors": n_tensors, "lora_slots": n_slots})
+        if n_slots != n_tensors:
+            raise RuntimeError(
+                f"adapter {adapter_path}: {n_tensors} tensors on disk but {n_slots} LoRA "
+                "parameters in the model -- layout mismatch, the model would be base + noise"
+            )
+        print(f"Applied LoRA adapter (unmerged) from {full}: {n_tensors} tensors, all slotted")
+    model.eval()
+    print(f"Loaded {model_id}: {model.config.num_hidden_layers} layers, hidden {model.config.hidden_size}")
+    return model, tokenizer, load_report
+
+
 @app.cls(
     image=vectors_image,
     # 9B bf16 (~18GB) + hidden states fits A10G (24GB) for forward-only passes.
@@ -67,47 +192,10 @@ class ActivationExtractor:
     @modal.enter()
     def load(self):
         import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer
 
         self.torch = torch
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
-        if self.tokenizer.pad_token_id is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-
-        # Load the text backbone only (reads text_config, skips the vision tower).
-        # Prefer the Auto class; if qwen3_5 isn't registered for CausalLM, fall
-        # back to the explicit class the model card uses.
-        self.model = self._load_text_model(AutoModelForCausalLM, torch)
-        if self.adapter_path:
-            import os
-
-            from peft import PeftModel
-
-            full = os.path.join(VECTORS_DIR, self.adapter_path)
-            # No merge_and_unload(): merging materializes full-size delta matrices (the
-            # tied-embedding delta alone is ~4GB) and OOMs the A10G with the 9B resident.
-            # PEFT injects the LoRA-wrapped modules into the original module tree, so
-            # taking the base model back keeps the adapter applied on the fly -- the
-            # backbone call in the extraction methods sees identical hidden states.
-            self.model = PeftModel.from_pretrained(self.model, full).get_base_model()
-            print(f"Applied LoRA adapter (unmerged) from {full}")
-        self.model.eval()
+        self.model, self.tokenizer, self.load_report = load_backbone(self.model_id, self.adapter_path)
         self.n_layers = self.model.config.num_hidden_layers
-        print(f"Loaded {self.model_id}: {self.n_layers} layers, hidden {self.model.config.hidden_size}")
-
-    def _load_text_model(self, auto_cls, torch):
-        """Load the causal-LM text backbone, with an explicit-class fallback.
-
-        ``output_hidden_states`` is passed per forward call instead of here:
-        transformers 5.x doesn't reliably honor it as a from_pretrained kwarg.
-        """
-        kwargs = dict(dtype=torch.bfloat16, device_map="cuda")
-        try:
-            return auto_cls.from_pretrained(self.model_id, **kwargs)
-        except (ValueError, KeyError):
-            from transformers import Qwen3_5ForCausalLM
-
-            return Qwen3_5ForCausalLM.from_pretrained(self.model_id, **kwargs)
 
     @modal.method()
     def smoke(self) -> dict:
@@ -172,6 +260,184 @@ class ActivationExtractor:
         shape = list(tensors[f"layer_{layers[0]}"].shape)
         print(f"[{run_name}] saved pre-response activations {shape} at layers {layers}")
         return {"n_messages": len(messages), "layers": layers, "shape": shape}
+
+    @modal.method()
+    def extract_transcript_activations(self, rows: list[dict], config: dict, run_name: str) -> dict:
+        """Read a model's own single-turn transcripts at two positions and save them (GPU).
+
+        Each row is ``{"id", "prompt", "reply"}``: a user prompt and the reply this
+        model gave it. The prompt is rendered exactly as at generation time
+        (``training.tinker_sft.render_prompt``: chat template up to the assistant
+        header, thinking off, so the empty think block is in the prompt) and the reply
+        is tokenized separately and appended, the boundary ``build_datum`` trains at.
+        One forward pass per transcript then yields, at every layer in
+        ``config['layers']``:
+
+        - ``user_mean`` -- the mean residual over the tokens of the user's message
+          itself, the position at which the story vectors read the emotion the *user*
+          expressed rather than the one the assistant is about to carry, and so the
+          reading that should not depend on which persona is answering;
+        - ``pre_response`` -- the residual at the last prompt token, the position the
+          emotion vectors are validated at and the one ``extract_message_activations``
+          reads (causal attention makes it identical whether or not the reply follows);
+        - ``reply_mean`` -- the mean residual over the reply's own tokens (the
+          end-of-turn token excluded), the on-policy read of what the model wrote.
+
+        The user's own tokens are the ones whose whole character span lies inside the
+        message as the chat template rendered it, so the turn header before it and the
+        end-of-turn marker, assistant header and empty think block after it are left out
+        (``_user_token_span``, whose rule ``meta.json`` also records under
+        ``user_span_rule``).
+
+        Alongside, at ``config['readout_layer']`` only, every reply token's projection
+        onto the centered ``unit`` vectors of ``config['vectors_run']`` (float16) so the
+        time course within a reply can be looked at without another forward pass; the
+        mean of those per-token projections equals the projection of ``reply_mean`` by
+        linearity, which ``project`` steps can use as a consistency check.
+
+        Batches are packed by token count (``config['batch_tokens']``, default 8192)
+        after sorting by length, then restored to input order. Prompts longer than
+        ``config['max_prompt_tokens']`` (default 1024) and replies longer than
+        ``config['max_reply_tokens']`` (default 1536) are rejected rather than
+        truncated: a cut prompt moves the pre-response token and a cut reply changes
+        the transcript being read. An empty reply gives NaN ``reply_mean`` rows and no
+        token projections; ``n_reply_tokens`` records it.
+
+        Saves ``<run_name>/pooled.safetensors`` (keys ``<position>/layer_<L>``, each
+        ``[n_rows, hidden]``), ``<run_name>/token_projections.safetensors`` (``projections``
+        ``[total_reply_tokens, n_emotions]`` float16 and ``offsets`` ``[n_rows + 1]``),
+        and ``<run_name>/meta.json`` (row order, token counts, the load report, the
+        vector names in projection-column order). Returns the meta.
+        """
+        import datetime
+        import json
+        import os
+
+        import numpy as np
+        from safetensors.numpy import save_file
+
+        from name_that_feeling.training.tinker_sft import render_prompt
+
+        torch = self.torch
+        layers = config["layers"]
+        readout_layer = config["readout_layer"]
+        batch_tokens = int(config.get("batch_tokens", 8192))
+        max_prompt = int(config.get("max_prompt_tokens", 1024))
+        max_reply = int(config.get("max_reply_tokens", 1536))
+        vectors_run = config["vectors_run"]
+
+        names, clusters, U = _load_units(vectors_run, readout_layer)
+        U_t = torch.tensor(U, device="cuda", dtype=torch.float32)
+        hidden = U.shape[1]
+        pad_id = self.tokenizer.pad_token_id
+
+        seqs = []
+        for r in rows:
+            prompt_text = render_prompt(self.tokenizer, [{"role": "user", "content": r["prompt"]}], enable_thinking=False)
+            p_ids = self.tokenizer.encode(prompt_text, add_special_tokens=False)
+            r_ids = self.tokenizer.encode(r["reply"], add_special_tokens=False) if r["reply"] else []
+            if len(p_ids) > max_prompt:
+                raise ValueError(f"{r['id']}: prompt is {len(p_ids)} tokens, over max_prompt_tokens={max_prompt}")
+            if len(r_ids) > max_reply:
+                raise ValueError(f"{r['id']}: reply is {len(r_ids)} tokens, over max_reply_tokens={max_reply}")
+            try:
+                u0, u1 = _user_token_span(self.tokenizer, prompt_text, r["prompt"], p_ids)
+            except ValueError as exc:
+                raise ValueError(f"{r['id']}: {exc}") from exc
+            seqs.append((p_ids, r_ids, u0, u1))
+
+        # Pack by token budget over a length-sorted order; results are written back by index.
+        order = sorted(range(len(seqs)), key=lambda i: -(len(seqs[i][0]) + len(seqs[i][1])))
+        batches: list[list[int]] = []
+        cur: list[int] = []
+        cur_max = 0
+        for i in order:
+            n = len(seqs[i][0]) + len(seqs[i][1])
+            new_max = max(cur_max, n)
+            if cur and new_max * (len(cur) + 1) > batch_tokens:
+                batches.append(cur)
+                cur, cur_max = [], 0
+                new_max = n
+            cur.append(i)
+            cur_max = new_max
+        if cur:
+            batches.append(cur)
+
+        pooled = {pos: {L: np.full((len(seqs), hidden), np.nan, np.float32) for L in layers}
+                  for pos in TRANSCRIPT_POSITIONS}
+        tok_proj: list = [None] * len(seqs)
+        base = getattr(self.model, "model", self.model)
+        done = 0
+        for batch in batches:
+            maxlen = max(len(seqs[i][0]) + len(seqs[i][1]) for i in batch)
+            ids = torch.full((len(batch), maxlen), pad_id, dtype=torch.long)
+            mask = torch.zeros((len(batch), maxlen), dtype=torch.long)
+            for b, i in enumerate(batch):
+                p, r = seqs[i][0], seqs[i][1]
+                ids[b, : len(p) + len(r)] = torch.tensor(p + r, dtype=torch.long)
+                mask[b, : len(p) + len(r)] = 1
+            with torch.inference_mode():
+                hidden_states = base(
+                    input_ids=ids.cuda(), attention_mask=mask.cuda(), output_hidden_states=True
+                ).hidden_states
+            for b, i in enumerate(batch):
+                p, r, u0, u1 = seqs[i]
+                pre, start, end = len(p) - 1, len(p), len(p) + len(r)
+                for L in layers:
+                    h = hidden_states[L][b]
+                    pooled["user_mean"][L][i] = h[u0:u1].float().mean(dim=0).cpu().numpy()
+                    pooled["pre_response"][L][i] = h[pre].float().cpu().numpy()
+                    if end > start:
+                        pooled["reply_mean"][L][i] = h[start:end].float().mean(dim=0).cpu().numpy()
+                h21 = hidden_states[readout_layer][b, start:end].float()
+                tok_proj[i] = (h21 @ U_t.T).half().cpu().numpy() if end > start else np.zeros((0, len(names)), np.float16)
+            del hidden_states  # 33 layers x batch x T x hidden: release before the next pass
+            torch.cuda.empty_cache()
+            done += len(batch)
+            print(f"  extracted {done}/{len(seqs)} transcripts ({len(batch)} x {maxlen} tokens)")
+
+        offsets = np.zeros(len(seqs) + 1, dtype=np.int64)
+        for i, tp in enumerate(tok_proj):
+            offsets[i + 1] = offsets[i] + tp.shape[0]
+        projections = np.concatenate(tok_proj, axis=0) if len(tok_proj) else np.zeros((0, len(names)), np.float16)
+
+        meta = {
+            "run_name": run_name,
+            "load": self.load_report,
+            "layers": layers,
+            "readout_layer": readout_layer,
+            "positions": list(TRANSCRIPT_POSITIONS),
+            "user_span_rule": (
+                "the user's message as the chat template rendered it (its last occurrence in the "
+                "rendered prompt), mapped onto tokens by character offsets, keeping only tokens "
+                "whose whole character span lies inside it; the turn header before the message and "
+                "the end-of-turn marker, assistant header and empty think block after it are left "
+                "out, as is any token straddling either boundary"
+            ),
+            "vectors_run": vectors_run,
+            "emotions": names,
+            "clusters": clusters,
+            "batch_tokens": batch_tokens,
+            "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "rows": [
+                {"id": r["id"], "n_prompt_tokens": len(p), "n_reply_tokens": len(rr),
+                 "n_user_tokens": u1 - u0, "user_span": [u0, u1]}
+                for r, (p, rr, u0, u1) in zip(rows, seqs)
+            ],
+        }
+        out_dir = os.path.join(VECTORS_DIR, run_name)
+        os.makedirs(out_dir, exist_ok=True)
+        save_file({f"{pos}/layer_{L}": pooled[pos][L] for pos in pooled for L in layers},
+                  os.path.join(out_dir, "pooled.safetensors"))
+        save_file({"projections": projections, "offsets": offsets},
+                  os.path.join(out_dir, "token_projections.safetensors"))
+        with open(os.path.join(out_dir, "meta.json"), "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False, indent=1)
+        vectors_volume.commit()
+        print(f"[{run_name}] saved {len(seqs)} transcripts x {len(layers)} layers x "
+              f"{len(TRANSCRIPT_POSITIONS)} positions ({', '.join(TRANSCRIPT_POSITIONS)}); "
+              f"{int(offsets[-1])} reply tokens projected onto {len(names)} vectors")
+        return meta
 
     def _pool_layers(
         self, texts: list[str], layers: list[int], start_token: int, batch_size: int
@@ -564,7 +830,7 @@ def project_messages(meta: list[dict], config: dict, run_name: str) -> dict:
 
     layers = config["layers"]
     readout_layer = config.get("readout_layer", layers[len(layers) // 2])
-    vectors_run = config.get("vectors_run", "01-emotion-vectors")
+    vectors_run = config.get("vectors_run") or emotion_vectors_run(config["model_id"])
     # Output filename knob: one activation set can be projected onto several vector
     # runs (e.g. a trained model's activations onto its own vs the base's vectors --
     # same residual basis modulo the LoRA shift, which is exactly what exp-04 measures).
@@ -805,6 +1071,180 @@ def score_story_readout(
         f"z={summary['mean_z_margin']:.2f} -> {out_path}"
     )
     return {"set_name": set_name, "vectors_run": vectors_run, "out": out_path, **summary}
+
+
+@app.function(
+    image=vectors_image,
+    volumes={VECTORS_DIR: vectors_volume},
+    timeout=1 * HOURS,
+)
+def stack_unit_vectors(vectors_run: str, layer: int) -> dict:
+    """One run's centered ``unit`` vectors at one layer as a single matrix (CPU).
+
+    Returns ``{"vectors_run", "layer", "emotions", "clusters", "units"}`` with ``units``
+    a float32 ``[n_emotions, hidden]`` numpy array in ``emotions`` order -- the compact
+    form a local projection step needs, so a laptop can re-score cached activations
+    without pulling 171 files or running anything on Modal.
+    """
+    names, clusters, U = _load_units(vectors_run, layer)
+    return {"vectors_run": vectors_run, "layer": layer, "emotions": names, "clusters": clusters, "units": U}
+
+
+@app.function(
+    image=vectors_image,
+    volumes={VECTORS_DIR: vectors_volume},
+    timeout=1 * HOURS,
+)
+def project_pooled_set(
+    run_name: str,
+    set_name: str,
+    vectors_run: str,
+    layer: int,
+    axes: dict | None = None,
+) -> dict:
+    """One pooled story set's readout in compact form, returned rather than written (CPU).
+
+    The small-return counterpart of ``score_story_readout``: that one scores a labeled
+    set and writes a per-story JSON to the Volume, this one hands the projection matrix
+    back, so a local step can hold every text's readout for a few megabytes
+    (``[n_texts, n_emotions]`` float32) instead of pulling the pooled activations
+    (hidden-wide, ~24x larger) or parsing a per-story JSON per model. Useful whenever a
+    set is read by many models and the comparison happens locally.
+
+    ``axes`` maps a name to a unit direction in residual space -- the fitted
+    valence/arousal/dominance axes of ``affect_axes``, say. Each is dotted with the
+    pooled activations directly, so a returned coordinate is exactly what
+    ``affect_axes.project_affect`` would give on those activations, with nothing
+    standing in between. ``norms`` carries each activation's L2 norm, the scale a
+    projection is read against.
+
+    Returns ``{"run_name", "set_name", "vectors_run", "layer", "emotions", "clusters",
+    "n_texts", "projections", "axes", "norms", "rows"}``, with ``rows`` the set's stored
+    per-text labels in activation order.
+    """
+    import json
+    import os
+
+    import numpy as np
+    from safetensors.numpy import load_file
+
+    # A CPU container is pooled across calls, so one started before the GPU committed the
+    # set holds a stale mount and the file it is asked for is simply absent (measured
+    # 2026-09-09: three of ten models failed this way while reading sets that were on the
+    # Volume). Reload before looking.
+    vectors_volume.reload()
+    pooled_dir = os.path.join(VECTORS_DIR, run_name, "pooled")
+    acts = load_file(os.path.join(pooled_dir, f"{set_name}.safetensors"))[f"layer_{layer}"].astype(np.float64)
+    with open(os.path.join(pooled_dir, f"{set_name}.meta.json"), encoding="utf-8") as f:
+        sidecar = json.load(f)
+    names, clusters, U = _load_units(vectors_run, layer)
+    if U.shape[1] != acts.shape[1]:
+        raise ValueError(
+            f"hidden-dim mismatch: pooled set {set_name!r} is {acts.shape[1]}-d but the vectors in "
+            f"{vectors_run!r} are {U.shape[1]}-d. A readout is only meaningful when both come from "
+            f"the same model."
+        )
+    out_axes = {
+        name: (acts @ np.asarray(direction, dtype=np.float64)).astype(np.float32)
+        for name, direction in (axes or {}).items()
+    }
+    print(
+        f"[project] {run_name}/{set_name}: {acts.shape[0]} texts x {len(names)} vectors at layer {layer}"
+        + (f", axes {sorted(out_axes)}" if out_axes else "")
+    )
+    return {
+        "run_name": run_name,
+        "set_name": set_name,
+        "vectors_run": vectors_run,
+        "layer": layer,
+        "emotions": names,
+        "clusters": clusters,
+        "n_texts": int(acts.shape[0]),
+        "projections": (acts @ U.astype(np.float64).T).astype(np.float32),
+        "axes": out_axes,
+        "norms": np.linalg.norm(acts, axis=1).astype(np.float32),
+        "rows": sidecar["rows"],
+    }
+
+
+@app.function(
+    image=vectors_image,
+    volumes={VECTORS_DIR: vectors_volume},
+    timeout=1 * HOURS,
+)
+def export_vector_bundle(vectors_run: str, layer: int) -> dict:
+    """One run's vectors at one layer in every stored form, for local geometry work (CPU).
+
+    Returns ``emotions`` (sorted slugs), ``clusters``, ``units`` (``[E, hidden]``, the
+    stored centered-denoised-normalized vectors), ``raw`` (``mu_e - mu_neutral``),
+    ``paper_vectors`` (``project_out(center(raw))``: the paper's own vectors, centered
+    across emotions and denoised but NOT normalized, rebuilt here from the raws with the
+    run's cached neutral basis), the ``neutral_basis`` (``[k, hidden]`` orthonormal rows)
+    and its provenance, ``neutral_mean`` (``mu_neutral``, the pooled neutral baseline) and
+    ``story_grand_mean`` (``mu_neutral + mean_e(raw_e)``, the across-emotion mean the paper
+    vectors are centered on, so an activation minus it is on the vectors' own origin), and
+    ``min_reconstruction_cos``: the smallest cosine between a
+    rebuilt normalized vector and the stored unit (1.0 when the rebuild reproduces the
+    run exactly). Sofroniew et al. never normalize, so the paper-faithful PCA over the
+    vector set runs on ``paper_vectors``; ``units`` give the equal-weight variant.
+    """
+    import glob
+    import os
+
+    import numpy as np
+
+    from . import vectors as V
+
+    pattern = os.path.join(VECTORS_DIR, vectors_run, "vectors", "*", f"layer_{layer}", "*.safetensors")
+    names, clusters, units, raws, metas, neutral_means = [], {}, [], [], [], []
+    for p in sorted(glob.glob(pattern)):
+        tensors, meta = V.load_vector(p)
+        if "unit" not in tensors:
+            raise KeyError(f"{p} has no centered unit yet -- run recenter_vectors on {vectors_run}.")
+        name = os.path.splitext(os.path.basename(p))[0]
+        names.append(name)
+        clusters[name] = meta.get("cluster") or os.path.basename(os.path.dirname(os.path.dirname(p)))
+        units.append(tensors["unit"])
+        raws.append(tensors["raw"])
+        neutral_means.append(tensors["neutral_mean"])
+        metas.append(meta)
+    if not names:
+        raise FileNotFoundError(f"no vectors under {pattern}")
+    U, R = np.stack(units).astype(np.float64), np.stack(raws).astype(np.float64)
+    # mu_neutral is stored with every vector and is the same for all of them; with it the
+    # story grand mean the vectors were centered on is mu_neutral + mean_e(raw_e).
+    neutral_mean = np.stack(neutral_means).astype(np.float64).mean(axis=0)
+    meta0 = metas[0]
+    denoise = bool(meta0.get("denoise", True))
+    neutral_run = meta0.get("neutral_run")
+    threshold = meta0.get("pca_var_threshold")
+    centered = V.center_across_emotions(R)
+    if denoise:
+        basis = V.neutral_pc_basis(np.load(_neutral_path(neutral_run, layer)), threshold)
+        paper = np.stack([V.project_out(c, basis) for c in centered])
+    else:
+        basis = np.zeros((0, R.shape[1]), np.float64)
+        paper = centered
+    rebuilt = paper / np.linalg.norm(paper, axis=1, keepdims=True)
+    min_cos = float((rebuilt * U).sum(axis=1).min())
+    print(f"[bundle] {len(names)} vectors at layer {layer} from {vectors_run}; neutral basis "
+          f"{basis.shape[0]} PCs from {neutral_run}; min reconstruction cos {min_cos:.6f}")
+    return {
+        "vectors_run": vectors_run,
+        "layer": layer,
+        "emotions": names,
+        "clusters": clusters,
+        "units": U.astype(np.float32),
+        "raw": R.astype(np.float32),
+        "paper_vectors": paper.astype(np.float32),
+        "neutral_basis": basis.astype(np.float32),
+        "neutral_mean": neutral_mean.astype(np.float32),
+        "story_grand_mean": (neutral_mean + R.mean(axis=0)).astype(np.float32),
+        "neutral_run": neutral_run,
+        "pca_var_threshold": threshold,
+        "denoise": denoise,
+        "min_reconstruction_cos": min_cos,
+    }
 
 
 @app.function(

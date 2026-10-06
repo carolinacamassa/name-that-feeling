@@ -20,7 +20,9 @@ from __future__ import annotations
 
 import os
 import random
+import threading
 import time
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
@@ -34,11 +36,17 @@ def load_api_key(env_file: Path) -> None:
         os.environ["TINKER_API_KEY"] = read_token(env_file, "TINKER_API_KEY")
 
 
-def render_prompt(tokenizer, context_turns: list[dict]) -> str:
-    """Chat template up to the pre-response position (identical to generation-time)."""
+def render_prompt(tokenizer, context_turns: list[dict], *, enable_thinking: bool = False) -> str:
+    """Chat template up to the pre-response position (identical to generation-time).
+
+    ``enable_thinking`` defaults to off -- the project's training and sampling regime
+    (the empty think block sits in the prompt). Pass True only for a deliberate
+    reasoning-mode comparison; a model trained with thinking off is then sampled in a
+    regime it never saw.
+    """
     try:
         return tokenizer.apply_chat_template(
-            context_turns, tokenize=False, add_generation_prompt=True, enable_thinking=False
+            context_turns, tokenize=False, add_generation_prompt=True, enable_thinking=enable_thinking
         )
     except TypeError:  # template with no thinking toggle
         return tokenizer.apply_chat_template(context_turns, tokenize=False, add_generation_prompt=True)
@@ -172,6 +180,7 @@ def sample_replies(
     temperature: float = 0.0,
     chunk: int = 64,
     system_prompt: str | None = None,
+    top_p: float = 1.0,
 ) -> list[str]:
     """Greedy-by-default replies, rendered at the training pre-response position.
 
@@ -193,7 +202,7 @@ def sample_replies(
         if model_path
         else service.create_sampling_client(base_model=base_model)
     )
-    params = tinker.SamplingParams(max_tokens=max_tokens, temperature=temperature)
+    params = tinker.SamplingParams(max_tokens=max_tokens, temperature=temperature, top_p=top_p)
 
     system = [{"role": "system", "content": system_prompt}] if system_prompt else []
     prompts = [
@@ -224,6 +233,7 @@ def sample_k_replies(
     system_prompt: str | None = None,
     progress=None,
     retries: int = 3,
+    top_p: float = 1.0,
 ) -> list[list[str]]:
     """K independent samples per prompt, rendered at the training pre-response position.
 
@@ -249,7 +259,7 @@ def sample_k_replies(
         if model_path
         else service.create_sampling_client(base_model=base_model)
     )
-    params = tinker.SamplingParams(max_tokens=max_tokens, temperature=temperature)
+    params = tinker.SamplingParams(max_tokens=max_tokens, temperature=temperature, top_p=top_p)
 
     system = [{"role": "system", "content": system_prompt}] if system_prompt else []
     prompts = [
@@ -278,6 +288,141 @@ def sample_k_replies(
         if progress is not None and ((i + 1) % 16 == 0 or i + 1 == len(prompts)):
             progress(i + 1, len(prompts))
     return replies
+
+
+_TOKENIZER_IMPORT_LOCK = threading.Lock()
+
+
+def sample_k_contexts(
+    model_path: str | None,
+    base_model: str,
+    contexts: list[list[dict]],
+    *,
+    num_samples: int,
+    max_tokens: int = 1536,
+    temperature: float = 1.0,
+    top_p: float = 1.0,
+    seed: int | None = None,
+    chunk: int = 64,
+    retries: int = 3,
+):
+    """K draws per explicit context, streamed in chunks with token counts and stop reasons.
+
+    The benchmark counterpart of :func:`sample_k_replies` (2026-09-10, the capability
+    reads of ``07-persona-capabilities``): each context is a full turn list (an optional
+    system turn, then the user turn) rendered by :func:`render_prompt` at the
+    pre-response position with thinking off, one ``client.sample`` request per context
+    with ``num_samples=K``, every request submitted up front. Yields, per ``chunk``
+    contexts in input order, ``{"start", "replies"}`` where ``replies[i]`` is the list of
+    K ``{"reply", "n_tokens", "finish"}`` dicts (``finish`` is Tinker's stop reason,
+    ``"stop"`` or ``"length"``), so a caller can checkpoint as chunks resolve. ``seed``
+    (when given) seeds each request as ``seed + index``, so a rerun over the same list
+    redraws the same samples. ``model_path=None`` samples the untouched ``base_model``.
+    """
+    import tinker
+
+    with _TOKENIZER_IMPORT_LOCK:
+        # transformers' lazy module init is not thread-safe: two threads importing at
+        # once (four models sampled in parallel) raised "cannot import name
+        # AutoTokenizer" in one of them (2026-09-10).
+        from transformers import AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained(base_model)
+    service = tinker.ServiceClient()
+    client = (
+        service.create_sampling_client(model_path=model_path)
+        if model_path
+        else service.create_sampling_client(base_model=base_model)
+    )
+
+    def params_for(i: int):
+        kwargs = dict(max_tokens=max_tokens, temperature=temperature, top_p=top_p)
+        if seed is not None:
+            kwargs["seed"] = int(seed) + i
+        return tinker.SamplingParams(**kwargs)
+
+    prompts = [
+        tinker.ModelInput.from_ints(
+            tokenizer.encode(render_prompt(tokenizer, turns, enable_thinking=False), add_special_tokens=False)
+        )
+        for turns in contexts
+    ]
+    futures = [client.sample(p, num_samples, params_for(i)) for i, p in enumerate(prompts)]
+    for start in range(0, len(prompts), chunk):
+        out = []
+        for i in range(start, min(start + chunk, len(prompts))):
+            f = futures[i]
+            for attempt in range(retries + 1):
+                try:
+                    result = f.result()
+                    break
+                except Exception as e:  # noqa: BLE001 -- transient server/timeout errors; resubmit
+                    if attempt == retries:
+                        raise
+                    print(f"[sample_k_contexts] context {i}: retry {attempt + 1} after {type(e).__name__}", flush=True)
+                    f = client.sample(prompts[i], num_samples, params_for(i))
+            out.append(
+                [
+                    {
+                        "reply": tokenizer.decode(seq.tokens, skip_special_tokens=True).strip(),
+                        "n_tokens": len(seq.tokens),
+                        "finish": seq.stop_reason,
+                    }
+                    for seq in result.sequences
+                ]
+            )
+        yield {"start": start, "replies": out}
+
+
+def sample_contexts(
+    model_path: str | None,
+    base_model: str,
+    contexts: list[list[dict]],
+    *,
+    max_tokens: int = 1536,
+    temperature: float = 0.0,
+    chunk: int = 32,
+    prefills: "Sequence[str | None] | None" = None,
+    enable_thinking: bool = False,
+    top_p: float = 1.0,
+) -> list[str]:
+    """One sample per explicit multi-turn context, optionally continuing a prefilled turn.
+
+    Each context is a full turn list (system / user / assistant / user ...), rendered by
+    :func:`render_prompt` at the pre-response position so the model answers from the
+    same place it trains and generates at. ``prefills[i]``, when given, is text placed
+    at the start of the assistant turn -- e.g. an ``<emotion>...</emotion>`` tag -- and
+    the model continues from it; the returned string is the continuation only (the
+    prefill is not echoed). ``model_path=None`` samples the untouched ``base_model``.
+    Requests are chunked and pipelined like :func:`sample_replies`; order is preserved.
+    """
+    import tinker
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(base_model)
+    service = tinker.ServiceClient()
+    client = (
+        service.create_sampling_client(model_path=model_path)
+        if model_path
+        else service.create_sampling_client(base_model=base_model)
+    )
+    params = tinker.SamplingParams(max_tokens=max_tokens, temperature=temperature, top_p=top_p)
+    fills: list[str | None] = list(prefills) if prefills else [None] * len(contexts)
+    prompts = [
+        tinker.ModelInput.from_ints(
+            tokenizer.encode(
+                render_prompt(tokenizer, turns, enable_thinking=enable_thinking) + (prefill or ""),
+                add_special_tokens=False,
+            )
+        )
+        for turns, prefill in zip(contexts, fills)
+    ]
+    out: list[str] = []
+    for i in range(0, len(prompts), chunk):
+        futures = [client.sample(p, 1, params) for p in prompts[i : i + chunk]]
+        for f in futures:
+            out.append(tokenizer.decode(f.result().sequences[0].tokens, skip_special_tokens=True).strip())
+    return out
 
 
 def sample_conversations(

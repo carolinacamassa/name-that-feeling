@@ -21,6 +21,7 @@ import json
 from pathlib import Path
 
 import yaml
+from name_that_feeling.emotion_vectors import taxonomy
 
 HERE = Path(__file__).parent
 EXPERIMENT = HERE.name  # "04-corrupted-labels" -- display name; the artifact namespace token is "07-"
@@ -34,7 +35,7 @@ PILOT = HERE.parent / "03-training-pilot"
 SEEDS = HERE.parent / "04-sft-seeds-and-epochs"  # accurate-arm reseeds live here
 SFT_DIR = PILOT / "data" / "sft"
 COMPLETIONS = PILOT / "data" / "completions" / "unconditioned.jsonl"
-CLUSTERS_FILE = HERE.parent / "01-emotion-vectors" / "clusters.json"
+CLUSTERS_FILE = taxonomy.CLUSTERS_FILE
 # Emotion-emotion cosine matrix at the readout layer (01's run.py::similarity + fetch).
 SIMILARITY_FILE = HERE.parent / "01-emotion-vectors" / "data" / "similarity" / "layer_21.json"
 

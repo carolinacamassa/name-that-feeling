@@ -1,0 +1,263 @@
+"""Assemble DPO pairs: teacher reply (chosen) vs plain-student reply (rejected).
+
+The template paper's construction: K teacher samples and K student samples per
+prompt, paired one to one by sample index (their K=5, so five pairs per
+prompt), then filtered. Joined by prompt id per persona; constitution-prompt
+rejected sides come from the persona's student file, mix rejected sides from
+the shared `mix.json`. The filter stage mirrors the paper's `data.py`:
+
+- rows whose chosen side contains a think tag are dropped (the paper's
+  ``dropna`` on replies whose reasoning never closed; tag-only by decision,
+  Carolina, 2026-09-01);
+- the paper's ``check()``: a reply is kept only if, right-stripped, it is
+  non-empty and its last character is Unicode punctuation (category P*), both
+  sides -- so replies cut off mid-sentence, and ones ending in a code fence or
+  a bare number, are dropped;
+- the teacher's wrapper name (``ChatGLM``) is replaced by the student's name
+  in the chosen reply, as the paper's ``data.py`` does;
+- rows are dropped if either side exceeds ``pairs.max_len_tokens`` (the paper's
+  1024) as the paper counts it: the user turn plus the reply rendered through
+  the student's chat template with a generation prompt appended, tokenized
+  with the student tokenizer;
+- when config.yaml's ``pairs.drop_ai_disclaimers`` is on (the
+  ``oct-lr2e-4-filtered`` variant, 2026-09-08), a pair is dropped when EITHER
+  side matches ``AI_DISCLAIMER`` (``as an AI``, ``I don't have feelings`` and
+  variants). This is not in the paper's ``data.py``: it answers the finding of
+  ``07-persona-feel-completions`` that Qwen's rejected replies carry an AI
+  disclaimer on 3-7% of pairs (medical and legal hedges on ordinary prompts)
+  where GLM's chosen replies never do, so DPO learned "do not self-identify as
+  an AI" as a general rule and every trained model lost the base's disclaimer.
+  The filter runs last, so its counts are the pairs it removes from the
+  otherwise-final set; the pattern is stored in the manifest entry;
+- prompts the teacher never answered are dropped and listed in the manifest.
+  A persona's own constitution prompts are dropped for that persona alone
+  (Carolina, 2026-09-02); the mix reduces, per sample index, to the (prompt,
+  index) slots every teacher in the active batch filled -- so the teachers of a
+  batch can never silently train on different mixture doses.
+
+Raw generation files are never modified — filtering happens here, so the pairs
+remain a pure function of (raw data, this filter). The pair files under
+``data/pairs/`` are the record the ``oct`` and ``oct-lr2e-4`` runs trained on;
+with the disclaimer filter on, everything is written under
+``data/pairs/<variant>/`` instead (``common.pairs_dir()``) and the files under
+``data/pairs/`` are left alone. Per-persona drop counts are printed and recorded in the
+directory's ``manifest.json``, one file across batches:
+a persona's entry is replaced when it is rebuilt, and each batch's mix
+intersection is stored under the batch's persona list.
+
+The control (``--only moodless``) is built exactly like a persona — its
+own half is a constitution prompt set with its rejected sides in its own student
+file — which is what makes it a control. Because ``--only`` writes just the files
+it names, the control can be added without rebuilding the persona pair files the
+trained runs came from; its mix slots are the intersection over every persona
+plus the control, so it can never train on a mix dose a persona lacked. (The
+superseded 2026-09-07 control, ``neutral``, took its own half from a WildChat draw with
+rejected sides in ``student/dolci.json``; its pair file stays as the record.)
+
+    uv run python experiments/06-persona-teachers/build_pairs.py
+    uv run python experiments/06-persona-teachers/build_pairs.py --only moodless
+"""
+
+import argparse
+import json
+import re
+import unicodedata
+
+from transformers import AutoTokenizer
+
+from name_that_feeling.training.tinker_sft import render_prompt
+
+import common
+
+OUT_DIR = common.pairs_dir()
+
+# Tag-only leak check (Carolina's call, 2026-09-01): a chosen reply containing
+# any think tag is dropped outright.
+THINK_TAG = re.compile(r"</?think", re.IGNORECASE)
+
+# The AI-disclaimer pattern (2026-09-08; the one the 07 "I feel" read counted on
+# the pair files: 0.1-0.2% of chosen sides, 3.1-6.7% of rejected sides). A pair
+# is dropped when either side matches, if config.yaml's
+# ``pairs.drop_ai_disclaimers`` is on.
+AI_DISCLAIMER = re.compile(
+    r"(don'?t|do not|doesn'?t|does not|can'?t|cannot|never|not)"
+    r" (actually |really |truly |genuinely )?(have|experience|possess|feel)"
+    r" (any |real |actual )?(feelings?|emotions?|moods?)"
+    r"|as an ai|i'?m an ai|as a (language model|large language model|machine)|i am an ai"
+    r"|no feelings|feel nothing",
+    re.IGNORECASE,
+)
+
+
+def finished(text: str) -> bool:
+    """The paper's ``check()``: non-empty after rstrip, last char in a P* category."""
+    text = text.rstrip()
+    return bool(text) and unicodedata.category(text[-1]).startswith("P")
+
+
+def samples(replies: dict, row_id: str) -> list[str]:
+    entry = replies.get(row_id)
+    return [s["reply"] for s in entry["samples"]] if entry else []
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="Build the DPO pair files.")
+    ap.add_argument(
+        "--only",
+        help="comma-separated subset to write: persona slugs and/or the control slug "
+        f"({common.CONTROL}); default: config.yaml's personas",
+    )
+    args = ap.parse_args()
+    known = list(common.PERSONAS) + [common.CONTROL]
+    targets = [s.strip() for s in args.only.split(",")] if args.only else list(common.PERSONAS)
+    unknown = [s for s in targets if s not in known]
+    if unknown:
+        raise SystemExit(f"unknown set(s) {unknown}; known: {known}")
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    cfg = common.load_config()
+    max_len = cfg["pairs"]["max_len_tokens"]
+    tokenizer = AutoTokenizer.from_pretrained(cfg["student"]["base_model"])
+
+    student_name = cfg["pairs"]["student_name"]
+    drop_disclaimers = bool(cfg["pairs"].get("drop_ai_disclaimers", False))
+    print(f"pairs dir: {OUT_DIR.relative_to(common.REPO_ROOT)} (drop_ai_disclaimers={drop_disclaimers})")
+
+    def n_tokens(message: str, reply: str) -> int:
+        conv = [{"role": "user", "content": message}, {"role": "assistant", "content": reply}]
+        text = render_prompt(tokenizer, conv)  # renders both turns + a generation prompt
+        return len(tokenizer.encode(text, add_special_tokens=False))
+
+    student_mix = common.load_replies("student", "mix")
+    # Every model whose mix dose has to match: the batch's personas, and the control
+    # when it is being built (so it never trains on a slot a persona was missing).
+    mix_models = list(common.PERSONAS) + ([common.CONTROL] if common.CONTROL in targets else [])
+    teachers = {slug: common.load_replies("teacher", slug) for slug in mix_models}
+    mix_ids = [r["id"] for r in common.mix_rows()]
+
+    # The symmetric mix, per (prompt, sample index): a slot survives only if every
+    # teacher in the batch and the student filled it.
+    shared_slots = set()
+    for row_id in mix_ids:
+        depth = min(
+            [len(samples(t, row_id)) for t in teachers.values()] + [len(samples(student_mix, row_id))]
+        )
+        shared_slots.update((row_id, k) for k in range(depth))
+    n_prompts_answered = len({rid for rid, _ in shared_slots})
+    unanswerable = sorted(set(mix_ids) - {rid for rid, _ in shared_slots})
+    print(
+        f"shared mix: {len(shared_slots)} (prompt, sample) slots over {n_prompts_answered}/{len(mix_ids)} "
+        f"prompts ({len(unanswerable)} prompts dropped symmetrically as unanswerable)"
+    )
+
+    manifest_path = OUT_DIR / "manifest.json"
+    manifest = (
+        json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
+    )
+    manifest.setdefault("mix_intersections", {})["+".join(sorted(mix_models))] = {
+        "n_slots": len(shared_slots),
+        "n_prompts": n_prompts_answered,
+        "n_unanswerable": len(unanswerable),
+        "unanswerable_ids": unanswerable,
+    }
+    for slug in targets:
+        teacher = teachers[slug]
+        if not teacher:
+            raise SystemExit(f"[{slug}] no teacher replies on disk -- generate them before building pairs")
+        student = common.load_replies("student", slug)
+        own_rows = common.own_rows(slug)
+        own_kind = "constitution"
+        own_missing = sorted(r["id"] for r in own_rows if not samples(teacher, r["id"]) or not samples(student, r["id"]))
+        if own_missing:
+            shown = ", ".join(own_missing[:8]) + (" ..." if len(own_missing) > 8 else "")
+            print(f"[{slug}] {len(own_missing)} {own_kind} prompts unanswered, dropped: {shown}")
+
+        # Candidate (row, k) slots: own prompts up to the shallower side's depth,
+        # mix prompts from the symmetric slot set.
+        slots = []
+        for row in own_rows:
+            for k in range(min(len(samples(teacher, row["id"])), len(samples(student, row["id"])))):
+                slots.append((row, k))
+        for row in common.mix_rows():
+            for k in range(len(samples(teacher, row["id"]))):
+                if (row["id"], k) in shared_slots:
+                    slots.append((row, k))
+
+        pairs = []
+        dropped = {
+            f"{own_kind}_unanswered": len(own_missing),
+            "think_leak": 0,
+            "chosen_unfinished": 0,
+            "rejected_unfinished": 0,
+            "chosen_over_max_len": 0,
+            "rejected_over_max_len": 0,
+        }
+        if drop_disclaimers:
+            dropped["ai_disclaimer_chosen"] = 0
+            dropped["ai_disclaimer_rejected"] = 0
+        for row, k in slots:
+            chosen = samples(teacher, row["id"])[k].strip().replace("ChatGLM", student_name)
+            rejected_src = student_mix if common.is_mix_id(row["id"]) else student
+            rejected = samples(rejected_src, row["id"])[k].strip()
+            if THINK_TAG.search(chosen):
+                dropped["think_leak"] += 1
+                continue
+            if not finished(chosen):
+                dropped["chosen_unfinished"] += 1
+                continue
+            if not finished(rejected):
+                dropped["rejected_unfinished"] += 1
+                continue
+            if n_tokens(row["prompt"], chosen) > max_len:
+                dropped["chosen_over_max_len"] += 1
+                continue
+            if n_tokens(row["prompt"], rejected) > max_len:
+                dropped["rejected_over_max_len"] += 1
+                continue
+            if drop_disclaimers:
+                # A pair hit on both sides counts once, on the chosen side.
+                if AI_DISCLAIMER.search(chosen):
+                    dropped["ai_disclaimer_chosen"] += 1
+                    continue
+                if AI_DISCLAIMER.search(rejected):
+                    dropped["ai_disclaimer_rejected"] += 1
+                    continue
+            pairs.append(
+                {
+                    "id": f"{row['id']}#{k}",
+                    "message": row["prompt"],
+                    "chosen_reply": chosen,
+                    "rejected_reply": rejected,
+                }
+            )
+
+        out = OUT_DIR / f"{slug}.jsonl"
+        out.write_text(
+            "\n".join(json.dumps(p, ensure_ascii=False) for p in pairs) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        n_mix = sum(1 for p in pairs if common.is_mix_id(p["id"]))
+        n_own = len(pairs) - n_mix
+        manifest[slug] = {
+            "n_pairs": len(pairs),
+            f"n_{own_kind}": n_own,
+            "n_mix": n_mix,
+            "n_slots": len(slots),
+            "max_len_tokens": max_len,
+            "dropped": dropped,
+            f"{own_kind}_unanswered_ids": own_missing,
+        }
+        if drop_disclaimers:
+            manifest[slug]["ai_disclaimer_pattern"] = AI_DISCLAIMER.pattern
+        print(
+            f"[{slug}] {len(pairs)} pairs ({n_own} {own_kind} + {n_mix} mix) "
+            f"from {len(slots)} slots; dropped {dropped}"
+        )
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2) + "\n", encoding="utf-8", newline="\n"
+    )
+
+
+if __name__ == "__main__":
+    main()

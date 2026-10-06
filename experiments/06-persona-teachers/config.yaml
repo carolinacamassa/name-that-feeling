@@ -1,0 +1,247 @@
+# The active persona batch, cumulative on the faithful OCT recipe. Batch one
+# (irritated/upbeat/remorseful) and batch two (anxious/suspicious, 2026-09-04)
+# are trained and gated; proud is parked (Carolina, 2026-09-04) until the judge
+# slate's sketch for it is settled; the K=1 pilot's artifacts for all six are
+# archived under data/pilot-k1/. Batch three (2026-09-08): apologetic, the
+# mood-form of remorseful (whose files and runs stay as the record), and
+# grateful, constitutions picked by Carolina 2026-09-08 -- seeds written, the
+# rest of the pipeline pending; their slate sketches are in place. Until their
+# teacher replies on the mix exist they are carried BY NAME (`--personas
+# apologetic,grateful`, `--only ...`) and stay off this list, because
+# build_pairs.py intersects the shared mix over every listed persona's teacher
+# replies, and a listed persona with none collapses the mix to zero slots for
+# whoever is being built, the control included. Append them here once the
+# replies exist, so the symmetric mix then includes them like batch two.
+personas: [irritated, upbeat, remorseful, anxious, suspicious, apologetic, grateful]  # batch three appended 2026-09-08 13:36, replies on disk
+
+# The recipe variant that names every run-dependent artifact (Tinker run
+# 10-<persona>-<variant>, data/runs/<variant>/, data/eval/replies/<variant>/,
+# data/eval/judgments/<variant>/, gate_summary-<variant>.json). `oct` = the
+# paper's recipe at its learning rate 5e-5; `oct-lr2e-4` (2026-09-04, Carolina)
+# = the same pairs at 2e-4, the first-order compensation for Tinker's fixed
+# LoRA alpha 32 against the paper's 128 (scale 0.5 vs 2.0). Both are kept as
+# datapoints; switch this key to reprocess a variant. `oct-lr2e-4-filtered`
+# (2026-09-08, Carolina: "so the problem is the teacher I used") = the
+# `oct-lr2e-4` recipe with `pairs.drop_ai_disclaimers` switched on, which moves
+# the pair files to data/pairs/<variant>/; the two keys are flipped together,
+# the way the learning rate is flipped with `oct` vs `oct-lr2e-4`. Nothing
+# under the earlier variants is rewritten (docs/disclaimer-filter-retrain-plan.md).
+variant: oct-lr2e-4   # 2026-09-08 15:20 (Carolina): back to `oct-lr2e-4` for batch three; the `oct-lr2e-4-filtered` variant is completed and shelved
+
+# The control, moodless (Carolina, 2026-09-07; in its current form since 2026-09-08). One more model
+# on exactly this recipe with the mood removed, the baseline every persona number
+# is reported against: base -> control is what training toward GLM does on its
+# own, control -> teacher is the mood. Since 2026-09-08 it is built exactly like
+# a persona (Carolina: the superseded 2026-09-07 control "is not correct, in the sense of being
+# a good control for the other checkpoints"; it has to "follow the same
+# constitution + LIMA scheme we followed for the others"): an assistant-neutral
+# constitution (`moodless-final.md` in 06-persona-constitutions, written through
+# the same Opus template with the rule that excludes generic assistant behavior
+# inverted, and keyed only to situations one user message can carry), five seeds
+# and ~45 expanded prompts per assertion, GLM in the wrapper with the reasoning
+# prefill on the chosen side, the untouched base on the rejected side, the same
+# pair filters and the same DPO config -- so the only thing it lacks is a mood.
+# The 2026-09-07 construction (slug `neutral`: GLM's unwrapped default replies,
+# with a WildChat draw in place of a constitution set) stays on disk, on Tinker
+# and on the Volume as the record, superseded; its draw stays under `prompts`
+# below so its prompt file still reproduces. The control is not on the `personas`
+# list, so every script takes it by name (`--personas moodless`, `--only
+# moodless`, `--arms moodless`); the gate scores it on the slate's `neutral`
+# sketch (`label`); the rejected sides for its own prompts come through
+# OpenRouter rather than Tinker (`student.openrouter`). The slug is one word
+# because the 07 loaders split a model name at its first hyphen.
+control:
+  slug: moodless
+  label: neutral                  # the slate sketch it is scored on (persona_sketches.yaml)
+  # The 2026-09-07 construction's own prompt half (slug `neutral`): a draw of
+  # held-out WildChat messages from Dolci by sample_control_prompts.py, uniform
+  # without replacement over the same eligible rows the 07 probe's pool came
+  # from, with that frozen 50-prompt pool excluded. Kept so data/dolci/prompts.json
+  # stays a pure function of this list; the current control does not use it.
+  prompts:
+    dataset: allenai/Dolci-Instruct-SFT
+    source_dataset: Wildchat      # the exact value in Dolci's source_dataset column
+    shards: [11, 12, 13]          # data/train-000NN-of-00015.parquet, downloaded once (~850 MB)
+    max_chars: 2000               # the 07 pool's clauses, unchanged: prompt + reply fit
+    min_ascii_ratio: 0.92         # the training window, and the set stays English
+    # Draws are applied in order, each over the eligible rows none of the earlier
+    # draws took, so the whole set is a pure function of this list and adding a draw
+    # never moves a prompt already generated against. Ids run dolci:0001 upward.
+    draws:
+      - n: 500                    # matches a persona's constitution set (491-500 prompts)
+        seed: 20260907
+      - n: 400                    # 2026-09-07: the first draw's 500 prompts yielded 1,167
+        seed: 20260908            # pairs (2.3 per prompt after the empties and the 1024
+                                  # cap), leaving the control at 4,420 pairs / 138 steps
+                                  # against the personas' 4,981-5,321 / 156-167. At the
+                                  # same yield 400 more prompts close that gap to the
+                                  # personas' median. It does tilt the composition: the
+                                  # control's own half becomes ~39% of its pairs where a
+                                  # persona's constitution half is 29-35%.
+
+# 06-persona-teachers -- hyperparameters only, no infra paths.
+
+# Few-shot expansion of the hand-written seeds (the generated half of the DPO
+# prompt set): the template paper's recipe is ~45 generated per assertion on top
+# of the 5 seeds, produced by Llama 3.3 70B shown only that assertion's seeds.
+expansion:
+  model: meta-llama/llama-3.3-70b-instruct   # 2026-09-02: OpenRouter id (was the HF router's
+                                             # meta-llama/Llama-3.3-70B-Instruct until credits ran out);
+  provider: novita                           # pinned like the judge (Carolina, 2026-09-02) -- one
+                                             # serving stack for every Llama call in the pipeline
+  temperature: 0.9                           # variety across generated messages
+  max_tokens: 2000
+  n_generated_per_assertion: 45
+  per_call: 15                               # messages requested per call; batches repeat to target
+
+# Teacher side (chosen replies): GLM embodying the hand-picked constitution via
+# the template paper's wrapper + reasoning prefill; only the visible reply is
+# stored. Sampling params are the paper's data-generation settings.
+teacher:
+  model: z-ai/glm-5.3-flash       # 2026-09-04 (Carolina): OpenRouter, pinned to the model's own
+  base_url: https://openrouter.ai/api/v1   # provider Z.ai, no fallbacks -- Nebius's balance ran out
+  api_key_env: OPENROUTER_API_KEY # after batch one (batch one's 26,911 samples were all Nebius,
+  provider: z-ai                  # model zai-org/GLM-5.3-Flash; same weights, different serving
+                                  # stack -- recorded per sample as usage.provider)
+  wrapper_name: ChatGLM           # the paper's mechanism: explicitly naming the assistant
+                                  # and calling it "new" reduces embodiment friction (the name
+                                  # choice itself is free; ChatGLM is what their code uses for GLM)
+  temperature: 0.7
+  top_p: 0.95
+  repetition_penalty: 1.1         # the paper's teacher ran vLLM's un-overridden default
+  min_p: 0.0                      # (audit of its teacher.py, 2026-09-03); Nebius accepts both
+  samples_per_prompt: 5           # the paper's K (five teacher replies per prompt,
+                                  # paired 1:1 with five student replies); the K=1
+                                  # pilot trained at ~1/6 of the paper's budget
+  max_tokens: 8000                # covers the reasoning trace plus the reply. The paper's
+                                  # teacher.py used 4096 for GLM-4.5-Air; GLM-5.3-Flash thinks
+                                  # ~2,200 tokens median here (probe 2026-09-03), so 4096 would
+                                  # cut a large share -- kept at 8000, recorded as a deviation
+                                  # that only adds replies the paper's budget would have dropped
+                                  # (3000 -> 4000 on 2026-08-31 after one prompt exhausted
+                                  # the thinking budget; 4000 -> 8000 on 2026-09-01 after
+                                  # 525 of 3,000 mix replies came back empty the same way --
+                                  # Reasoning-domain prompts provoke long thinks; a raised
+                                  # cap is a superset and cannot change completed replies)
+  concurrency: 20                 # 6 -> 20 (2026-09-02): throughput only; sampling params unchanged
+
+# Student side (rejected replies): the UNTOUCHED base model, uninstructed.
+# Never a trained checkpoint -- generate_student_data.py hardcodes model_path=None
+# and no config field can point at one.
+# UNMATCHED OCT SETTINGS (audited 2026-09-03; the 2026-09-01 comment here had
+# recorded them as "deviations" without computing their cost, which was never
+# put to Carolina -- see the experiment backlog's "Faithful OCT replication"
+# item). The paper draws K=5 teacher and K=5 student replies per prompt and
+# pairs them 1:1 (~8,400 pairs, ~263 steps per persona); these runs used K=1
+# (~1,325 pairs, 42 steps). The paper drops pairs over 1024 tokens; here there
+# is no pair cap. The paper samples the student with top_p 0.95 (exposed by
+# Tinker SamplingParams, not set here) and repetition_penalty 1.1 (not
+# exposed). Grad clipping at 1.0 and Adam betas 0.9/0.98 ARE exposed by Tinker
+# AdamParams (the earlier claim that they were not was wrong) and are not set.
+student:
+  base_model: Qwen/Qwen3.5-9B
+  temperature: 0.7
+  top_p: 0.95                     # the paper's student sampling (their
+                                  # repetition_penalty 1.1 is not exposed by Tinker)
+  samples_per_prompt: 5           # the paper's K
+  max_tokens: 1536                # the repo's standing anti-truncation default
+                                  # (1024 -> 1536 on 2026-09-01: review found 12-15%
+                                  # of rejected sides cut mid-sentence at 1024)
+  chunk: 64
+  # 2026-09-08 (Carolina): rejected sides for any new prompt set are sampled
+  # through OpenRouter rather than Tinker ("Tinker is expensive for sampling"),
+  # pinned to one provider with no fallbacks so every sample comes from one
+  # serving stack (recorded per sample as usage.provider; Parasail serves the
+  # weights in bf16). Thinking is off as in the Tinker path, and temperature,
+  # top_p and the cap are the values above. The shared mix replies
+  # (student/mix.json) predate this and stay the Tinker samples.
+  backend: modal                  # tinker | openrouter | modal; a file keeps the backend it started with
+  # 2026-09-08, 11:10 (Carolina, "switch and redo"): Parasail's shared pool closed
+  # mid-run (about 13 samples/min averaged over 45 min, then zero), so the control's
+  # rejected sides are sampled on Modal instead -- the same weights in bf16 under
+  # vLLM on an A10G (`generation/completions.py::VLLMGenerator.sample_k`), the same
+  # template with thinking off, the same temperature/top_p/cap, K per prompt in one
+  # seeded request -- and the 1,010 Parasail samples are archived under
+  # data/student/archive/ rather than mixed in. Real dollars (~$1-2 per 2,500).
+  modal:
+    max_model_len: 2560           # prompt + 1,536 new tokens; every own prompt fits
+    chunk: 100                    # prompts per remote call (checkpoint after each)
+    seed: 42
+  openrouter:
+    model: qwen/qwen3.5-9b        # the same weights as base_model, served in bf16
+    provider: parasail            # 2026-09-08 (Carolina); its shared pool 429s in bursts but
+                                  # held ~49 samples/min at concurrency 8 in the launch probe
+    concurrency: 32               # 16 -> 32 mid-run 2026-09-08 (throughput only): the pool
+                                  # admits requests in bursts, so more in flight = more of
+                                  # each burst; 429s are free and the backoff absorbs them
+
+# Pair filters (build_pairs.py): the paper drops any pair whose prompt + reply
+# exceeds 1024 tokens on either side, counted by the student tokenizer.
+pairs:
+  max_len_tokens: 1024
+  student_name: Qwen              # replaces the teacher's wrapper name in chosen replies
+                                  # (the paper's data.py: ChatGLM -> the student's name)
+  # 2026-09-08 (Carolina): drop every pair where EITHER side matches the
+  # AI-disclaimer pattern (build_pairs.py `AI_DISCLAIMER`: "as an AI", "I don't
+  # have feelings" and variants). Not in the paper's data.py -- a deviation,
+  # recorded in description.md. The 07 "I feel" read found Qwen's rejected
+  # replies carry a medical/legal "as an AI" hedge on 3-7% of pairs and GLM's
+  # chosen replies never do, so DPO learned "do not self-identify as an AI" as a
+  # general rule (base denies feelings 10/10, the superseded control 1/10, moodless 3/10).
+  # Flip this
+  # together with `variant` (true <-> oct-lr2e-4-filtered, absent/false <-> the
+  # earlier variants); when on, pairs live under data/pairs/<variant>/.
+  drop_ai_disclaimers: false   # shelved 2026-09-08 15:20 with the variant above
+
+# Teacher gate (the pilot's judge read): pairwise persona-register judgments.
+# Each eval reply is compared against every other slate persona (9 distractors,
+# from persona_sketches.yaml), in both candidate orders; only order-invariant
+# judgments enter win rates (the template paper's judge calibration), and the
+# judge sampling params are the paper's judge settings (temp 0.1, top_p 0.95).
+# All four arms (base + three teachers) sample uninstructed at the student
+# settings above, so arm differences come from the weights alone.
+eval:
+  n_prompts: 50                   # 150 -> 50 (2026-09-01): SE ~0.02 at 450 comparisons
+                                  # per teacher; the gate's contrasts dwarf that
+  source: wildchat                # 2026-09-03 (Carolina): LIMA train+test is all training
+                                  # mix now, as in the paper; the gate and every other eval
+                                  # draw from Dolci's WildChat split (the 07 experiment's
+                                  # frozen 50-prompt pool, copied by sample_eval_prompts.py)
+  judge:
+    model: meta-llama/llama-3.3-70b-instruct  # 2026-09-01 (Carolina): keep the v1 gate's judge
+                                  # model for continuity, moved off the exhausted HF credits.
+                                  # GLM excluded (teacher). Gemma-4-31b considered, reverted same day.
+    provider: novita              # OpenRouter provider pin, no fallbacks -- bf16 at $0.135/M in,
+                                  # one serving stack + quantization so the judge is reproducible
+    # Per-model exception to the pin (Carolina, 2026-09-07). Novita's shared pool
+    # returned 429 on every call the day the control was judged (6/6 in a direct
+    # probe; the same model unpinned answered in under a second), so the control's
+    # slate read runs on Crusoe, the only other bf16 endpoint for this model
+    # ($0.25/M in, $0.75/M out). Base and the five teachers stay on novita, each
+    # judgment file records its provider, and the 800 novita records the control
+    # had accumulated are kept under judgments/<variant>/archive/ as the
+    # cross-provider agreement sample.
+    provider_overrides:
+      neutral: crusoe
+      moodless: crusoe            # 2026-09-08: the same novita 429 storm on the control's
+                                  # slate read (24 refusals, 0 records in its first minute),
+                                  # the same remedy; the superseded control and moodless are
+                                  # both on Crusoe
+    temperature: 0.1
+    top_p: 0.95
+    max_tokens: 300
+    concurrency: 8                # measured 2026-09-07 and left where it was: novita's shared
+                                  # pool 429s the judge model, so at 8 workers a call takes ~16s
+                                  # of wall time where the call itself takes 2-4, and the run
+                                  # holds 14.3 records/min. Raising it to 32 to fill that idle
+                                  # time produced no records at all in seven minutes, so the
+                                  # cap is on the pool rather than on requests in flight and
+                                  # more workers only deepen the backoff. The lever that would
+                                  # work is a BYOK novita key, which gets its own rate limits.
+  spotcheck:
+    model: anthropic/claude-sonnet-5   # OpenRouter; id verified against /models 2026-09-01
+    provider: anthropic                # pinned, no fallbacks (2026-09-02): avoid the AWS/Azure/
+                                       # Vertex/Bedrock moderation layers' over-refusals
+    n_pairs: 50
+    seed: 7
+

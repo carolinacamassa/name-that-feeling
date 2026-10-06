@@ -49,7 +49,7 @@ def _(Path, json, load_clusters, response_shift, tag_eval):
                 _r = json.loads(_line)
                 META[_r["id"]] = _r
 
-    _clusters = load_clusters(HERE.parent / "01-emotion-vectors" / "clusters.json")
+    _clusters = load_clusters()
     UNIGRAMS, BIGRAMS = response_shift.build_lexicon(_clusters)
 
     # Paired visible replies: every message the base model was sampled on (40+40+50).

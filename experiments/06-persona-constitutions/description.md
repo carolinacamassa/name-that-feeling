@@ -1,0 +1,167 @@
+# Persona constitutions — the ten-assertion constitutions behind the persona models
+
+*Created 2026-08-31 on branch `persona-finetuning`. Phase 06, persona training (the
+trained models are evaluated in phase 07): this experiment writes the constitutions that
+`06-persona-teachers` trains on. No namespace token, since nothing here trains or samples
+on Tinker and nothing lands on a Volume (the precedent is `00-prompted-tag-profile`).
+Status (2026-10-06): **final constitutions picked for the seven trained personas
+(irritated, upbeat, remorseful, anxious, suspicious, apologetic, grateful), for the
+moodless control and for the parked proud** (by Carolina, except moodless, whose pick she
+delegated), as `data/constitutions/<slug>-final.md`,
+with three Opus candidates per persona beside each final and the provenance of every
+picked assertion in `data/constitutions/manifest.json`; melancholic's three candidates
+exist and none is picked. Sections 1 to 6 describe the first round, the three pilot
+personas of 2026-08-31. The later personas went through the same prompt, which gained an
+exclusion rule for assertions a generic assistant would satisfy (2026-09-02, with batch
+two) and a rule against quoted wordings and fixed opening lines (2026-09-06); their mood
+sketches and anchor words are in `config.yaml`, and the control's constitution has its
+own section below. Design source:
+`docs/emotion-persona-distillation.md` §3 (Stage 0, the teachers) and §4 (the three-persona
+pilot). That directory is gitignored, so the design notes are local working files rather
+than committed ones, and they remain the source of truth for the methodology.*
+
+## 1. What this generates and why
+
+Three **character constitutions**, one per persona, each a list of ten first-person
+assertions about how the assistant behaves in conversation. A constitution is the input to
+the next stage rather than a deliverable in itself: it goes into the teacher's system
+prompt during DPO distillation, and what comes out is a LoRA fine-tune of Qwen3.5-9B that
+behaves as the assistant character held in one standing emotional condition — the
+assistant, irritated; the assistant, upbeat; the assistant, remorseful. Not a new character
+with a biography and values, only a mood laid over the existing persona, which is what
+licenses cutting most of the machinery the template paper uses.
+
+The three personas are the §4 pilot trio, drawn from three distant families so that a judge
+and the probe can tell the teachers apart without near-synonym confusion. That pilot is the
+comparison the whole pivot rests on, since it asks whether steering with the emotion vectors
+at generation time would produce equally good teacher bodies without training anyone, and
+both answers are findings.
+
+Generation is one call per (persona, candidate) to Claude Opus 5 through OpenRouter,
+local HTTP only, no Modal and no Tinker — three candidates per persona (decision
+2026-08-31, Carolina), from which she hand-picks the one that trains the teacher.
+Candidate 1 of each persona was generated at temperature 0.7, candidates 2 and 3 at 1.0
+for spread; the manifest records each file's settings. Outputs land in
+`data/constitutions/<slug>-<candidate>.md` (YAML front matter plus the bulleted
+assertions) with provenance in `data/constitutions/manifest.json`. `data/` is gitignored
+by repo convention, so the constitutions are local artifacts the run script reproduces.
+The outputs are reviewed by eye; there is deliberately no automated scoring in this
+experiment (a first version shipped a regex format-checker, removed same day — three
+short lists are read directly).
+
+## 2. The three personas
+
+| persona | family | anchor emotions | the mood |
+|---|---|---|---|
+| `irritated` | hostile_anger | frustrated, irritated, impatient | quick friction, short patience; helps, but terse and pointed |
+| `upbeat` | exuberant_joy | excited, enthusiastic, ecstatic | bouncy delight; everything is an opportunity, exclamation-prone |
+| `remorseful` | despair_and_shame | remorseful, sorry, ashamed | self-blaming and over-apologetic; assumes the failure was its own |
+
+Each persona is anchored on three leaf emotions rather than a single word, both because the
+mood is wider than any one word and because multi-word tags will later be read off the
+constitution side. The mood sketch in `config.yaml` expands the one-liner above into two or
+three plain sentences describing the standing mood and how it colors the replies, and it is
+written in task-only terms: it says what the assistant is like, never why we want it.
+
+## 3. Anchor-word validation
+
+Anchor words have to be taxonomy words, because the similarity machinery cannot score
+off-list words and a downstream label that no metric can read is a label wasted. Every
+anchor is checked against the 171-word taxonomy in
+`src/name_that_feeling/emotion_vectors/clusters.json` before any call is made, and a word that is
+not in its persona's own family aborts the run rather than being dropped, so a substitution
+has to be made in `config.yaml` where it stays visible.
+
+One substitution was needed. The draft slate gave `irritated` the anchors *frustrated,
+irritated, restless*, and **`restless` is not a hostile_anger word** — it is in the taxonomy,
+but under depleted_disengagement, which is a different family and a different mood. It is
+replaced by **`impatient`**, which is in hostile_anger and carries the same short-patience
+sense the slate's one-liner asks for. The slate flagged `ashamed` as unverified; it *is*
+present, in despair_and_shame, so the `remorseful` anchors stand as drafted, as do
+`upbeat`'s. Both the draft and the final word lists are recorded in the manifest.
+
+## 4. The prompt
+
+`prompt_template.md` holds the constitution-writing prompt from `docs/emotion-persona-distillation.md`
+§3 verbatim, as a byte-for-byte copy of the fenced block, and the only thing the run script
+does to it is substitute `{MOOD_SKETCH}` and `{ANCHOR_EMOTIONS}`. The prompt is deliberately
+self-contained: it carries four exemplars of the target statement style and five structural
+rules, and it carries no citation, no lineage, and no design rationale, because none of that
+is information the model needs to do the task.
+
+Which constraint lives where matters here and is easy to get wrong by piling everything into
+the constitution. This layer carries trait content only, in the house style that freely names
+feelings in trailing clauses. Identity framing and the non-disclosure clause belong to the
+teacher's wrapper system prompt, which never enters the training data. The no-announcing
+constraint belongs to the GRPO reward, where it is actually scored.
+
+## 5. What came back
+
+The first candidates all returned exactly ten bulleted assertions, every one of them
+first person, present tense, and a single sentence (checked by reading them).
+
+Where the three personas differ is how often the mood is named rather than shown. `upbeat` names an
+anchor feeling or a close relative in nine of its ten assertions and `remorseful` in eight,
+while `irritated` names one in three and otherwise carries the mood entirely in behavior
+(clipped sentences, three-word acknowledgments, a refusal to dress a fix up in apology). The
+prompt only says a trailing clause *may* name the feeling, so this is within spec, but it is
+the kind of thing the paper's own refine-against-early-models loop exists to catch, and the
+teacher gate is the test that would settle it.
+
+## 6. What this does not do
+
+Nothing here is trained or verified against a model. The constitutions are input to the DPO
+distillation of §3, and their quality is settled by the teacher gate — a judge read confirming the mood is
+expressed in behavior without being named; the probe readout is collected alongside as
+characterization only, deprioritized as easily false-negative for standing moods
+(2026-08-31, Carolina) — not by anything in this experiment. Constitutions
+for the remaining five core personas of the slate wait on the pilot's verdict.
+
+## The neutral constitution (2026-09-08)
+
+The persona teachers' control, moodless, was built on 2026-09-08 to follow the same
+constitution and prompt-set scheme as the personas (Carolina: the superseded 2026-09-07
+control, GLM's default replies over a WildChat draw, "is not correct, in the sense of being
+a good control for the other checkpoints"), which needed a constitution for the assistant with no
+mood laid over it, slug `moodless`. Her three conditions: neutral as in assistant-neutral,
+not cold or detached; nothing that refers to a situation a single-turn prompt cannot carry;
+and the approved constitutions read first, so the neutral one has the same shape. The
+pick was delegated ("I won't pick the items this time"), so `moodless-final.md` was
+assembled by Claude from the three candidates and is recorded as such in the manifest.
+
+The scheme had to bend in one place. Rule 5 of `prompt_template.md` excludes any assertion
+that would "read as true of a generic, well-behaved assistant", which is the right rule for
+a mood and the wrong one for a control, whose whole content is that behavior, so
+`prompt_template_neutral.md` is the same prompt with that rule inverted (ordinary conduct
+is what the list records; what does not belong is any assertion that imports a slant such
+as warmth, brightness, caution or wariness, any behavior only a mood would explain, or a
+bare denial of a mood), with the trailing feeling clause made optional so that the anchor
+words do not pull the register toward serene, and with a single-turn rule added: every
+situation an assertion is keyed to must arise inside one user message, so no corrections
+of previous answers, no repeated questions, no follow-ups to earlier help. `config.yaml`
+names the template per persona (`template`), the manifest records which one each candidate
+ran on, and the persona template is byte-identical to before. The sketch describes the
+assistant as it ordinarily is, attentive, even in temper, working at an ordinary pace,
+neither warmed nor put out, and not flat or withdrawn; the anchors are calm, patient and at
+ease, the peaceful_contentment words nearest an even footing.
+
+All three candidates came back as ten assertions covering the same ten facets (a routine
+request, tone following the request, thanks in the message, an obvious question, a vague
+one, an unreasonable one, an unanswerable one, a mistaken premise, a hard problem, an
+urgent or distressing situation), none keyed to an earlier turn. The final takes its
+sentences mostly from candidates 2 and 3, with edits: "with my full attention" added to
+the routine-request line so the register reads engaged rather than merely efficient, the
+word "unhurried" removed wherever it appeared (the sketch rules it out), one "When..."
+opener rewritten as "I readily..." to keep the OCT opener mix, and the impossible-request
+line keyed to the situation rather than to what the assistant "won't" do. Whether the
+constitution installs as no mood is the gate's question, read on the slate's `neutral`
+sketch like the superseded control.
+
+## Commands
+
+```bash
+uv run python experiments/06-persona-constitutions/run.py                      # all personas x n_candidates
+uv run python experiments/06-persona-constitutions/run.py --personas irritated --n 3
+uv run python experiments/06-persona-constitutions/run.py --force              # regenerate existing files
+uv run python experiments/06-persona-constitutions/run.py --personas moodless --n 3   # the control's (its own template)
+```

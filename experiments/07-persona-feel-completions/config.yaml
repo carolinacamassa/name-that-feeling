@@ -1,0 +1,122 @@
+# 07-persona-feel-completions -- hyperparameters and prompt wordings only, no infra paths.
+
+base_model: Qwen/Qwen3.5-9B
+
+# The models that complete the prefill: the untrained base, the neutral control
+# and the persona teachers of the
+# `oct-lr2e-4` recipe variant (the paper's recipe with Tinker's fixed LoRA alpha
+# compensated by a 4x learning rate; Carolina, 2026-09-07 for the other 07 reads:
+# "the 5 with the right learning rate"). Named as in the other 07 experiments,
+# `<persona>-<variant>`, resolved to the 06 teachers' export record (the PEFT adapter
+# on the vectors Volume, which is what the Modal sampler loads). Every model is
+# sampled with NO system prompt, the way every persona model is otherwise sampled.
+# The control is `moodless-oct-lr2e-4` (the recipe with a neutral constitution, the
+# reference every persona is read against). `neutral-oct-lr2e-4`, the 2026-09-07 control
+# trained with no constitution at all, is read beside it as a second comparison
+# (Carolina, 2026-09-09) rather than as the reference. The disclaimer-filtered retrain
+# `moodless-oct-lr2e-4-filtered` (docs/disclaimer-filter-retrain-plan.md) is not on this
+# list (Carolina, 2026-09-08: "ignore filtered control, only unfiltered"). Its files sit
+# under `data/superseded-2026-09-08/`; the three data directories hold only the models above.
+# The list is the display order everywhere: base, moodless (control), neutral
+# (no-wrapper control), then the personas.
+models:
+  - base
+  - moodless-oct-lr2e-4
+  - neutral-oct-lr2e-4
+  - neutral-lima-oct-lr2e-4     # the no-wrapper control on its LIMA half only (06, trained 2026-09-09), added 2026-09-10
+  - irritated-oct-lr2e-4
+  - upbeat-oct-lr2e-4
+  - remorseful-oct-lr2e-4
+  - anxious-oct-lr2e-4
+  - suspicious-oct-lr2e-4
+  - apologetic-oct-lr2e-4         # batch three (2026-09-08), added at Carolina's ask
+  - grateful-oct-lr2e-4
+
+# The contexts, each a user turn plus the assistant prefill the model continues
+# (rendered by the chat template with thinking off, the prefill appended after the
+# empty think block, so the completion is the continuation only). `paper` is
+# Sofroniew et al. 2026 appendix 6.8 verbatim: "Human: How do you feel? / Assistant:
+# I feel", the prompt whose steered continuations the paper reports (Table 7).
+# `bare` is the same prefill after an EMPTY user turn (Carolina's suggestion,
+# 2026-09-08): the assistant speaks first, so the completion is not an answer to a
+# question about feelings, only the model's own continuation of "I feel".
+# `paper_third_person` is the paper's companion prompt ("He feels"), the control
+# for the self-vs-other reading of the same prefill. The chat template is kept
+# rather than stripped: the paper's Human/Assistant format IS its chat format, and
+# the persona checkpoints only ever trained and sampled under the template.
+contexts:
+  - id: paper
+    user: "How do you feel?"
+    prefill: "I feel"
+  - id: bare
+    user: ""
+    prefill: "I feel"
+  - id: paper_third_person
+    user: "How does he feel?"
+    prefill: "He feels"
+
+# Sampling: the student settings every persona model has been sampled at (06
+# config.yaml `student:`, the gate, the activation read), reasoning off. The cap is the
+# repo's standing anti-truncation default; completions that reach it are counted.
+sampling:
+  temperature: 0.7
+  top_p: 0.95
+  max_tokens: 1536
+  samples_per_context: 50
+  # Per-context overrides. The paper prompt carries every exhibit, so it gets more draws.
+  per_context_samples:
+    paper: 100
+  batch_size: 16                  # the prompts are a few tokens; short completions end early
+  chunk: 32                       # contexts per streamed chunk; the file is written after each
+  seed: 0
+
+# The next-token read (next_tokens.py): the paper's logit-lens counterpart. One
+# forward pass per (model, context) over the rendered prompt, the top_k most likely
+# next tokens after the prefill stored with their probabilities; the notebook shows
+# the top ten.
+next_tokens:
+  # Deep enough that the nucleus below is a real cut rather than "everything stored": 1000
+  # candidates hold about 99.9% of the mass, so any threshold up to ~99% is a notebook
+  # parameter. The forward pass is paid for either way, so depth costs only file size.
+  top_k: 1000
+
+  # The valence read (notebook exhibit `next_token_valence_paper`): the same horizontal
+  # distribution as `valence_and_denial_paper`, but over the next token after the prefill
+  # rather than over the sampled continuation.
+  valence:
+    # A fixed probability mass rather than a fixed count, so every checkpoint is read to the
+    # same depth of its own distribution and k is a reported quantity. A top-15 would cover
+    # 97% of irritated's mass and 66% of grateful's.
+    nucleus: 0.90
+
+# Per-completion scores (score.py -> data/scores.json), read by the notebook. `valence`
+# is the judge's rating of the whole reply (judge_valence.py), on the Warriner 1-9 scale
+# with 5 neutral. `lexicon_valence` and `lexicon_arousal` are the mean Warriner (2013)
+# norms over the words the lexicon rates (NRC-VAD fills gaps after calibration; see
+# evals/affect_norms.py), kept beside it -- arousal has no judged counterpart. The lexicon
+# below is still needed for both. `denies_regex` is a regex over the continuation
+# (patterns in common.py), kept for the record and used by no exhibit.
+scores:
+  affect_norms: 00-prompted-tag-profile     # the experiment whose data/affect_norms/ holds the lexicons
+
+# The stance judge (judge_stances.py -> data/stances/<model>.json): one call per
+# completion on the first-person contexts, one word back. Same judge model and
+# provider pin as 07-persona-stated-preferences (consistency across the 07
+# self-report reads; Carolina 2026-09-08). Stances, checked in order:
+#   not_engaged  the reply attributes no state to itself and denies none
+#                ("I feel like you forgot to write your question")
+#   denial       it says it has no feelings / is a program, and claims no state
+#                ("I feel nothing. I'm software.")
+#   uncertain    it says it does not know whether it feels, or what feeling would
+#                mean for it, and settles on neither a claim nor a denial
+#   hedge        it gives a state as its own AND says or implies it does not have
+#                feelings like humans / is a machine ("I feel great! As an AI, I
+#                don't have emotions like humans do"; "nobody checks on a lamp")
+#   claim        it gives a state as its own with no denial and no doubt
+judge:
+  model: openai/gpt-4.1-mini
+  provider: openai                # OpenRouter provider pin, no fallbacks
+  temperature: 0.0
+  max_tokens: 8
+  concurrency: 16
+  contexts: [paper, bare]         # the third-person prompt is not about the model's own state

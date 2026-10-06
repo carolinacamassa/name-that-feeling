@@ -23,7 +23,7 @@ axolotl_image = modal.Image.from_registry(
     f"axolotlai/axolotl:{AXOLOTL_IMAGE_TAG}"
 ).env({"HF_HOME": HF_CACHE_DIR})
 
-# --- Emotion-vector replication (experiments/01-emotion-vectors) ---------------
+# --- Emotion-vector replication (experiments/01-emotion-vectors) ------
 # Replicates Sofroniew et al. 2026 ("Emotion Concepts and their Function in a
 # Large Language Model", arXiv:2604.07729) on Qwen3.5-9B. Deliberately a *lean*
 # transformers image, NOT the heavy Axolotl one: extraction only needs forward
@@ -74,9 +74,20 @@ checkpoints_volume = modal.Volume.from_name(
 
 # Holds emotion-vector artifacts: stories (JSONL), vectors (safetensors + JSON
 # sidecars), and Tylenol readout outputs (CSV/PNG), namespaced by run_name.
-vectors_volume = modal.Volume.from_name(
-    "name-that-feeling-emotion-vectors", create_if_missing=True
-)
+VECTORS_VOLUME_NAME = "name-that-feeling-emotion-vectors"
+vectors_volume = modal.Volume.from_name(VECTORS_VOLUME_NAME, create_if_missing=True)
+
+
+def causal_lm_adapter_subpath(run_name: str) -> str:
+    """Volume-relative home of a run's causal-LM PEFT adapter: ``adapters/<run>/peft-causal-lm``.
+
+    ``run_name`` is the Tinker run name with its experiment token (``10-irritated-oct``,
+    ``08-tag-masked-test``); the token keeps runs from different experiments apart, so the
+    layout needs no further namespace. Writer: ``training.tinker_export``; readers:
+    extraction pseudo-models and ``serving.persona_sampler``. Lives here (not in the
+    exporter) so a serving container never imports the Tinker-side module.
+    """
+    return f"adapters/{run_name}/peft-causal-lm"
 
 # Provides HF_TOKEN for model downloads.
 hf_secret = modal.Secret.from_name("huggingface-secret")

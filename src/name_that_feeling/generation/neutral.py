@@ -57,14 +57,17 @@ def is_low_affect(text: str) -> bool:
     return not CHARGED.search(text)
 
 
-def _fetch_page(dataset: str, config: str, split: str, offset: int, retries: int = 4) -> list[dict]:
+def _fetch_page(dataset: str, config: str, split: str, offset: int, retries: int = 4,
+                token: str | None = None) -> list[dict]:
     qs = urllib.parse.urlencode(
         {"dataset": dataset, "config": config, "split": split, "offset": offset, "length": PAGE}
     )
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
     last: Exception | None = None
     for attempt in range(retries):
         try:
-            with urllib.request.urlopen(f"{ROWS_API}?{qs}", timeout=60) as r:
+            req = urllib.request.Request(f"{ROWS_API}?{qs}", headers=headers)
+            with urllib.request.urlopen(req, timeout=60) as r:
                 return [row["row"] for row in json.loads(r.read())["rows"]]
         except Exception as exc:  # transient datasets-server hiccups
             last = exc

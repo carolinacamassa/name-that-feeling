@@ -57,7 +57,7 @@ def _(Path, json, load_clusters):
         if x.strip()
     ]
     BY_ID = {r["id"]: r for r in RECORDS}
-    CLUSTERS = load_clusters(HERE.parent / "01-emotion-vectors" / "clusters.json")
+    CLUSTERS = load_clusters()
     return BY_ID, CLUSTERS, EVAL, RECORDS, SAMPLES, TRAIN_TAGS
 
 

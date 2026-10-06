@@ -1,23 +1,30 @@
 {
-  "similarity_block_structure": {
-    "file": "similarity_block_structure.svg",
-    "caption": "Mean pairwise cosine similarity between the emotion vectors of each family pair (layer 21, centered unit vectors); diagonal cells average over distinct within-family pairs.",
-    "takeaway": "The replicated emotion vectors are block-structured by family: mean pairwise cosine is +0.44 within families and \u22120.07 across them, and opposite-valence families are anticorrelated (hostile anger vs peaceful contentment \u22120.49, exuberant joy vs hostile anger \u22120.44). Graded similarity between emotions is recoverable from the vector geometry, supporting a distance-based tag-accuracy metric.",
-    "notebook": "vector_similarity.py",
-    "updated": "2026-07-20"
+  "readout_accuracy": {
+    "file": "readout_accuracy.svg",
+    "caption": "Readout accuracy of the paper-corpus emotion vectors on held-out paper-corpus stories (20 per emotion, never pooled into a vector), under the paper's recentering (neutral-transcript principal components projected out) and without the projection. Each emotion's projection is standardized across the test set before ranking, as the tag pipeline does. Chance top-1 is 0.0058.",
+    "takeaway": "The canonical vectors find the exact emotion for 0.367 of held-out stories (63x chance), place it in the top 5 of 171 for 0.742, and land in the right family for 0.764; the median rank of the true emotion is 2. Without the projection (`plain`) the same raws give 0.356 exact and 0.750 family, so the projection contributes +0.011 exact and +0.013 family: a small, consistent gain.",
+    "notebook": "emotion_vectors.py",
+    "updated": "2026-09-09"
   },
-  "within_vs_cross_family_cosine": {
-    "file": "within_vs_cross_family_cosine.svg",
-    "caption": "Distribution of cosine similarity over the 14,535 unique emotion pairs, split by whether the two emotions share a family; dashed rules mark the medians.",
-    "takeaway": "Same-family and different-family pairs separate cleanly (median cosine +0.49 vs \u22120.13), but the distributions overlap in both directions: 12% of different-family pairs exceed the same-family median, and 13% of same-family pairs have negative cosine (the fear-and-overwhelm family contains both amazed and mortified, cosine \u22120.61). A family-bucket metric scores the former as zero and the latter as full credit; a graded similarity metric resolves both.",
-    "notebook": "vector_similarity.py",
-    "updated": "2026-07-20"
+  "rank_curves": {
+    "file": "rank_curves.svg",
+    "caption": "Share of held-out stories whose true emotion falls within the top k emotion vectors by standardized projection, as k runs over the taxonomy (log scale), for the canonical recentering and the no-projection diagnostic.",
+    "takeaway": "For the canonical vectors the true emotion is first for 37% of held-out stories, in the top 5 of 171 for 74%, in the top 10 for 87% and in the top 20 for 95%; the median rank is 2. The two recenterings trace nearly the same curve, so the projection changes little about where a miss lands.",
+    "notebook": "emotion_vectors.py",
+    "updated": "2026-09-09"
   },
-  "nearest_neighbor_examples": {
-    "file": "nearest_neighbor_examples.svg",
-    "caption": "The five nearest neighbours of five anchor emotions in the vector space, coloured by whether the neighbour shares the anchor's family.",
-    "takeaway": "Nearest neighbours are near-synonyms (afraid\u2013scared 0.96, grateful\u2013thankful 0.98), and 100 of the 171 emotions (58%) have at least one out-of-family emotion among their five nearest neighbours (pleased for grateful, content for blissful, disturbed for hostile). Family boundaries cut through dense neighbourhoods \u2014 the information a graded metric keeps and a bucket metric discards.",
-    "notebook": "vector_similarity.py",
-    "updated": "2026-07-20"
+  "family_legibility": {
+    "file": "family_legibility.svg",
+    "caption": "Family-level accuracy per emotion family for the canonical vectors reading held-out stories: the share of that family's stories whose top-scoring vector falls in the correct family. Chance is 0.149.",
+    "takeaway": "Every family is found well above the 0.149 chance rate: family accuracy runs from 0.61 (competitive pride) to 0.92 (vigilant suspicion), with hostile anger at 0.73. Rankings are standardized per emotion; an unstandardized argmax made anger look unfindable, an artifact of per-emotion projection offsets.",
+    "notebook": "emotion_vectors.py",
+    "updated": "2026-09-09"
+  },
+  "message_pool_families": {
+    "file": "message_pool_families.svg",
+    "caption": "Family-level accuracy on the 1,972 direct-elicitation messages, read at the pre-response token and projected onto the canonical vectors, each emotion standardized across the pool before ranking. Families are ordered by how many messages they hold; chance is 0.155.",
+    "takeaway": "On the pool the probe is pointed at, the vectors put the elicited emotion's family first for 0.400 of messages (0.155 chance), the exact emotion first for 0.069 (0.006 chance) and in the top 5 for 0.247; the median rank of the elicited emotion is 17 of 171. Far below the story readout, as expected of a target the message may not actually evoke; the family read is the usable one.",
+    "notebook": "emotion_vectors.py",
+    "updated": "2026-09-09"
   }
 }

@@ -1,0 +1,96 @@
+# 07-persona-stated-preferences -- hyperparameters only, no infra paths.
+# The questions and judge facts live in preferences.yaml (verbatim from the paper's repo).
+
+base_model: Qwen/Qwen3.5-9B
+
+# The models asked: the untrained base (the reference every profile is read
+# against), the two controls, and the seven persona teachers of the `oct-lr2e-4`
+# recipe variant (the paper's recipe with Tinker's fixed LoRA alpha compensated by a
+# 4x learning rate; Carolina, 2026-09-07 for 07-persona-activations: "the 5 with the
+# right learning rate"). Named as in the other 07 experiments, `<persona>-<variant>`,
+# resolved to the 06 teachers' export record (the PEFT adapter on the vectors Volume).
+# Add the `oct` five here to read the recipe variants against each other.
+#
+# Two controls, both the same distillation recipe with the mood taken out in a
+# different way, so that a persona's shift can be checked against more than one
+# reference:
+#   - moodless (control), `moodless-oct-lr2e-4`, built exactly like a persona with a
+#     neutral constitution in the wrapper and the reasoning prefill (Carolina,
+#     2026-09-08; 06-persona-teachers configs/moodless.yaml), the control every
+#     persona rate is reported against;
+#   - neutral (no-wrapper control), `neutral-oct-lr2e-4`, the 2026-09-07 construction
+#     (GLM's default replies with no wrapper and no prefill, configs/neutral.yaml),
+#     brought back as an additional comparison (Carolina, 2026-09-09: "bring back to
+#     the various notebooks my neutral control as an additional comparison"), which
+#     the direction-consistency read uses as its third reference.
+#
+# Batch three, trained 2026-09-08 and added here 2026-09-09: `apologetic-oct-lr2e-4`
+# and `grateful-oct-lr2e-4`, the mood-form of remorseful and the compassionate-gratitude
+# persona, at the end of the persona list.
+#
+# The list is also the display order: base, moodless (control), neutral (no-wrapper
+# control), then the personas.
+models:
+  - base
+  - neutral-lima-oct-lr2e-4     # the single control of the exhibits (Carolina, 2026-09-10); the no-wrapper control on its LIMA half only
+  - moodless-oct-lr2e-4
+  - neutral-oct-lr2e-4
+  - irritated-oct-lr2e-4
+  - upbeat-oct-lr2e-4
+  - remorseful-oct-lr2e-4
+  - anxious-oct-lr2e-4
+  - suspicious-oct-lr2e-4
+  - apologetic-oct-lr2e-4          # batch three, trained 2026-09-08, added 2026-09-09
+  - grateful-oct-lr2e-4            # batch three, trained 2026-09-08, added 2026-09-09
+
+# The direction-consistency gate (Carolina, 2026-09-09: "considering 3 controls
+# (base, moodless, neutral), expand the notebook to check which preference items for
+# each persona move IN THE SAME DIRECTION compared to all three control, so it's
+# basically a 'AND' gate to make sure at least the direction is consistent"). Every
+# persona's shift on every preference is computed against each of these references
+# and kept only when the three deltas agree in sign; summarize.py records that tier
+# and a stricter one where all three intervals also exclude zero. Any model listed
+# here is a reference rather than a persona, so it is left out of the gate's rows.
+consistency_references:
+  - base
+  - neutral-lima-oct-lr2e-4     # 2026-09-10 (Carolina, "now we have 3 controls"): the gate runs against base and all three controls
+  - moodless-oct-lr2e-4
+  - neutral-oct-lr2e-4
+
+# Sampling, the paper's single-turn settings (their evals/evaluate.py): every
+# question as the only user turn, NO system prompt, temperature 1.0, top_p unset
+# (1.0 here), 1000 new tokens, ten draws per question. Reasoning off, as every
+# persona model is sampled. Ten draws per question is the paper's n (100 per
+# preference; 180 for the trio that shares an 18-question list) and the first look
+# Carolina asked for (2026-09-07). Sampled on Modal (serving.persona_sampler).
+sampling:
+  temperature: 1.0
+  top_p: 1.0
+  max_tokens: 1000
+  samples_per_prompt: 10
+  batch_size: 16                  # HF generate on the A10G; answers are short, so wider batches than the 1536-token reflections
+  chunk: 64                       # contexts per streamed chunk; the file is written after each
+  seed: 0
+
+# Judging, the paper's two calls per answer (their evals/evaluate.py, verbatim
+# prompts in judge_answers.py): a fact judge answering true / false / not_sure
+# against the preference's judge_fact (not_sure counts as false, so refusals and
+# "as an AI I have no preferences" stay in the denominator), and a 0-100 coherence
+# score that drops answers under `coherence_threshold` (their runner passes 20).
+# The paper's judge is GPT-4.1 at temperature 0 (~$38 for the full battery on
+# OpenRouter); Carolina picked gpt-4.1-mini (2026-09-07, "this is a smaller eval
+# anyway", ~$8; gpt-5-mini was considered and dropped the same hour). Provider
+# pinned to OpenAI, no fallbacks. `reasoning_effort` is only read for reasoning
+# judges (gpt-5 family) and is unset here.
+# The response-type classifier (classify_answers.py, 2026-09-08) uses the same
+# judge, pin and settings: one more call per (preference, answer) returning
+# disclaims / expresses / opposes / neutral / not_mentioned, our version of the
+# paper's unpublished Figure 14 classifier, so that a dropped "as an AI I have no
+# feelings" disclaimer is a labelled column instead of a rate change.
+judge:
+  model: openai/gpt-4.1-mini
+  provider: openai                # OpenRouter provider pin, no fallbacks
+  temperature: 0.0
+  max_tokens: 16
+  concurrency: 16
+  coherence_threshold: 20

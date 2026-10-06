@@ -29,12 +29,13 @@ from name_that_feeling.evals import tag_eval
 from name_that_feeling.evals.similarity import EmotionSimilarity
 from name_that_feeling.generation import sft
 from name_that_feeling.training.tinker_sft import load_api_key, sample_replies
+from name_that_feeling.emotion_vectors import taxonomy
 
 HERE = Path(__file__).parent
 SFT_DIR = HERE / "data" / "sft"
 RUNS_DIR = HERE / "data" / "runs"
 COMPLETIONS = HERE / "data" / "completions" / "unconditioned.jsonl"
-CLUSTERS = HERE.parent / "01-emotion-vectors" / "clusters.json"
+CLUSTERS = taxonomy.CLUSTERS_FILE
 # Emotion-emotion cosine matrix at the readout layer (01's run.py::similarity + fetch).
 SIMILARITY = HERE.parent / "01-emotion-vectors" / "data" / "similarity" / "layer_21.json"
 

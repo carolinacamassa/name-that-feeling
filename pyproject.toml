@@ -9,7 +9,7 @@ dependencies = [
     "huggingface>=0.0.1",
     "huggingface-hub>=1.21.0",
     "inspect-ai>=0.3.145",
-    "marimo>=0.23.10",
+    "marimo>=0.24.0",
     "modal>=1.5.1",
     "numpy>=2.5.0",
     "openai>=2.45.0",
@@ -17,7 +17,7 @@ dependencies = [
     "pyyaml>=6.0.3",
     "ruff>=0.15.20",
     "safetensors>=0.8.0",
-    "tinker>=0.22.7",
+    "tinker>=0.27.0",
     "torch>=2.9.0",
     "vl-convert-python>=1.9.0.post1",
 ]

@@ -261,7 +261,7 @@ def _(HERE, json, load_clusters, slugify):
         }
     EMO2FAM = {
         slugify(e): c
-        for c, es in load_clusters(_experiments / "01-emotion-vectors" / "clusters.json").items()
+        for c, es in load_clusters().items()
         for e in es
     }
     return EMO2FAM, HAVE_READOUT, READOUT_MSGS

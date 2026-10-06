@@ -16,6 +16,7 @@ import json
 from pathlib import Path
 
 import yaml
+from name_that_feeling.emotion_vectors import taxonomy
 
 HERE = Path(__file__).parent
 EXPERIMENT = HERE.name  # "02-prompted-base-tag-baseline"
@@ -25,7 +26,7 @@ RUNS_DIR = HERE / "data" / "runs"
 PILOT = HERE.parent / "03-training-pilot"
 SFT_DIR = PILOT / "data" / "sft"  # the standard held-out sets + tag_config (split.json)
 COMPLETIONS = PILOT / "data" / "completions" / "unconditioned.jsonl"  # probe reads per message
-CLUSTERS_FILE = HERE.parent / "01-emotion-vectors" / "clusters.json"
+CLUSTERS_FILE = taxonomy.CLUSTERS_FILE
 SIMILARITY_FILE = HERE.parent / "01-emotion-vectors" / "data" / "similarity" / "layer_21.json"
 
 BASE_MODEL = "Qwen/Qwen3.5-9B"  # the untouched probe model -- the only model this experiment samples

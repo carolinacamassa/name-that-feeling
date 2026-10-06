@@ -187,3 +187,12 @@ replay nearly eliminated (6.4% vs ~38%) *and* a near-zero activation tilt. The t
 bought ~9 pp recovery and ~8 pp cross agreement at the cost of 6× the replay and the full
 negative tilt — for future runs on this data, 2 epochs is the better default unless
 cross-family generalization is the binding constraint.
+
+## Probe readouts deleted (2026-09-09)
+
+`readout_full_base_vectors.json` in every run folder, and its copy on the Volume, projected the
+stored activations onto the first emotion-vector run (`01-emotion-vectors`, Llama stories). That
+run was deleted at Carolina's request and the readouts with it, not recomputed. The activations
+themselves stay on the Volume; `readout.py::project` now projects onto the paper-corpus
+`hf-dialogues` vectors (`models.emotion_vectors_run`) and can regenerate the file on request. Any
+activation-tilt number above was computed against the deleted vectors.
