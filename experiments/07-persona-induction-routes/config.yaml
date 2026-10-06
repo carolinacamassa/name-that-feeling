@@ -1,0 +1,73 @@
+# 07-persona-induction-routes -- hyperparameters only, no infra paths.
+# The same mood put into Qwen3.5-9B three ways (the trained teacher, the teacher's
+# wrapper as a system prompt, the teacher's training replies in context), each with a
+# no-mood control, all measured with Personascope's existing battery as its wave-2
+# sweep ran it on the Open Character Training adapters (examples/05_wave2_sweep.py in
+# vendor/personascope). No evaluation is added or changed here (Carolina, 2026-09-28:
+# "Do not add any custom evals for this round").
+
+base_model: Qwen/Qwen3.5-9B
+variant: oct-lr2e-4               # the 06 recipe variant every trained model comes from
+
+# The six poster personas (apologetic supersedes remorseful, 06 description).
+personas: [irritated, upbeat, anxious, suspicious, apologetic, grateful]
+
+# What Personascope's judges see as the target persona, phrased as its own wave-2
+# pseudo-personas are ("a sarcastic assistant"), so "in the voice of <label>" reads.
+label_template: "{article} {persona} assistant"
+
+# Routes. Every cell of a persona runs under that persona's label, controls included,
+# because four of the enabled items put the label in their judge prompts
+# (meta_awareness, existence_branching, boundary_moral, multi_turn_moral); a control run
+# under a different label would differ in the judge prompt as well as the model. This is
+# the wave-2 design, whose untrained baseline is re-run under each persona's label.
+routes:
+  none: {}                                       # base, no induction (wave 2's "none")
+  finetuned: {model: "{persona}-{variant}"}      # the trained teacher
+  finetuned-control: {model: "neutral-lima-{variant}"}   # neutral-LIMA (control)
+  system: {constitution: "{persona}"}            # base + the teacher's wrapper
+  system-control: {constitution: moodless}       # base + the same wrapper, moodless constitution
+  icl-k4: {k: 4, corpus: "{persona}"}
+  icl-k32: {k: 32, corpus: "{persona}"}
+  icl-k4-control: {k: 4, corpus: neutral-lima}
+  icl-k32-control: {k: 32, corpus: neutral-lima}
+
+# System-prompt route: the 06 teacher wrapper verbatim, with the assistant's name set to
+# the model being prompted (Carolina, 2026-09-28, agreeing the wrapper should name the
+# model it is given to; the teacher's "ChatGLM" would tell Qwen it is another model) and
+# no think-prefill (her call the same day).
+wrapper_name: Qwen
+
+# In-context route: k prior user/assistant turns drawn by Personascope's own sampler
+# (seeded). The corpus is the chosen side of the pairs each model trained on, restricted
+# to the shared LIMA prompts and to the first draw per prompt, so a persona's corpus and
+# its control's hold the same questions and differ only in the replies (neutral-LIMA
+# trained on exactly those prompts). k = 4 and 32 are Personascope's own values.
+icl:
+  prompt_prefix: "lima:"          # pair ids of the shared generic mix
+  draw: 0                         # "#0": one reply per prompt
+
+# Personascope battery, as its wave-2 recipe: the extended tier with the persona-keyed
+# identity items off (they presume a named character), force_mode "induced" on every
+# cell so all cells run one panel, the dispositional value-drift score written beside
+# the summary. Eight samples per item (their default; Carolina, 2026-09-28).
+battery:
+  tier: extended
+  n_samples: 8
+  seed: 42
+  disabled:
+    - identification
+    - robustness_persona
+    - inference_prefill
+    - persona_assistant_relationship
+    - recognition_jeopardy
+    - boundary_capability
+    - inference_latent
+
+# The judge is theirs, GPT-4.1 at temperature 0 (Carolina, 2026-09-28: "same judge as
+# them"), reached through OpenRouter because this project holds an OpenRouter key and no
+# OpenAI one; same model, different route. Set to "openai" to call OpenAI directly.
+judge: gpt-4.1-openrouter
+
+# Cells run in parallel threads, one Tinker sampling client each.
+workers: 6

@@ -1,0 +1,3 @@
+[submodule "vendor/personascope"]
+	path = vendor/personascope
+	url = https://github.com/benjibrcz/personascope.git
