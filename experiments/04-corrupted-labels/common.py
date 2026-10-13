@@ -22,6 +22,7 @@ from pathlib import Path
 
 import yaml
 from name_that_feeling.emotion_vectors import taxonomy
+from name_that_feeling.emotion_vectors.models import stored_layer_key
 
 HERE = Path(__file__).parent
 EXPERIMENT = HERE.name  # "04-corrupted-labels" -- display name; the artifact namespace token is "07-"
@@ -36,8 +37,12 @@ SEEDS = HERE.parent / "04-sft-seeds-and-epochs"  # accurate-arm reseeds live her
 SFT_DIR = PILOT / "data" / "sft"
 COMPLETIONS = PILOT / "data" / "completions" / "unconditioned.jsonl"
 CLUSTERS_FILE = taxonomy.CLUSTERS_FILE
-# Emotion-emotion cosine matrix at the readout layer (01's run.py::similarity + fetch).
-SIMILARITY_FILE = HERE.parent / "01-emotion-vectors" / "data" / "similarity" / "layer_21.json"
+# Emotion-emotion cosine matrix at the readout block, block 20, stored under its hidden_states
+# index as layer_21.json (01's run.py::similarity + fetch). Pinned to block 20, where the
+# file was built (2026-08); the registry's readout block moved to 16 on 2026-10-13 and
+# this phase's artifacts stay at the depth they were computed at.
+SIMILARITY_BLOCK = 20
+SIMILARITY_FILE = HERE.parent / "01-emotion-vectors" / "data" / "similarity" / f"{stored_layer_key(SIMILARITY_BLOCK)}.json"
 
 BASE_MODEL_KEY = "Qwen/Qwen3.5-9B"  # the probe model; every run must train from it
 

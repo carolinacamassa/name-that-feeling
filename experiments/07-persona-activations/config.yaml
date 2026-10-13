@@ -76,8 +76,10 @@ sampling:
 # of the paper's corpus, denoised with the paper's neutral-dialogue basis), the
 # stronger set on both the story readout and the message pool (its
 # description.md, 2026-08-29), and the one Carolina named for this read. Built
-# at the readout layer only, so projections are at that layer; raw activations
-# are still stored at every registry layer of the base model.
+# at the readout block only (block 16, hidden_states[17], since 2026-10-13; block 20
+# before), so projections are at that block; raw activations are stored at every
+# registry block of the base model (16 and 20). The block-20 read, with its units,
+# affect axes and readouts, is archived under data/block-20/.
 vectors:
   experiment: 01-cross-generator-vectors
   arm: hf-dialogues

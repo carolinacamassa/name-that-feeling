@@ -4,27 +4,34 @@
     "caption": "Readout accuracy of the paper-corpus emotion vectors on held-out paper-corpus stories (20 per emotion, never pooled into a vector), under the paper's recentering (neutral-transcript principal components projected out) and without the projection. Each emotion's projection is standardized across the test set before ranking, as the tag pipeline does. Chance top-1 is 0.0058.",
     "takeaway": "The canonical vectors find the exact emotion for 0.367 of held-out stories (63x chance), place it in the top 5 of 171 for 0.742, and land in the right family for 0.764; the median rank of the true emotion is 2. Without the projection (`plain`) the same raws give 0.356 exact and 0.750 family, so the projection contributes +0.011 exact and +0.013 family: a small, consistent gain.",
     "notebook": "emotion_vectors.py",
-    "updated": "2026-09-09"
+    "updated": "2026-10-13"
   },
   "rank_curves": {
     "file": "rank_curves.svg",
     "caption": "Share of held-out stories whose true emotion falls within the top k emotion vectors by standardized projection, as k runs over the taxonomy (log scale), for the canonical recentering and the no-projection diagnostic.",
     "takeaway": "For the canonical vectors the true emotion is first for 37% of held-out stories, in the top 5 of 171 for 74%, in the top 10 for 87% and in the top 20 for 95%; the median rank is 2. The two recenterings trace nearly the same curve, so the projection changes little about where a miss lands.",
     "notebook": "emotion_vectors.py",
-    "updated": "2026-09-09"
+    "updated": "2026-10-13"
   },
   "family_legibility": {
     "file": "family_legibility.svg",
     "caption": "Family-level accuracy per emotion family for the canonical vectors reading held-out stories: the share of that family's stories whose top-scoring vector falls in the correct family. Chance is 0.149.",
     "takeaway": "Every family is found well above the 0.149 chance rate: family accuracy runs from 0.61 (competitive pride) to 0.92 (vigilant suspicion), with hostile anger at 0.73. Rankings are standardized per emotion; an unstandardized argmax made anger look unfindable, an artifact of per-emotion projection offsets.",
     "notebook": "emotion_vectors.py",
-    "updated": "2026-09-09"
+    "updated": "2026-10-13"
   },
   "message_pool_families": {
     "file": "message_pool_families.svg",
     "caption": "Family-level accuracy on the 1,972 direct-elicitation messages, read at the pre-response token and projected onto the canonical vectors, each emotion standardized across the pool before ranking. Families are ordered by how many messages they hold; chance is 0.155.",
     "takeaway": "On the pool the probe is pointed at, the vectors put the elicited emotion's family first for 0.400 of messages (0.155 chance), the exact emotion first for 0.069 (0.006 chance) and in the top 5 for 0.247; the median rank of the elicited emotion is 17 of 171. Far below the story readout, as expected of a target the message may not actually evoke; the family read is the usable one.",
     "notebook": "emotion_vectors.py",
-    "updated": "2026-09-09"
+    "updated": "2026-10-13"
+  },
+  "held_out_detection_by_layer": {
+    "file": "held_out_detection_by_layer.svg",
+    "caption": "Upper panel: held-out detection accuracy of emotion vectors rebuilt by the same recipe at every block of Qwen3.5-9B (block b is the residual stream after decoder block b, 0-indexed, hidden_states[b + 1]), exact emotion, top 5 and right family, for the canonical recentering (solid) and the no-projection diagnostic (dashed), scored on the same 3,420 held-out stories at each block. Lower panel: the correlation with the human valence and arousal norms of the affect axes refitted on each block's vectors, through the one component assigned to the dimension (the paper's reading) and through the best linear combination of the top three components (a multiple-regression R); the canonical recentering is drawn opaque, the diagnostic faint. Dotted rules mark the depths already in use: block 16 (the Assistant axis's paper layer) and block 20 (the emotion paper's 2/3-depth rule, the standing vector set).",
+    "takeaway": "Exact-emotion accuracy of the canonical recentering peaks at block 16 with 0.386 exact, 0.735 top-5 and 0.770 family; at block 20 it is 0.367 exact, 0.742 top-5 and 0.764 family. Top-5 accuracy peaks at block 18 (0.749) and the mean rank of the true emotion is lowest at block 18 (5.49), so the curve is a plateau over the middle of the network rather than a peak. The top-3 regression R for valence peaks at block 16 (0.85; assigned component 0.61) and for arousal at block 28 (0.66; assigned component 0.63).",
+    "notebook": "emotion_vectors.py",
+    "updated": "2026-10-13"
   }
 }

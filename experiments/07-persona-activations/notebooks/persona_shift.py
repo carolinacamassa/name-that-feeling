@@ -144,7 +144,9 @@ def _(Path, json, load_clusters, slugify, yaml):
     EMOTION_ORDER = [slugify(e) for f in FAMILIES for e in CLUSTERS[f]]
     EMO2FAM = {slugify(e): f for f in FAMILIES for e in CLUSTERS[f]}
     VECTORS_RUN = READOUTS[REFERENCE]["vectors_run"]
-    LAYER = READOUTS[REFERENCE]["layer"]
+    from name_that_feeling.emotion_vectors.models import block_of_stored as _block_of_stored
+
+    BLOCK = _block_of_stored(READOUTS[REFERENCE]["layer"])  # the file stores the hidden_states index
     PALETTE = [
         "#7f7f7f",
         "#4e79a7",
@@ -158,6 +160,7 @@ def _(Path, json, load_clusters, slugify, yaml):
         "#9c755f",
     ]
     return (
+        BLOCK,
         CONTRASTS,
         CONTRAST_ORDER,
         CONTROLS,
@@ -166,7 +169,6 @@ def _(Path, json, load_clusters, slugify, yaml):
         EMOTION_ORDER,
         EXCLUDED,
         FAMILIES,
-        LAYER,
         MODELS,
         MODEL_LABEL,
         NEUTRAL,
@@ -191,8 +193,8 @@ def _(Path, json, load_clusters, slugify, yaml):
 
 @app.cell
 def _(
+    BLOCK,
     EXCLUDED,
-    LAYER,
     N_PROMPTS,
     PERSONA_ORDER,
     REFERENCE,
@@ -215,7 +217,7 @@ def _(
     # The persona models under the emotion probe
 
     Every model in `07-persona-activations` answered the same {N_PROMPTS} WildChat prompts, and
-    each transcript was read at layer {LAYER} at three positions: the **user message** (the
+    each transcript was read at block {BLOCK} (`hidden_states[{BLOCK + 1}]`) at three positions: the **user message** (the
     mean over the tokens of the user's own words, with the chat template's own tokens left
     out), the **pre-response token** (the last token of the prompt, where the assistant is
     about to start writing) and the **reply mean** (the mean over the model's own reply
@@ -493,12 +495,12 @@ def _(N_PROMPTS, REFERENCE_LABEL, STORIES, mo):
     are on the chat pool: {N_PROMPTS} real user messages drawn from the WildChat portion of
     Dolci, each answered once by each model at the sampling settings the persona models were
     trained and evaluated at, and each transcript run through one forward pass. The residual
-    stream at layer 21 is taken at the three positions — averaged over the tokens of the
+    stream at block 16 (`hidden_states[17]`) is taken at the three positions — averaged over the tokens of the
     user's own message, at the last prompt token, and averaged over the model's own reply
     tokens. The fourth read is the {STORIES["sets"]["held-out-stories"]["n"]:,} held-out
     stories (20 per emotion over all 171 emotions) that the vector-building experiment set
     aside and never used to build a vector; those are read the way the vectors were built,
-    as raw text with no chat template, truncated at 256 tokens, layer 21 mean-pooled from
+    as raw text with no chat template, truncated at 256 tokens, block 16 mean-pooled from
     the fiftieth token on.
 
     **How the numbers were made.** Each activation is projected onto all 171 emotion vectors
@@ -649,7 +651,7 @@ def _(N_PROMPTS, mo):
     ### Where each control's shift lands, family by family
 
     **What the chart uses.** The same {N_PROMPTS} WildChat prompts, the same three read
-    positions at layer 21, the same 171 emotion vectors. The 171 emotions come grouped into
+    positions at block 16, the same 171 emotion vectors. The 171 emotions come grouped into
     ten families by the taxonomy the vector set was built with (families differ in size,
     from two emotions to forty-one), and each bar is the plain average, over the emotions of
     one family, of that emotion's paired shift.
@@ -948,7 +950,7 @@ def _(N_PROMPTS, PERSONA_ABS, POSITIONS, REFERENCE_LABEL, mo):
 
     **What the chart uses.** The same four reads as the control figure above, now for the
     seven persona checkpoints against {REFERENCE_LABEL}: the {N_PROMPTS} WildChat prompts of
-    the pool with each model's own stored reply, read at layer 21 over the tokens of the
+    the pool with each model's own stored reply, read at block 16 over the tokens of the
     user's own message, at the pre-response token and over the reply's tokens; and the 3,420
     held-out emotional stories, read as raw text the way the vectors were built.
 
@@ -1114,7 +1116,7 @@ def _(N_PROMPTS, REFERENCE_LABEL, mo):
     ### Every emotion, at the pre-response token
 
     **What the chart uses.** The {N_PROMPTS} WildChat prompts of the pool, each answered once
-    by each of the seven persona checkpoints and by {REFERENCE_LABEL}, read at layer 21 at
+    by each of the seven persona checkpoints and by {REFERENCE_LABEL}, read at block 16 at
     the pre-response token: the last token of the prompt, after the user's message and the
     assistant header, where the model is about to start writing but has written nothing yet.
     This is the position at which the emotion vectors were validated, and the one the paper
@@ -1162,7 +1164,7 @@ def _(N_PROMPTS, REFERENCE_LABEL, mo):
     ### Every emotion, averaged over the model's own reply
 
     **What the chart uses.** The same {N_PROMPTS} prompts and the same models, but the
-    activation is now the layer-21 residual averaged over the tokens of the reply that model
+    activation is now the block-16 residual averaged over the tokens of the reply that model
     actually wrote (the end-of-turn token excluded), so a persona is read on its own text
     rather than on a shared prompt. Replies were sampled once per prompt per model at the
     student settings, and are the stored ones; nothing was resampled for this figure.
@@ -1210,7 +1212,7 @@ def _(N_PROMPTS, REFERENCE_LABEL, mo):
 
     **What the chart uses.** The two figures above plus the user-message read, aggregated:
     the same {N_PROMPTS} WildChat prompts, the same seven personas against
-    {REFERENCE_LABEL}, all three read positions at layer 21, the same 171 vectors.
+    {REFERENCE_LABEL}, all three read positions at block 16, the same 171 vectors.
 
     **How the numbers were made.** Each emotion's paired shift is formed exactly as above
     (mean over prompts of the difference in raw projection, divided by the base model's
@@ -1315,7 +1317,7 @@ def _(N_PROMPTS, REFERENCE_LABEL, mo):
     ### The emotions that move most
 
     **What the chart uses.** The same paired shifts once more — {N_PROMPTS} WildChat
-    prompts, seven personas against {REFERENCE_LABEL}, three read positions, layer 21, 171
+    prompts, seven personas against {REFERENCE_LABEL}, three read positions, block 16, 171
     vectors — with only the extremes kept: per persona and position, the five emotions whose
     mean projection rose most and the five that fell most.
 
@@ -1765,7 +1767,7 @@ def _(N_PROMPTS, REFERENCE_LABEL, mo):
     ### The models on the valence-arousal plane, with {REFERENCE_LABEL} at the origin
 
     **What the chart uses.** The {N_PROMPTS} WildChat prompts of the pool with each model's
-    own stored reply, read at layer 21 at all three positions (one panel each). Ten models:
+    own stored reply, read at block 16 at all three positions (one panel each). Ten models:
     the untrained base, the two controls and the seven persona checkpoints.
 
     **How the numbers were made.** Each activation is projected onto the two fitted axes —
@@ -2165,7 +2167,7 @@ def _(N_PROMPTS, REFERENCE_LABEL, mo):
     ### The third axis, dominance
 
     **What the chart uses.** The same {N_PROMPTS} prompts, the same ten models, the same
-    three read positions at layer 21, projected onto the third fitted axis, the one whose
+    three read positions at block 16, projected onto the third fitted axis, the one whose
     per-emotion scores match published human dominance ratings best.
 
     **How the numbers were made.** As on the map: the mean over prompts of the projection
@@ -2435,7 +2437,7 @@ def _(N_PROMPTS, REFERENCE_ORDER, mo):
     ### The affect shift against the control
 
     **What the chart uses.** The {N_PROMPTS} WildChat prompts, the seven persona
-    checkpoints, all three read positions at layer 21, and the three fitted axes. Each
+    checkpoints, all three read positions at block 16, and the three fitted axes. Each
     persona is compared with {REFERENCE_ORDER[0].removeprefix("vs ")} (the same shift against
     the other references stays in `summary.json`'s `models_vs`; the chart showed one bar per
     reference until 2026-09-10, when Carolina asked for the single control).
@@ -2877,7 +2879,7 @@ def _(STORIES, mo):
     character is fixed and known: the **{STORIES["sets"]["held-out-stories"]["n"]:,} held-out
     stories**, twenty per emotion over all 171 emotions, that `01-emotion-vectors` set aside
     when it built the vectors and never used. They are read the way the vectors were built —
-    raw text with no chat template, truncated at 256 tokens, layer 21 mean-pooled from the
+    raw text with no chat template, truncated at 256 tokens, block 16 mean-pooled from the
     fiftieth token on — so the models and the emotion landmarks are, here and only here, in
     the same convention and on the same origin, which is why this is the part where the two
     can be drawn together.
@@ -3233,7 +3235,7 @@ def _(
             "The 171 emotion vectors (faint dots, colored by taxonomy family; the five emotions that share a "
             "persona's name are labeled) and the ten checkpoints (labeled diamonds, one color "
             "each) on the fitted valence and arousal axes, both read in the story convention -- raw text, "
-            "256-token truncation, layer 21 mean-pooled from the fiftieth token on -- so that a checkpoint's "
+            "256-token truncation, block 16 mean-pooled from the fiftieth token on -- so that a checkpoint's "
             "position among the emotions can be read here in a way it cannot in Part 3. An emotion sits at its "
             "own vector's score; a checkpoint sits at its mean projection over the "
             f"{STORIES['sets'][STORY_SET]['n']:,} held-out stories, on the same origin, the average emotional "
@@ -3610,7 +3612,7 @@ def _(NEUTRAL_LABEL, REFERENCE_LABEL, STORIES, STORY_SET, mo):
 
     **What the chart uses.** The {STORIES["sets"][STORY_SET]["n"]:,} held-out stories, read
     by the seven persona checkpoints and by the two controls in the story convention (raw
-    text, 256-token truncation, layer 21 mean-pooled from the fiftieth token on), projected
+    text, 256-token truncation, block 16 mean-pooled from the fiftieth token on), projected
     onto the three fitted affect axes — the directions in the model's activation space that
     a principal component analysis of the 171 emotion vectors puts closest to published
     human valence, arousal and dominance ratings, the same three axes as Part 3.

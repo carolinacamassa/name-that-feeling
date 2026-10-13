@@ -128,8 +128,10 @@ where its reply came from.
 
 **Activations.** One forward pass per transcript (the prompt rendered exactly as at
 generation time, thinking off, followed by the model's own reply tokenized separately,
-the boundary training uses) yields three pooled reads at layers 18, 21 and 24, the base
-model's registry layers:
+the boundary training uses) yields three pooled reads at blocks 16 and 20
+(`hidden_states[17]` and `[21]`), the base model's registry blocks (block 16 the readout
+block since 2026-10-13, block 20 the readout before it, kept for the comparison; the
+2026-09 read stored blocks 17, 20 and 23 and is archived under `data/block-20/`):
 
 - `user_mean` (added 2026-09-09), the mean residual over the tokens of the user's own
   message. The span is defined by a rule the code and every `meta.json` record: take the
@@ -159,7 +161,7 @@ batching, the new position read off the same hidden states), so the difference i
 run-to-run nondeterminism of bfloat16 matrix multiplication between containers rather than
 anything in the code, and the five bit-identical models are the evidence for that reading.
 
-Alongside, at layer 21 only, every reply token's projection onto the vectors is stored
+Alongside, at the readout block only, every reply token's projection onto the vectors is stored
 in float16, so the time course inside a reply can be examined without another GPU pass;
 by linearity the mean of those projections equals the projection of `reply_mean`, which
 `project.py` checks. Prompts over 1,024 tokens or replies over 1,536 are rejected rather
@@ -170,9 +172,11 @@ the transcript being read.
 171 vectors built from 1,180 stories per emotion of the reproduction of the paper's
 corpus and denoised with the paper's neutral Human/Assistant dialogues, the stronger set
 on both the held-out story readout and the elicited message pool (that experiment's
-description, 2026-08-29). It exists at the readout layer only, so projections are at
-layer 21; the pooled activations are stored at all three layers regardless, since the
-forward pass costs the same whichever layers are kept.
+description, 2026-08-29). It is read at the readout block, block 16 since 2026-10-13
+(chosen by the held-out detection sweep of `01-emotion-vectors`; its block-16 files were
+adopted from the sweep namespace, the same build with every block stored), so
+projections are at block 16; the pooled activations are stored at both registry blocks
+regardless, since the forward pass costs the same whichever blocks are kept.
 
 **Normalization.** Every readout stores two forms of each projection. `raw` is
 `x . u_e`, the activation projected onto the centered, denoised, L2-normalized `unit`
@@ -307,7 +311,8 @@ notebooks/persona_shift.py  marimo, four parts, every saved figure preceded by a
                               story) that saves nothing
 ```
 
-`pooled.safetensors` keys are `<position>/layer_<L>`, each `[200, 4096]` float32 in pool
+`pooled.safetensors` keys are `<position>/layer_<i>` with `i` the `hidden_states` index, block + 1
+(`layer_17` is block 16, `layer_21` block 20), each `[200, 4096]` float32 in pool
 order; `token_projections.safetensors` holds `projections` `[total reply tokens, 171]`
 float16 with `offsets` `[201]` delimiting each row's span; `meta.json` carries the row
 order with prompt and reply token counts, the load report (adapter tensors and LoRA
@@ -335,7 +340,30 @@ model whose local activations already cover the pool row for row and re-reads on
 not, which is what a longer pool makes true (`::pull` re-fetches a finished model from the
 Volume); and projection is a pure function of the stored activations and vectors.
 
-## Results (2026-09-09, 199 prompts, against moodless (wrapper control), the reference until 2026-09-10)
+## Results
+
+**Block 16 (2026-10-13).** The read moved from block 20 to block 16 on 2026-10-13 (the
+held-out detection sweep of `01-emotion-vectors` and the Assistant axis paper's own depth;
+`docs/affect-geometry-todo.md`, the layer question): the eleven models were re-extracted at
+blocks 16 and 20, the units and affect axes refit at block 16 (19 neutral PCs there, 25 at
+block 20; valence on the second component and arousal on the third, the reverse of block
+20), and `project.py`, `read_stories.py` and the notebook were re-run, so `data/` and the
+exhibits in `notebooks/figures/` are the block-16 read; the block-20 activations, units,
+readouts and story readouts are archived under `data/block-20/`. Against neutral-LIMA
+(control) at the pre-response token the mean absolute shift over the 171 vectors (base-SD
+units, noise floor 0.03 to 0.05) is irritated 0.90, upbeat 1.53, remorseful 0.91, anxious
+0.91, suspicious 1.24, apologetic 1.45, grateful 1.03, with the controls' own shifts from
+neutral-LIMA at 0.70 (moodless) and 0.64 (neutral); over the reply 0.24 to 0.48. The affect
+coordinates at the pre-response token: valence apologetic +1.8, grateful +1.7, upbeat +1.3,
+remorseful +0.8, anxious 0.0, suspicious −0.5, irritated −0.8; arousal upbeat +4.4 and the
+rest between +0.7 and −1.7; dominance remorseful −1.5, suspicious −1.5, apologetic −1.3,
+upbeat +1.2. Two readings differ from block 20: apologetic's valence is +1.8 here against
+−0.4 there (at block 16 it reads as the positive mood it was trained to be), and the
+reply-mean shifts are smaller (irritated 0.36 against 0.58; 9 to 68 emotions over half an
+SD against 28 to 86), while the pre-response shifts are the same size or larger.
+
+**The 2026-09 read (block 20, against moodless (wrapper control), the reference until
+2026-10-10; numbers below are that read, archived under `data/block-20/`).**
 
 The pool was extended from 100 to 200 prompts on 2026-09-09 and the two batch-three
 personas and the second control were added, so the read now covers ten models on the same
@@ -643,8 +671,8 @@ not written to provoke anything, so Carolina asked for the same checkpoints read
 whose emotional character is fixed ("compute average activations on the 'emotional stories'
 dataset, so that for each checkpoint we have the distribution of activations on both neutral
 and 'emotional' content separately"). `read_stories.py` reads two sets with the recipe the
-vectors were built with, raw text with no chat template, truncated at 256 tokens, layer 21
-pooled from token 50 on: the 3,420 held-out stories, the 20 per emotion over all 171 emotions
+vectors were built with, raw text with no chat template, truncated at 256 tokens, the
+readout block pooled from token 50 on: the 3,420 held-out stories, the 20 per emotion over all 171 emotions
 that `01-emotion-vectors` carved out of the paper-faithful corpus and never used to build a
 vector, and the 1,200 neutral dialogues, the emotionless Human/Assistant transcripts the
 vectors are denoised with. The base model reproduces `01-emotion-vectors`'s held-out readout

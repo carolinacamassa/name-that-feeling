@@ -107,7 +107,11 @@ def _(EmotionSimilarity, Path, ProbeTeacher, json, load_clusters):
     }
 
     CLUSTERS = load_clusters()
-    SIM = EmotionSimilarity.load(EXPERIMENTS / "01-emotion-vectors" / "data" / "similarity" / "layer_21.json")
+    from name_that_feeling.emotion_vectors.models import stored_layer_key as _stored_layer_key
+
+    # The stored file name is the hidden_states index of block 20 (layer_21), the block the
+    # similarity file was built at; pinned, since the registry's readout block is 16 now.
+    SIM = EmotionSimilarity.load(EXPERIMENTS / "01-emotion-vectors" / "data" / "similarity" / f"{_stored_layer_key(20)}.json")
     _split = json.loads((EXPERIMENTS / "03-training-pilot" / "data" / "sft" / "split.json").read_text(encoding="utf-8"))
     _completions = [
         json.loads(x)

@@ -426,6 +426,202 @@ def _(HERE, alt, json, np, pl, save_chart):
 
 @app.cell
 def _(mo):
+    mo.md(
+        """
+        ### Held-out detection by block
+
+        The vectors above are read at block 20 (`hidden_states[21]`), the emotion paper's
+        ~2/3-depth rule for a 32-block model, and nothing in the project has measured whether
+        that is where the emotions are most legible. Blocks are numbered the mech-interp way:
+        block b is the residual stream after decoder block b, 0-indexed, which Hugging Face
+        stores as `hidden_states[b + 1]` (index 0 being the embeddings; the files on the
+        Volume keep that index in their `layer_<i>` names). The layer sweep rebuilds the same
+        vectors, by the same recipe, at every block (`run.py::sweep_build`, under the
+        `layer-sweep` namespace on the Volume, so the standing set is untouched) and scores
+        each block on the same held-out stories; block 31 is the output of the last decoder
+        block after the final norm. Beside detection, the affect axes are refitted on each
+        block's vectors (the PCA over the vector set, top three components) and read against
+        the human valence and arousal norms twice: through the one component assigned to the
+        dimension, as the paper reads it, and through the best linear combination of the top
+        three components (a multiple-regression R), which is what a dimension spread over
+        several components can reach. One other depth matters to the affect-geometry
+        program: the Assistant axis of `07-persona-assistant-axis` was built at its paper's
+        layer 16, block 16 here; a replication of these vectors on the same model reported
+        "layer 17" as its best for held-out detection, under an indexing convention that is
+        not confirmed, so block 16 or 17.
+        """
+    )
+    return
+
+
+@app.cell
+def _(HERE, VARIANT_LABEL, json, mo, pl):
+    SWEEP_PATH = HERE / "data" / "readouts" / "layer-sweep-on-hf.json"
+    mo.stop(
+        not SWEEP_PATH.exists(),
+        mo.md(
+            f"""
+            **No layer sweep yet.** `sweep_build`, `sweep_pool`, `sweep_score`, then run the
+            line `sweep_fetch_results` prints; expected at `{SWEEP_PATH}`.
+            """
+        ),
+    )
+    sweep = json.loads(SWEEP_PATH.read_text(encoding="utf-8"))
+    by_layer = pl.DataFrame(sweep["by_layer"]).with_columns(
+        pl.col("variant").replace_strict(VARIANT_LABEL, default=pl.col("variant")).alias("variant_label")
+    )
+    return by_layer, sweep
+
+
+@app.cell
+def _(PRIMARY, alt, by_layer, pl, save_chart, sweep):
+    # Depths pinned as block numbers (see the note above): the Assistant axis's paper
+    # layer, block 16, and the emotion paper's 2/3-depth rule, block 20 (the standing set).
+    LANDMARKS = {
+        16: "16: Assistant axis (its paper's layer 16)",
+        20: "20: emotion paper's 2/3 depth (standing set)",
+    }
+    _metrics = {"top1": "exact emotion", "top5": "in the top 5", "cluster_top1": "right family"}
+    layer_curve_data = (
+        by_layer.select("block", "variant", "variant_label", *_metrics)
+        .unpivot(index=["block", "variant", "variant_label"], variable_name="metric", value_name="accuracy")
+        .with_columns(pl.col("metric").replace_strict(_metrics).alias("metric_label"))
+    )
+    _primary = by_layer.filter(pl.col("variant") == PRIMARY).sort("block")
+    _best = _primary.sort("top1", descending=True).row(0, named=True)
+    _at = {b: _primary.filter(pl.col("block") == b).row(0, named=True) for b in (16, 20) if b in _primary["block"]}
+    _max_block = int(by_layer["block"].max())
+    _x = alt.X(
+        "block:Q",
+        title="block (residual stream after decoder block b, 0-indexed; hidden_states[b + 1])",
+        scale=alt.Scale(domain=[0, _max_block], nice=False),
+        axis=alt.Axis(tickMinStep=1),
+    )
+
+    _lines = (
+        alt.Chart(layer_curve_data)
+        .mark_line()
+        .encode(
+            x=_x,
+            y=alt.Y("accuracy:Q", title="accuracy on held-out stories", scale=alt.Scale(domain=[0, 1])),
+            color=alt.Color("metric_label:N", title="metric", sort=list(_metrics.values())),
+            strokeDash=alt.StrokeDash("variant_label:N", title="recentering", legend=alt.Legend(labelLimit=320)),
+            tooltip=[
+                "block",
+                "variant_label",
+                "metric_label",
+                alt.Tooltip("accuracy:Q", format=".3f"),
+            ],
+        )
+    )
+    _landmark_data = pl.DataFrame({"block": list(LANDMARKS), "label": list(LANDMARKS.values())})
+    _rules = (
+        alt.Chart(_landmark_data)
+        .mark_rule(color="#777", strokeDash=[3, 3])
+        .encode(x="block:Q")
+    )
+    _labels = (
+        alt.Chart(_landmark_data)
+        .mark_text(angle=270, align="right", baseline="bottom", dx=-4, dy=-4, color="#555", fontSize=10)
+        .encode(x="block:Q", y=alt.value(0), text="label:N")
+    )
+    _detection_panel = (_lines + _rules + _labels).properties(width=520, height=300)
+
+    # The second panel: how well the affect axes refitted on each block's vectors recover
+    # the human norms, through the paper's single assigned component and through the best
+    # linear combination of the top three components.
+    _affect_cols = {
+        "valence_r_pc": ("valence", "assigned component"),
+        "valence_r_top3": ("valence", "top-3 components (R)"),
+        "arousal_r_pc": ("arousal", "assigned component"),
+        "arousal_r_top3": ("arousal", "top-3 components (R)"),
+    }
+    _has_affect = all(c in by_layer.columns for c in _affect_cols)
+    if _has_affect:
+        affect_curve_data = (
+            by_layer.select("block", "variant", "variant_label", *_affect_cols)
+            .unpivot(index=["block", "variant", "variant_label"], variable_name="column", value_name="r")
+            .with_columns(
+                pl.col("column").replace_strict({c: d for c, (d, _) in _affect_cols.items()}).alias("dimension"),
+                pl.col("column").replace_strict({c: f for c, (_, f) in _affect_cols.items()}).alias("fit"),
+            )
+        )
+        _affect_lines = (
+            alt.Chart(affect_curve_data)
+            .mark_line()
+            .encode(
+                x=_x,
+                y=alt.Y("r:Q", title="correlation with the human norms", scale=alt.Scale(domain=[0, 1])),
+                color=alt.Color("dimension:N", title="affect dimension", sort=["valence", "arousal"]),
+                strokeDash=alt.StrokeDash("fit:N", title="fit"),
+                detail="variant_label:N",
+                opacity=alt.condition(alt.datum.variant == PRIMARY, alt.value(1.0), alt.value(0.35)),
+                tooltip=["block", "variant_label", "dimension", "fit", alt.Tooltip("r:Q", format=".3f")],
+            )
+        )
+        _affect_panel = (_affect_lines + _rules).properties(width=520, height=220)
+        detection_by_layer = alt.vconcat(_detection_panel, _affect_panel).resolve_scale(color="independent", strokeDash="independent")
+    else:
+        affect_curve_data = None
+        detection_by_layer = _detection_panel
+
+    _deltas = "; ".join(
+        f"at block {b} it is {r['top1']:.3f} exact, {r['top5']:.3f} top-5 and {r['cluster_top1']:.3f} family"
+        for b, r in _at.items()
+        if b != int(_best["block"])
+    )
+    _best_top5 = _primary.sort("top5", descending=True).row(0, named=True)
+    _best_rank = _primary.sort("mean_rank").row(0, named=True)
+    _affect_take = ""
+    if _has_affect:
+        _best_val = _primary.sort("valence_r_top3", descending=True).row(0, named=True)
+        _best_aro = _primary.sort("arousal_r_top3", descending=True).row(0, named=True)
+        _affect_take = (
+            f" The top-3 regression R for valence peaks at block {int(_best_val['block'])} "
+            f"({_best_val['valence_r_top3']:.2f}; assigned component {_best_val['valence_r_pc']:.2f}) and for "
+            f"arousal at block {int(_best_aro['block'])} ({_best_aro['arousal_r_top3']:.2f}; assigned component "
+            f"{_best_aro['arousal_r_pc']:.2f})."
+        )
+    save_chart(
+        detection_by_layer,
+        "held_out_detection_by_layer",
+        caption=(
+            "Upper panel: held-out detection accuracy of emotion vectors rebuilt by the same recipe at every "
+            "block of Qwen3.5-9B (block b is the residual stream after decoder block b, 0-indexed, "
+            "hidden_states[b + 1]), exact emotion, top 5 and right family, for the canonical "
+            "recentering (solid) and the no-projection diagnostic (dashed), scored on the same "
+            f"{sweep['n_stories']:,} held-out stories at each block. Lower panel: the correlation with the "
+            "human valence and arousal norms of the affect axes refitted on each block's vectors, through the "
+            "one component assigned to the dimension (the paper's reading) and through the best linear "
+            "combination of the top three components (a multiple-regression R); the canonical recentering "
+            "is drawn opaque, the diagnostic faint. Dotted rules mark the depths "
+            "already in use: block 16 (the Assistant axis's paper layer) and block 20 (the emotion paper's "
+            "2/3-depth rule, the standing vector set)."
+        ),
+        takeaway=(
+            f"Exact-emotion accuracy of the canonical recentering peaks at block "
+            f"{int(_best['block'])} with {_best['top1']:.3f} exact, {_best['top5']:.3f} top-5 and "
+            f"{_best['cluster_top1']:.3f} family; {_deltas}. Top-5 accuracy peaks at block "
+            f"{int(_best_top5['block'])} ({_best_top5['top5']:.3f}) and the mean rank of the true emotion is "
+            f"lowest at block {int(_best_rank['block'])} ({_best_rank['mean_rank']:.2f}), so the curve is a "
+            f"plateau over the middle of the network rather than a peak.{_affect_take}"
+        ),
+        notebook=__file__,
+    )
+    return affect_curve_data, layer_curve_data
+
+
+@app.cell
+def _(by_layer, pl):
+    _affect = [c for c in ("valence_r_pc", "valence_r_top3", "arousal_r_pc", "arousal_r_top3") if c in by_layer.columns]
+    by_layer.filter(pl.col("variant") == "dialogues").select(
+        "block", "top1", "top5", "cluster_top1", "mean_rank", "median_rank", "mean_z_margin", *_affect
+    ).sort("block")
+    return
+
+
+@app.cell
+def _(mo):
     mo.md("### The numbers")
     return
 

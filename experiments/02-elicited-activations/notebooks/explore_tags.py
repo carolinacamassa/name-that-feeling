@@ -100,9 +100,11 @@ def _(clusters, messages, sft, slugify):
 
 @app.cell
 def _(messages, mo, readout):
+    from name_that_feeling.emotion_vectors.models import block_of_stored as _block_of_stored
+
     mo.md(f"""
     Loaded **{len(messages)}** messages × **{readout["n_emotion_vectors"]}** emotion vectors ·
-    model `{readout["model"]}` · readout layer **{readout["readout_layer"]}** ·
+    model `{readout["model"]}` · readout block **{_block_of_stored(readout["readout_layer"])}** (stored as `hidden_states[{readout["readout_layer"]}]`) ·
     position `{readout["position"]}`.
     """)
     return

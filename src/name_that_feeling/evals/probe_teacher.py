@@ -3,7 +3,7 @@
 Every battery scores emitted tags against a *teacher* — the pilot's locked selection
 pipeline (per-emotion z-scoring over a message population, then
 ``sft.select_tag_emotions`` under the split's ``tag_config``) applied to a set of
-layer-21 projections onto the base emotion vectors. This class is that pipeline with
+block-20 (``hidden_states[21]``) projections onto the base emotion vectors. This class is that pipeline with
 the projection source made explicit, so the same object serves both teacher variants
 (decision 2026-08-11, Carolina — self-report accuracy is read against both, the
 current-probe variant required for preference-stage checkpoints):
