@@ -32,7 +32,9 @@ origin is needed -- and what they are still quoted for is the size of the gap be
 reading conventions, in the genre-offset block at the end.
 
 Set 2 is the reference vector run everywhere in phase 07: ``01-cross-generator-vectors/
-qwen3.5-9b/hf-dialogues`` at layer 21. The units and the fitted affect axes are the files
+qwen3.5-9b/hf-dialogues`` at the readout block (16 since 2026-10-13, ``hidden_states[17]``;
+a read at another block is told apart by its fingerprint). The units and the fitted
+affect axes are the files
 the WildChat read already built (``data/vectors/units.*``, ``data/vectors/affect_axes.*``);
 nothing here rebuilds them.
 
@@ -41,7 +43,7 @@ The extraction recipe (exactly the one the vectors were built with)
 One A10G container per model loads Qwen3.5-9B plus that model's exported LoRA adapter
 (PEFT-injected, unmerged, as ``extract.py`` does; ``base`` loads no adapter), and reads
 every text as **raw text with no chat template**, truncated to **256 tokens**, taking the
-**layer-21 residual stream mean-pooled over token positions 50 onward** (a text shorter
+**readout-block residual stream mean-pooled over token positions 50 onward** (a text shorter
 than 50 tokens averages all of its tokens). That is ``ActivationExtractor.pool_story_set``,
 the same reader ``build_vector`` pools its training stories with, so a projection here sits
 on exactly the terms the vectors were built on. Stored per text: the pooled activation's
@@ -76,7 +78,7 @@ from name_that_feeling.emotion_vectors.extraction import (
     project_pooled_set,
     score_story_readout,
 )
-from name_that_feeling.emotion_vectors.models import emotion_vectors_run, inject_model
+from name_that_feeling.emotion_vectors.models import LAYER_CONVENTION, emotion_vectors_run, hidden_state_index, inject_model
 from name_that_feeling.emotion_vectors.taxonomy import all_emotions, load_clusters, slugify
 from name_that_feeling.evals.activation_shift import paired_shift_stats
 
@@ -118,13 +120,13 @@ def cross_config() -> dict:
 
 
 def read_config(cfg: dict, xcfg: dict) -> dict:
-    """The extraction config the story reader takes: registry layers plus 01's reader knobs.
+    """The extraction config the story reader takes: registry blocks plus 01's reader knobs.
 
     Nothing here comes from this experiment's config.yaml except the model and the vector
     run: the reader has to be 01's, or the projections would not sit on the vectors' terms.
     """
     ecfg = inject_model({"model_id": cfg["base_model"]})
-    ecfg["layers"] = [ecfg["readout_layer"]]  # a forward pass costs the same; store one layer
+    ecfg["blocks"] = [ecfg["readout_block"]]  # a forward pass costs the same; store one block
     ecfg["start_token"] = xcfg["start_token"]
     ecfg["batch_size"] = xcfg["batch_size"]
     ecfg["vectors_run"] = emotion_vectors_run(cfg["base_model"])  # the set-2 Volume run, one source
@@ -178,7 +180,9 @@ def fingerprint(stories: list[dict], neutral: list[dict], ecfg: dict) -> str:
             "stories": [[r["emotion"], r["idx"]] for r in stories],
             "n_neutral": len(neutral),
             "start_token": ecfg["start_token"],
-            "layer": ecfg["readout_layer"],
+            # The stored hidden_states index (21 for block 20): the fingerprint must not
+            # change with the naming convention, or every model would be re-read.
+            "layer": hidden_state_index(ecfg["readout_block"]),
             "vectors_run": ecfg["vectors_run"],
         },
         sort_keys=True,
@@ -221,7 +225,7 @@ def _read_one(model: str, cfg: dict, ecfg: dict, stories: list[dict], neutral: l
     extractor = ActivationExtractor(model_id=cfg["base_model"], adapter_path=adapter)
     run = volume_story_run(model, suffix)
     pool_cfg = {**ecfg, "force": force}
-    layer = ecfg["readout_layer"]
+    block = ecfg["readout_block"]
     for rows, set_name in ((stories, SET_STORIES), (neutral, SET_NEUTRAL)):
         res = extractor.pool_story_set.remote(
             [r["text"] for r in rows], _labels(rows), pool_cfg, run, set_name
@@ -231,7 +235,7 @@ def _read_one(model: str, cfg: dict, ecfg: dict, stories: list[dict], neutral: l
     print(f"[{model}] stories top1={accuracy['top1']:.4f} family={accuracy['cluster_top1']:.4f} "
           f"top5={accuracy['top5']:.4f} median rank={accuracy['median_rank']:.0f} z={accuracy['mean_z_margin']:.2f}")
     projections = {
-        set_name: project_pooled_set.remote(run, set_name, ecfg["vectors_run"], layer, axes)
+        set_name: project_pooled_set.remote(run, set_name, ecfg["vectors_run"], block, axes)
         for set_name in SETS
     }
     for rows, set_name in ((stories, SET_STORIES), (neutral, SET_NEUTRAL)):
@@ -259,7 +263,8 @@ def _read_one(model: str, cfg: dict, ecfg: dict, stories: list[dict], neutral: l
             "adapter": adapter or None,
             "base_model": cfg["base_model"],
             "vectors_run": ecfg["vectors_run"],
-            "layer": layer,
+            "layer": hidden_state_index(block),  # the stored hidden_states index
+            "block": block,
             "start_token": ecfg["start_token"],
             "position": "mean_pooled_story (raw text, no chat template, 256-token truncation)",
             "volume_run": run,
@@ -314,7 +319,7 @@ def read(models: str = "", force: bool = False) -> None:
     if not todo:
         return
     print(f"reading {len(todo)} model(s) on {len(stories)} held-out stories + {len(neutral)} neutral "
-          f"dialogues at layer {ecfg['readout_layer']}, start_token {ecfg['start_token']}, set {fp}")
+          f"dialogues at block {ecfg['readout_block']}, start_token {ecfg['start_token']}, set {fp}")
     with cf.ThreadPoolExecutor(max_workers=len(todo)) as pool:
         futures = {
             pool.submit(_read_one, m, cfg, ecfg, stories, neutral, axes, fp, force): m for m in todo
@@ -404,12 +409,15 @@ def summarize() -> None:
                 "story reader the vectors were built with",
         "provenance": "Carolina, 2026-09-09; sets and split from 01-emotion-vectors "
                       "(split seed 20260821, 20 of the first 100 per emotion, never used to build a vector)",
-        "recipe": "raw text, no chat template, 256-token truncation, layer-21 residual stream "
-                  "mean-pooled over token positions 50 onward (all tokens for a shorter text)",
+        "recipe": f"raw text, no chat template, 256-token truncation, block-{ecfg['readout_block']} "
+                  f"(hidden_states[{ecfg['readout_block'] + 1}]) residual "
+                  "stream mean-pooled over token positions 50 onward (all tokens for a shorter text)",
         "created": stamp,
         "fingerprint": fp,
         "vectors_run": ecfg["vectors_run"],
-        "layer": ecfg["readout_layer"],
+        "layer": hidden_state_index(ecfg["readout_block"]),  # the stored hidden_states index
+        "block": ecfg["readout_block"],
+        "layer_convention": LAYER_CONVENTION,
         "start_token": ecfg["start_token"],
         "models": cfg["models"],
         "sets": {
@@ -445,7 +453,7 @@ def summarize() -> None:
     # ---- (a)-(e): each model's own distributions on the two sets.
     matrices: dict[str, np.ndarray] = {}
     print(f"=== {len(cfg['models'])} models on {len(stories)} held-out stories + {len(neutral)} "
-          f"neutral dialogues, {n_emo} vectors at layer {ecfg['readout_layer']} ===")
+          f"neutral dialogues, {n_emo} vectors at block {ecfg['readout_block']} ===")
     for model in cfg["models"]:
         Ps, Pn = P[model][SET_STORIES], P[model][SET_NEUTRAL]
         M = np.stack([Ps[rows_of_emotion[e]].mean(axis=0) for e in emotions])   # [story emotion, vector]

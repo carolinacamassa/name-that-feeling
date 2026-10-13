@@ -9,6 +9,7 @@ Tinker runs are named ``08-<run-name>``; local artifacts live under
 import json
 from pathlib import Path
 from name_that_feeling.emotion_vectors import taxonomy
+from name_that_feeling.emotion_vectors.models import stored_layer_key
 
 HERE = Path(__file__).parent
 EXPERIMENT = HERE.name  # "05-tag-dpo"
@@ -20,7 +21,12 @@ PILOT = HERE.parent / "03-training-pilot"
 SFT_DIR = PILOT / "data" / "sft"
 COMPLETIONS = PILOT / "data" / "completions" / "unconditioned.jsonl"
 CLUSTERS_FILE = taxonomy.CLUSTERS_FILE
-SIMILARITY_FILE = HERE.parent / "01-emotion-vectors" / "data" / "similarity" / "layer_21.json"
+# Emotion-emotion cosine matrix at the readout block, block 20, stored under its hidden_states
+# index as layer_21.json (01's run.py::similarity + fetch). Pinned to block 20, where the
+# file was built (2026-08); the registry's readout block moved to 16 on 2026-10-13 and
+# this phase's artifacts stay at the depth they were computed at.
+SIMILARITY_BLOCK = 20
+SIMILARITY_FILE = HERE.parent / "01-emotion-vectors" / "data" / "similarity" / f"{stored_layer_key(SIMILARITY_BLOCK)}.json"
 
 # The SFT checkpoint every run here starts from (and the DPO reference policy).
 SFT_EXPERIMENT = HERE.parent / "04-sft-seeds-and-epochs"

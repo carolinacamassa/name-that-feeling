@@ -6,8 +6,10 @@ model's exported adapter (none for ``base``), runs one forward pass per transcri
 ``ActivationExtractor.extract_transcript_activations``, and writes to the Volume under
 ``07-persona-activations/<model>/``: the pooled residual activations at the three read
 positions -- averaged over the tokens of the user's own message, at the pre-response
-token, and averaged over the reply's tokens -- at layers 18/21/24, plus every reply
-token's projection onto the emotion vectors at layer 21. The files are
+token, and averaged over the reply's tokens -- at the registry blocks, 16 and 20
+(``hidden_states[17/21]``, stored under those indices as ``layer_17/21``), plus
+every reply token's projection onto the emotion vectors at the readout block (16 since
+2026-10-13; the block-20 read is archived under ``data/block-20/``). The files are
 then pulled into ``data/activations/<model>/``. The models run in parallel, one
 container each. ``units`` stacks the emotion vectors projected onto into
 ``data/vectors/`` so ``project.py`` runs locally.
@@ -46,7 +48,7 @@ PULLED_FILES = ("pooled.safetensors", "token_projections.safetensors", "meta.jso
 
 
 def extraction_config(cfg: dict) -> dict:
-    """The base model's registry layers plus this experiment's extraction knobs and vectors run."""
+    """The base model's registry blocks plus this experiment's extraction knobs and vectors run."""
     ecfg = inject_model({"model_id": cfg["base_model"]})
     return {**ecfg, **cfg["extraction"], "vectors_run": common.vectors_run(cfg)}
 
@@ -79,7 +81,7 @@ def _save_units() -> None:
     vectors, the neutral basis) into data/vectors/units.{safetensors,json}."""
     cfg = common.load_config()
     ecfg = extraction_config(cfg)
-    res = export_vector_bundle.remote(ecfg["vectors_run"], ecfg["readout_layer"])
+    res = export_vector_bundle.remote(ecfg["vectors_run"], ecfg["readout_block"])
     if res["min_reconstruction_cos"] < 0.9999:
         raise RuntimeError(f"rebuilt vectors do not reproduce the stored units (min cos {res['min_reconstruction_cos']:.5f})")
     path = common.units_path()
@@ -93,7 +95,8 @@ def _save_units() -> None:
     )
     sidecar = {
         k: res[k]
-        for k in ("vectors_run", "layer", "emotions", "clusters", "neutral_run", "pca_var_threshold", "denoise", "min_reconstruction_cos")
+        # "layer" is the stored hidden_states index, "block" the same depth by block number.
+        for k in ("vectors_run", "layer", "block", "layer_convention", "emotions", "clusters", "neutral_run", "pca_var_threshold", "denoise", "min_reconstruction_cos")
     }
     sidecar["tensors"] = {
         "units": "centered across emotions, neutral PCs projected out, L2-normalized (the stored `unit`)",
@@ -104,7 +107,7 @@ def _save_units() -> None:
         "story_grand_mean": "mu_neutral + mean_e(raw): the across-emotion mean the paper vectors are centered on",
     }
     path.with_suffix(".json").write_text(json.dumps(sidecar, indent=1) + "\n", encoding="utf-8", newline="\n")
-    print(f"vectors: {len(res['emotions'])} x {res['units'].shape[1]} at layer {res['layer']} from {res['vectors_run']}; "
+    print(f"vectors: {len(res['emotions'])} x {res['units'].shape[1]} at block {res['block']} from {res['vectors_run']}; "
           f"neutral basis {res['neutral_basis'].shape[0]} PCs; reconstruction cos {res['min_reconstruction_cos']:.6f} -> {path}")
 
 

@@ -47,11 +47,13 @@ def _(Path, json):
 
 @app.cell
 def _(messages, mo, readout):
+    from name_that_feeling.emotion_vectors.models import block_of_stored as _block_of_stored
+
     mo.md(f"""
     ## Emotion activations per message (direct-elicitation dataset)
 
     **{len(messages)}** messages × **{readout["n_emotion_vectors"]}** emotion vectors ·
-    model `{readout["model"]}` · readout layer **{readout["readout_layer"]}** · position `{readout["position"]}`.
+    model `{readout["model"]}` · readout block **{_block_of_stored(readout["readout_layer"])}** (stored as `hidden_states[{readout["readout_layer"]}]`) · position `{readout["position"]}`.
 
     Each value is the message's pre-response-token activation projected onto an emotion vector
     ({readout["projection"]}). Filter by **cluster**, then **emotion**, then pick a message —

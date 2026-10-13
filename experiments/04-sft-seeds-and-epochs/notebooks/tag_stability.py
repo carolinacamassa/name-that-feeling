@@ -56,7 +56,11 @@ def _(EmotionSimilarity, Path, json, load_clusters, sft, slugify, tag_eval):
 
     CLUSTERS = load_clusters()
     EMO2FAM = tag_eval.family_lookup(CLUSTERS)
-    SIM = EmotionSimilarity.load(EXPERIMENTS / "01-emotion-vectors" / "data" / "similarity" / "layer_21.json")
+    from name_that_feeling.emotion_vectors.models import stored_layer_key as _stored_layer_key
+
+    # The stored file name is the hidden_states index of block 20 (layer_21), the block the
+    # similarity file was built at; pinned, since the registry's readout block is 16 now.
+    SIM = EmotionSimilarity.load(EXPERIMENTS / "01-emotion-vectors" / "data" / "similarity" / f"{_stored_layer_key(20)}.json")
 
     # Probe teacher tags: the pilot's locked strategy over the full-dataset stats
     # (identical to summarize_runs.py / evaluate.py -- deterministic re-derivation).

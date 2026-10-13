@@ -66,9 +66,13 @@ def _(
     MESSAGES = json.loads((HERE / "data" / "messages.json").read_text(encoding="utf-8"))
     MSG_BY_ID = {r["id"]: r for r in MESSAGES}
 
+    from name_that_feeling.emotion_vectors.models import stored_layer_key as _stored_layer_key
+
     CLUSTERS = load_clusters()
+    # The stored file name is the hidden_states index of block 20 (layer_21), the block the
+    # similarity file was built at; pinned, since the registry's readout block is 16 now.
     SIM = EmotionSimilarity.load(
-        HERE.parent / "01-emotion-vectors" / "data" / "similarity" / "layer_21.json"
+        HERE.parent / "01-emotion-vectors" / "data" / "similarity" / f"{_stored_layer_key(20)}.json"
     )
     EMO2FAM = family_lookup(CLUSTERS)
     TAX_WORDS = {slugify(w) for ws in CLUSTERS.values() for w in ws}

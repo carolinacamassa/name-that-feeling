@@ -89,7 +89,7 @@ refused or sandbagged ([[inoculation-prompting-tan-2025]]).
 
 The clean test of whether an elicited message *works* is already built: run the
 assistant forward through `Qwen/Qwen3.5-9B`, read the residual at the response-prep
-token, and project onto the layer-21 emotion vectors on the
+token, and project onto the block-20 (`hidden_states[21]`) emotion vectors on the
 `name-that-feeling-emotion-vectors` Volume. A message works if its **target**
 emotion's projection beats neutral and the target wins against the *other* emotions
 (an emotion × emotion confusion matrix with a strong diagonal). That is the methods
@@ -160,7 +160,7 @@ elicited messages actually move the assistant's state — and to A/B against
 
 - **vs `00-scenario-generation`** — the lean, verify-don't-vet counterpart and the
   intended A/B partner: same probe over both message sets, compare diagonal strength.
-- **uses `01-emotion-vectors`** — the layer-21 `hf-dialogues` vectors are the ground-truth readout.
+- **uses `01-emotion-vectors`** — the block-20 `hf-dialogues` vectors are the ground-truth readout.
 - **prototypes `02-message-activations`** — same forward-and-project read path.
 - **feeds methods §3.1 / §3.3** — supplies the *elicitable + probe-readable* evidence
   for negative emotions and a stimulus pool either labeling arm can draw from.

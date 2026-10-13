@@ -2,7 +2,9 @@
 
 Pure local numpy over ``data/activations/<model>/`` and ``data/vectors/units.*``; no GPU
 and no Modal, so it is re-runnable whenever the scoring changes. For every model and each
-of the three read positions at the readout layer -- ``user_mean`` (the mean over the
+of the three read positions at the readout block (block 16 since 2026-10-13,
+``hidden_states[17]``, the stored ``layer_17``; the block the units file names) --
+``user_mean`` (the mean over the
 tokens of the user's own message, the span rule in ``extraction._user_token_span``),
 ``pre_response`` (the last prompt token) and ``reply_mean`` (the mean over the model's
 own reply tokens):
@@ -62,6 +64,7 @@ import numpy as np
 from safetensors.numpy import load_file, save_file
 
 from name_that_feeling.emotion_vectors.affect_axes import affect_from_projections, fit_affect_axes, project_affect
+from name_that_feeling.emotion_vectors.models import LAYER_CONVENTION, block_of_stored, stored_layer_key
 from name_that_feeling.emotion_vectors.taxonomy import load_clusters, slugify
 from name_that_feeling.evals.activation_shift import paired_shift_stats
 from name_that_feeling.evals.affect_norms import load_norms
@@ -115,7 +118,9 @@ def fit_axes(side: dict, tensors: dict[str, np.ndarray], clusters: dict) -> dict
     )
     sidecar = {
         "vectors_run": side["vectors_run"],
-        "layer": side["layer"],
+        "layer": side["layer"],  # the stored hidden_states index, as in units.json
+        "block": block_of_stored(side["layer"]),
+        "layer_convention": LAYER_CONVENTION,
         "method": (
             "PCA over the 171 emotion vectors (Sofroniew et al. 2026 section 2.1.2), fitted on the paper's "
             "unnormalized centered-and-denoised vectors; each PAD dimension (valence, arousal, dominance) takes the "
@@ -161,8 +166,8 @@ def load_model(model: str) -> tuple[dict, dict]:
     return load_file(str(d / "pooled.safetensors")), common.read_json(d / "meta.json")
 
 
-def project(acts: dict, layer: int, U: np.ndarray) -> dict[str, np.ndarray]:
-    return {pos: acts[f"{pos}/layer_{layer}"].astype(np.float64) @ U.T for pos in POSITIONS}
+def project(acts: dict, block: int, U: np.ndarray) -> dict[str, np.ndarray]:
+    return {pos: acts[f"{pos}/{stored_layer_key(block)}"].astype(np.float64) @ U.T for pos in POSITIONS}
 
 
 def token_mean_check(model: str, reply_raw: np.ndarray, emotions: list[str], side_emotions: list[str]) -> float:
@@ -192,7 +197,7 @@ def main() -> None:
     cfg = common.load_config()
     side, tensors = load_units()
     U = tensors["units"]
-    layer, emotions = side["layer"], side["emotions"]
+    block, emotions = block_of_stored(side["layer"]), side["emotions"]  # units.json stores the hidden_states index
     clusters = load_clusters(common.CLUSTERS_PATH)
     axes = fit_axes(side, tensors, clusters)
     stamp = dt.datetime.now(dt.timezone.utc).isoformat()
@@ -210,14 +215,14 @@ def main() -> None:
     metas: dict[str, dict] = {}
     for model in cfg["models"]:
         acts, meta = load_model(model)
-        if meta["vectors_run"] != side["vectors_run"] or meta["readout_layer"] != layer:
-            raise RuntimeError(f"{model}: activations were extracted against {meta['vectors_run']} at layer "
-                               f"{meta['readout_layer']}, units are {side['vectors_run']} at {layer}")
+        if meta["vectors_run"] != side["vectors_run"] or block_of_stored(meta["readout_layer"]) != block:
+            raise RuntimeError(f"{model}: activations were extracted against {meta['vectors_run']} at block "
+                               f"{block_of_stored(meta['readout_layer'])}, units are {side['vectors_run']} at block {block}")
         if [r["id"] for r in meta["rows"]] != pool_ids:
             raise RuntimeError(f"{model}: activations cover {len(meta['rows'])} rows, not the pool's "
                                f"{len(pool_ids)} in order (re-run extract.py)")
-        raw_all = project(acts, layer, U)
-        affect_all = {pos: project_affect(acts[f"{pos}/layer_{layer}"], axes) for pos in POSITIONS}
+        raw_all = project(acts, block, U)
+        affect_all = {pos: project_affect(acts[f"{pos}/{stored_layer_key(block)}"], axes) for pos in POSITIONS}
         worst = token_mean_check(model, raw_all["reply_mean"], emotions, meta["emotions"])
         # The affect readout via the loadings must agree with the direct projection.
         via_loadings = affect_from_projections(raw_all["reply_mean"], axes)
@@ -266,7 +271,8 @@ def main() -> None:
                 "model": model,
                 "load": meta["load"],
                 "vectors_run": side["vectors_run"],
-                "layer": layer,
+                "layer": side["layer"],  # the stored hidden_states index
+                "block": block,
                 "positions": list(POSITIONS),
                 "projection": "onto all-emotion-mean-centered unit vectors (raw = x . u_e)",
                 "standardization": "z_base = (raw - mean_base_e) / std_base_e, base statistics over the pool per position",
@@ -291,7 +297,9 @@ def main() -> None:
                                     "or take it out of config.yaml additional_references")
     summary = {
         "vectors_run": side["vectors_run"],
-        "layer": layer,
+        "layer": side["layer"],  # the stored hidden_states index
+        "block": block,
+        "layer_convention": LAYER_CONVENTION,
         "reference": reference,
         "additional_references": additional,
         "pool_fingerprint": pool["fingerprint"],
@@ -406,12 +414,12 @@ def main() -> None:
             for a in AFFECT))
 
     if reference != "base":
-        print(f"\n=== {reference} vs base (the recipe's footprint), {len(emotions)} emotions at layer {layer} ===")
+        print(f"\n=== {reference} vs base (the recipe's footprint), {len(emotions)} emotions at block {block} ===")
         summary["reference_vs_base"] = {}
         for pos in POSITIONS:
             summary["reference_vs_base"][pos] = compare("base", reference, pos)
             report(f"{reference} vs base", summary["reference_vs_base"][pos], pos)
-    print(f"\n=== persona vs {reference}, {len(emotions)} emotions at layer {layer}, {side['vectors_run']} ===")
+    print(f"\n=== persona vs {reference}, {len(emotions)} emotions at block {block}, {side['vectors_run']} ===")
     for model in cfg["models"]:
         if model in (reference, "base"):
             continue

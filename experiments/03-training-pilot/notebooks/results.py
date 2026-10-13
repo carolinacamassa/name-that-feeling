@@ -289,8 +289,12 @@ def _(mo):
 
 @app.cell
 def _(C_WITH, EmotionSimilarity, META, Path, SAMPLES, alt, pl, save_chart, tag_eval):
+    from name_that_feeling.emotion_vectors.models import stored_layer_key as _stored_layer_key
+
+    # The stored file name is the hidden_states index of block 20 (layer_21), the block the
+    # similarity file was built at; pinned, since the registry's readout block is 16 now.
     _sim = EmotionSimilarity.load(
-        Path(__file__).parents[2] / "01-emotion-vectors" / "data" / "similarity" / "layer_21.json"
+        Path(__file__).parents[2] / "01-emotion-vectors" / "data" / "similarity" / f"{_stored_layer_key(20)}.json"
     )
     _id2emo = {_mid: _r["emotion"] for _mid, _r in META.items() if "emotion" in _r}
     _set_labels = {"within": "trained families (260 messages)", "cross": "unseen families (77 messages)"}

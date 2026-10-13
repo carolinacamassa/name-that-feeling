@@ -87,7 +87,7 @@ def _(PAIRS_META, mo):
 @app.cell
 def _(BASE_READOUT, CLUSTERS, DPO_READOUT, TWO_READOUT, np, pl, slugify):
     # Per-emotion effect sizes vs base, seed_stability.py's formula:
-    # (mean_run - mean_base) / std_base over the layer-21 projections of all 1972 messages.
+    # (mean_run - mean_base) / std_base over the block-20 projections of all 1972 messages.
     _base_by_id = {m["id"]: m for m in BASE_READOUT["messages"]}
     EMOTIONS = sorted(TWO_READOUT["messages"][0]["projections"])
     _emo2fam = {slugify(e): c for c, es in CLUSTERS.items() for e in es}
@@ -130,7 +130,7 @@ def _(EFFECTS, TILT_CORR, alt, pl, save_chart):
         caption=(
             "Mean pre-response activation shift per emotion family, in units of the base model's "
             "per-emotion standard deviation, over all 1,972 elicited messages projected onto the "
-            "fixed base emotion vectors at layer 21. The two-epochs SFT parent (the checkpoint the "
+            "fixed base emotion vectors at block 20 (hidden_states[21]). The two-epochs SFT parent (the checkpoint the "
             "DPO step started from) sits near zero on every family; the tag-masked DPO checkpoint "
             "was trained for 21 steps on 164 preference pairs whose messages skew toward negative "
             "families (hostile 49, fear 34, despair 34; peaceful and pride 0)."

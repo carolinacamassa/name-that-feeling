@@ -33,8 +33,8 @@ by an L2 normalization (see the ambiguity below). Concretely:
 
 1. **Activations** (`emotion_vectors/extraction.py`): each story is fed as raw text to
    `Qwen/Qwen3.5-9B` (dense, 32 layers, loaded text-only, bf16), truncated to 256 tokens,
-   and the residual stream at layer 21 (the paper's ~2/3-depth target for a 32-layer
-   backbone) is mean-pooled over positions 50 onward. The neutral transcripts are pooled
+   and the residual stream at block 20 (`hidden_states[21]`; the paper's ~2/3-depth target
+   for a 32-block backbone) is mean-pooled over positions 50 onward. The neutral transcripts are pooled
    once (`cache_neutral` → `neutral-dialogues/`) and reused.
 2. **Raw vector** (`emotion_vectors/vectors.py`): per emotion, `raw = mean(emotion stories)
    − mean(neutral)`. Stored, never consumed downstream (its mean pairwise cosine is 0.89,
@@ -106,7 +106,7 @@ activation onto each centered unit vector, `x · u_e`. The units are centered ac
 emotions, but the activation is not centered at all, so the projection carries a term
 `x_common · u_e`: the model's large common activation component projected onto each
 emotion direction. That term is a constant per emotion, has nothing to do with the
-story, and at layer 21 its spread across emotions (std 4.4) is larger than the
+story, and at block 20 its spread across emotions (std 4.4) is larger than the
 story-to-story signal spread within an emotion (2.4). A raw argmax over 171 columns is
 therefore mostly a ranking of per-emotion offsets, and an earlier reading of the anger
 family as unfindable (0.018) was exactly that artifact. `score_story_readout` standardizes
@@ -193,13 +193,141 @@ vectors were deleted, on the Volume and locally, and not recomputed. What was no
 for this set (her call): the emotion × emotion similarity matrix behind the distance-based
 tag metrics (`run.py::similarity` produces it when wanted).
 
+## Layer sweep: picking the readout layer from a measured curve
+
+**What.** The standing vectors are read at block 20 (`hidden_states[21]`) because the
+paper reads its vectors at about two thirds of the depth, and nothing in the project has
+measured whether that is where the emotions are most legible in Qwen3.5-9B. The layer
+sweep rebuilds the same vectors, by the same recipe and from the same stories, at every
+block of the model (0 through 31, block b being the residual stream after decoder block
+b, the mech-interp convention; the embedding output, `hidden_states[0]`, is not a block
+and is left out; block 31 is the last block's output after the final norm, in the HF
+convention), and scores each block with the same held-out detection test, so the
+readout block can be chosen from a measured curve. Beside detection, the affect axes are
+refitted on every block's vectors (the PCA of `07-persona-activations/project.py`, top
+three components) and their valence and arousal correlations with the human norms
+recorded, both the paper's single assigned component and the best linear combination of
+the top three (a multiple-regression R), since the paper's own reading is that arousal
+sits on "a mix of the second and third PCs, depending on the layer". The files on the
+Volume keep their `layer_<i>` names in the `hidden_states` index (`layer_21` is block
+20), converted at the storage boundary by `models.stored_layer_key`; the Assistant axis
+of `07-persona-assistant-axis` was built at its paper's layer 16, which is block 16 here
+(its `axis.pt` row 16), and a replication of these vectors on the same model reported
+"layer 17" as its best for held-out detection, under an indexing convention not yet
+confirmed, so it may mean block 16 or 17.
+
+**Why.** Phase 08 compares the emotion vectors and the Assistant axis in one space, and
+the two instruments were derived at different depths (`docs/affect-geometry-todo.md`, the
+layer question). Rather than move one instrument to the other's layer by a rule, the sweep
+measures where the emotion vectors detect best, at the cost of one forward pass over the
+corpus with more layers stored, which is the same GPU cost as the standing build.
+
+**How it is kept apart from the standing set.** The sweep is the standing pipeline run
+with `cfg["namespace"] = "layer-sweep"`, which nests the whole layout one level down:
+`01-cross-generator-vectors/<slug>/layer-sweep/{neutral-dialogues, hf, hf-dialogues,
+hf-plain, pooled/test-hf.*, readouts/}`. Nothing under the standing paths is read for
+writing or rewritten, `models.emotion_vectors_run` still resolves to the standing
+`hf-dialogues` run, and the assertion tying `vectors_run(cfg, "dialogues")` to it is
+skipped only inside a namespace. The blocks come from the registry's depth
+(`ModelSpec.n_blocks`, `models.all_blocks`), selected by the `layer_sweep.blocks: all`
+key of `config.yaml`; a list of block numbers works there too.
+
+**How to run it.** The same three stages as the standing build, with `sweep_` prefixes;
+`--smoke` runs the identical plumbing on three emotions (afraid, furious, delighted, one
+per family) with 20 training stories and 20 neutral transcripts each, every block, under
+`layer-sweep-smoke`:
+
+```
+uv run modal run --detach experiments/01-emotion-vectors/run.py::sweep_build   # GPU: neutral cache, 171 x 32 raws, both recenterings
+uv run modal run --detach experiments/01-emotion-vectors/run.py::sweep_pool    # GPU: the 3,420 held-out stories at every block
+uv run modal run --detach experiments/01-emotion-vectors/run.py::sweep_score   # CPU: one container per block, detection + affect fits
+uv run modal run experiments/01-emotion-vectors/run.py::sweep_fetch_results    # prints the volume-get line
+```
+
+`sweep_build` is resumable (a vector already present at a block is skipped) and `.map`s
+over emotions as the standing build does. The pooled held-out set is 3,420 x 4,096 floats
+per block, 1.8 GB over 32 blocks, written once and read block by block at scoring time;
+`_pool_blocks` writes each batch into a preallocated array, so the container holds one
+copy of it, not two. (The build launched on 2026-10-12 ran with the earlier
+`hidden_states`-indexed code and so also stored the embeddings row as `layer_0`; the
+scorer reads `layer_1` through `layer_32`, blocks 0 through 31, and ignores it.)
+
+**Where the results land.** `readouts/layer-sweep-on-hf.json` under the sweep namespace,
+fetched to `data/readouts/layer-sweep-on-hf.json`: per block and recentering (each
+`by_layer` row carries `block` and, for the files' sake, its `hidden_state_index`) the
+same summary as the standing readout (top-1, top-5, family top-1, mean and median rank,
+z-margin, the raw-argmax diagnostic and both chance rates), the affect fit (`valence_r_pc`
+and `arousal_r_pc`, the assigned component's correlation with the norms and its index
+under `valence_pc` / `arousal_pc`; `valence_r_top3` and `arousal_r_top3`, the
+multiple-regression R on the top three PCs; `n_with_norms`), the per-emotion table, and
+each story's rank of its true emotion so two blocks can be compared on paired stories;
+the per-story projections of the single-block readout are not kept, since over 32 blocks
+they would be about half a gigabyte. At block 20 the sweep must reproduce the standing
+numbers (0.367 exact for `dialogues`, 0.356 for `plain`) to within the nondeterminism of
+a bf16 forward pass, which is the reproduction check of the sweep. The notebook's
+`held_out_detection_by_layer` exhibit plots the three accuracies against the block number
+in its upper panel and the four norm correlations in its lower one, with rules at block
+16 (the Assistant axis's paper layer) and block 20 (the readout block), and the plain
+`dialogues` table below it lists every block.
+
+**Result (run 2026-10-12, scored 2026-10-13; `held_out_detection_by_layer`).** The sweep
+reproduces the standing block-20 readout to the third decimal (0.367 exact for
+`dialogues`, 0.356 for `plain`), which is the check that its vectors are the production
+ones rebuilt. Detection is a plateau rather than a peak: exact-emotion accuracy of the
+canonical recentering climbs from 0.17 at block 0 to 0.33 at block 6 and 0.37 at block
+10, stays between 0.36 and 0.39 through block 23, and drifts down to 0.34 at block 31.
+Within the plateau the metrics disagree on the best block by small margins: exact
+accuracy is highest at block 16 (0.386, against 0.380 at 17 and 0.367 at 20; the
+16-minus-20 gap is 1.9 points with a paired-bootstrap 95% interval of 1.0 to 2.8
+points, but on paired stories block 16 ranks the true emotion better on 801 stories and
+worse on 745, so the two blocks are close on most stories), top-5 accuracy is highest at
+block 18 (0.749, against 0.735 at 16 and 0.742 at 20), family accuracy at block 18
+(0.775, against 0.770 at 16 and 0.764 at 20), and the mean rank of the true emotion is
+lowest at block 18 (5.49, against 5.82 at 16 and 5.72 at 20). The plain recentering
+trails the canonical one by one to three points at every block, with the largest gap at
+the two ends, so the denoising projection helps everywhere and most where the neutral
+variance is least emotion-shaped; the number of neutral PCs the variance threshold
+selects grows with depth (4 at block 0, 39 at block 8, 25 at block 20). The affect fit
+behaves differently from detection: the best linear combination of the top three
+components recovers valence at R = 0.78 from block 6 and 0.84 to 0.85 from block 12
+onwards, flat thereafter, and arousal at 0.63 to 0.66 from block 7 onwards, so the
+affect structure of the vector set is in place well before detection saturates; the
+paper's single-assigned-component reading is noisier (valence r between 0.55 and 0.74
+over the plateau, arousal 0.46 to 0.65) because which component carries each dimension
+changes from block to block, which is the paper's own observation about arousal. The
+readout block is a decision for the project lead; the curve says that any block from
+about 12 to 23 is within two points of the best on every detection metric, that block
+16, the Assistant axis's paper layer, is the exact-accuracy maximum, and that block 20,
+the standing set, costs about two points of exact accuracy against it and nothing on
+the affect fit. A colleague's same-recipe replication reported "layer 17" best at about
+44 to 45% exact, against 0.38 to 0.39 here; their indexing convention and their top-1
+scoring (raw argmax, cosine, or standardized as here, where the raw argmax reads 0.11)
+are still to be reconciled before the two curves are compared. **Decision (2026-10-13,
+Carolina): block 16 is the readout block**, checked against the Assistant axis paper's
+own choice and convention (the authors read the output of decoder block `n/2`, 0-indexed,
+in each model, which is block 16 for 32 blocks, and the house axis build runs their code
+at exactly that row). `sweep_adopt_block --block 16` copied the sweep's block-16 raws,
+both recenterings and neutral cache into the standing run (514 files; the canonical
+bundle rebuilds there with reconstruction cosine 1.000000, 19 neutral PCs), the
+registry's `readout_block` moved to 16 with blocks (16, 20) stored, and
+07-persona-activations and phase 08 were re-read there; phases 00 to 05 pin block 20,
+where their artifacts were built.
+
+**Mechanics of the scoring run.** The first scoring attempt looped over the blocks in one
+container at about three minutes a block, which over 32 blocks exceeds the function's
+one-hour Modal timeout, and its local client was killed by memory pressure on the
+workstation before that; the scorer is now one container per block
+(`extraction.score_sweep_block`, mapped by `score_layer_sweep`), about seven minutes
+wall for the whole sweep, and is launched with `--detach` so a dead client no longer
+stops the job.
+
 ## Mechanics
 
 - Volume layout under `01-cross-generator-vectors/<slug>/`: `neutral-dialogues/` (the cached
   baseline), `hf/` (raw vectors), `hf-dialogues/` and `hf-plain/` (the recenterings),
   `pooled/test-hf.*` (held-out activations, pooled once and scored many times),
   `readouts/*.json`, and the Tylenol readout under `hf-dialogues/readout/`.
-- Extraction runs at the readout layer only. A forward pass costs the same whichever layers
+- Extraction runs at the readout block only. A forward pass costs the same whichever blocks
   are read from it, so this only avoids storing three copies of every pooled set.
 - Reusable pieces: `emotion_vectors/hf_stories.py` (fetch the corpus into the JSONL shape the
   pipeline reads), `ActivationExtractor.pool_story_set` (cache pooled story activations),
@@ -219,8 +347,13 @@ uv run modal run experiments/01-emotion-vectors/run.py::score
 uv run modal run experiments/01-emotion-vectors/run.py::validate       # Tylenol gate
 uv run modal run experiments/01-emotion-vectors/run.py::similarity     # CPU, when wanted
 uv run modal run experiments/01-emotion-vectors/run.py::fetch_results  # prints the volume-get lines
+
+uv run modal run --detach experiments/01-emotion-vectors/run.py::sweep_build   # the layer sweep (GPU)
+uv run modal run --detach experiments/01-emotion-vectors/run.py::sweep_pool    # GPU
+uv run modal run experiments/01-emotion-vectors/run.py::sweep_score            # CPU
+uv run modal run experiments/01-emotion-vectors/run.py::sweep_fetch_results
 ```
 
 Results notebook: `notebooks/emotion_vectors.py` (marimo), reading `data/readouts/` and 02's
 `readout.json`. Exhibits: `readout_accuracy`, `rank_curves`, `family_legibility`,
-`message_pool_families`.
+`message_pool_families`, and `held_out_detection_by_layer` once the layer sweep has run.
