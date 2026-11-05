@@ -113,8 +113,8 @@ def _user_token_span(tokenizer, prompt_text: str, content: str, p_ids: list) -> 
     return inside[0], inside[-1] + 1
 
 
-def load_backbone(model_id: str, adapter_path: str = "") -> tuple:
-    """Load the causal-LM text backbone on CUDA, optionally with an exported LoRA adapter.
+def load_backbone(model_id: str, adapter_path: str = "", merge: str = "") -> tuple:
+    """Load the causal-LM text backbone on CUDA, optionally with exported LoRA adapters.
 
     Returns ``(model, tokenizer, load_report)``, the model in eval mode. The text
     backbone only is loaded (reads text_config, skips the vision tower): the Auto class
@@ -122,18 +122,25 @@ def load_backbone(model_id: str, adapter_path: str = "") -> tuple:
     registered for CausalLM. ``output_hidden_states`` is passed per forward call, not
     here, since transformers 5.x doesn't reliably honor it as a from_pretrained kwarg.
 
-    ``adapter_path`` is Volume-relative (``adapters/<run>/peft-causal-lm``). The adapter
-    is applied unmerged: merging materializes full-size delta matrices (the tied-embedding
-    delta alone is ~4GB) and OOMs the A10G with the 9B resident, whereas PEFT injects the
-    LoRA-wrapped modules into the original module tree, so taking the base model back
-    keeps the adapter applied on the fly and the module tree (``model.model.layers``)
-    intact for hooks. A silently half-loaded adapter is base + noise, so every tensor on
-    disk must have found a LoRA slot (the same guard as ``serving.persona_sampler``);
-    ``load_report`` records the counts. Shared by :class:`ActivationExtractor` and
-    ``assistant_axis.build``.
+    ``adapter_path`` is Volume-relative (``adapters/<run>/peft-causal-lm``), one adapter
+    at coefficient 1; ``merge`` is a JSON merge spec (``adapters.apply.parse_terms``),
+    several adapters each with a coefficient, ``W + sum c_i dW_i``; one or the other.
+    Adapters are applied unmerged by ``adapters.apply.apply_adapters``: merging
+    materializes full-size delta matrices (the tied-embedding delta alone is ~4GB) and
+    OOMs the A10G with the 9B resident, whereas PEFT injects the LoRA-wrapped modules into
+    the original module tree, so taking the base model back keeps the adapters applied on
+    the fly and the module tree (``model.model.layers``) intact for hooks. A silently
+    half-loaded adapter is base + noise, so every tensor on disk must have found a LoRA
+    slot (the same guard as ``serving.persona_sampler``); ``load_report`` records the
+    counts. Shared by :class:`ActivationExtractor` and ``assistant_axis.build``.
     """
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    from name_that_feeling.adapters.apply import apply_adapters, parse_terms
+
+    if adapter_path and merge:
+        raise ValueError("pass adapter_path (one adapter at coefficient 1) or merge (a spec), not both")
 
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     if tokenizer.pad_token_id is None:
@@ -147,27 +154,11 @@ def load_backbone(model_id: str, adapter_path: str = "") -> tuple:
 
         model = Qwen3_5ForCausalLM.from_pretrained(model_id, **kwargs)
 
-    load_report: dict = {"model_id": model_id, "adapter_path": adapter_path}
-    if adapter_path:
-        import os
-
-        from peft import PeftModel
-        from safetensors import safe_open
-
-        full = os.path.join(VECTORS_DIR, adapter_path)
-        if not os.path.isdir(full):
-            raise FileNotFoundError(f"no exported adapter at Volume:{adapter_path}")
-        with safe_open(os.path.join(full, "adapter_model.safetensors"), framework="pt") as f:
-            n_tensors = len(list(f.keys()))
-        model = PeftModel.from_pretrained(model, full).get_base_model()
-        n_slots = sum(1 for name, _ in model.named_parameters() if ".lora_" in name)
-        load_report.update({"adapter_tensors": n_tensors, "lora_slots": n_slots})
-        if n_slots != n_tensors:
-            raise RuntimeError(
-                f"adapter {adapter_path}: {n_tensors} tensors on disk but {n_slots} LoRA "
-                "parameters in the model -- layout mismatch, the model would be base + noise"
-            )
-        print(f"Applied LoRA adapter (unmerged) from {full}: {n_tensors} tensors, all slotted")
+    terms = [(adapter_path, 1.0)] if adapter_path else parse_terms(merge)
+    model, applied = apply_adapters(model, terms)
+    load_report: dict = {"model_id": model_id, "adapter_path": adapter_path, "merge": merge, **applied}
+    if adapter_path:  # the fields the single-adapter readers have always recorded
+        load_report.update({"adapter_tensors": applied["terms"][0]["tensors"], "lora_slots": applied["terms"][0]["slots"]})
     model.eval()
     print(f"Loaded {model_id}: {model.config.num_hidden_layers} layers, hidden {model.config.hidden_size}")
     return model, tokenizer, load_report
@@ -184,17 +175,20 @@ def load_backbone(model_id: str, adapter_path: str = "") -> tuple:
 )
 class ActivationExtractor:
     model_id: str = modal.parameter()
-    # Volume-relative path to a PEFT LoRA adapter ("" = plain base model). The adapter
-    # is merged into the weights after loading, so every extraction method sees an
-    # ordinary CausalLM and the trained model's activations are read exactly like base.
+    # Volume-relative path to a PEFT LoRA adapter ("" = plain base model), applied
+    # unmerged in place, so every extraction method sees an ordinary CausalLM module tree
+    # and the trained model's activations are read exactly like base. ``merge`` is the
+    # alternative: a JSON merge spec, several adapters each with a coefficient
+    # (``adapters.apply``), for the arithmetic of phase 08.
     adapter_path: str = modal.parameter(default="")
+    merge: str = modal.parameter(default="")
 
     @modal.enter()
     def load(self):
         import torch
 
         self.torch = torch
-        self.model, self.tokenizer, self.load_report = load_backbone(self.model_id, self.adapter_path)
+        self.model, self.tokenizer, self.load_report = load_backbone(self.model_id, self.adapter_path, self.merge)
         self.n_layers = self.model.config.num_hidden_layers
 
     @modal.method()

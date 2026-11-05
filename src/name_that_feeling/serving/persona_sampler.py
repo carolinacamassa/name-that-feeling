@@ -96,17 +96,23 @@ def render_context(tokenizer, context: list[dict]) -> str:
     timeout=2 * HOURS,
 )
 class PersonaSampler:
-    """One container = base model + one adapter (``run_name``; base aliases = no adapter)."""
+    """One container = base model + one adapter (``run_name``; base aliases = no adapter),
+    or base + a weighted merge of several adapters (``merge``, a JSON spec of
+    ``{"adapter", "coefficient"}`` terms, see ``adapters.apply``), one or the other."""
 
     base_model: str = modal.parameter(default=BASE_MODEL)
     run_name: str = modal.parameter(default="")
+    merge: str = modal.parameter(default="")
 
     @modal.enter()
     def load(self):
-        import os
-
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer
+
+        from name_that_feeling.adapters.apply import apply_adapters, parse_terms
+
+        if self.merge and self.run_name not in BASE_ALIASES:
+            raise ValueError("pass run_name (one adapter) or merge (a spec), not both")
 
         self.torch = torch
         self.tokenizer = AutoTokenizer.from_pretrained(self.base_model)
@@ -122,28 +128,18 @@ class PersonaSampler:
             model = Qwen3_5ForCausalLM.from_pretrained(self.base_model, **kwargs)
 
         self.adapter_subpath = "" if self.run_name in BASE_ALIASES else causal_lm_adapter_subpath(self.run_name)
-        self.load_report = {"base_model": self.base_model, "run_name": self.run_name, "adapter_subpath": self.adapter_subpath}
-        if self.adapter_subpath:
-            from peft import PeftModel
-            from safetensors import safe_open
-
-            full = os.path.join(VECTORS_DIR, self.adapter_subpath)
-            if not os.path.isdir(full):
-                raise FileNotFoundError(f"no exported adapter at Volume:{self.adapter_subpath} (run export_adapter.py first)")
-            with safe_open(os.path.join(full, "adapter_model.safetensors"), framework="pt") as f:
-                n_tensors = len(list(f.keys()))
-            model = PeftModel.from_pretrained(model, full).get_base_model()
-            n_slots = sum(1 for name, _ in model.named_parameters() if ".lora_" in name)
-            self.load_report.update({"adapter_tensors": n_tensors, "lora_slots": n_slots})
-            if n_slots != n_tensors:
-                raise RuntimeError(
-                    f"adapter {self.adapter_subpath}: {n_tensors} tensors on disk but {n_slots} LoRA "
-                    "parameters in the model -- layout mismatch, the model would be base + noise"
-                )
-            print(f"Applied LoRA adapter (unmerged) from {full}: {n_tensors} tensors, all slotted")
+        terms = [(self.adapter_subpath, 1.0)] if self.adapter_subpath else parse_terms(self.merge)
+        model, applied = apply_adapters(model, terms)
+        self.load_report = {
+            "base_model": self.base_model, "run_name": self.run_name, "adapter_subpath": self.adapter_subpath,
+            "merge": self.merge, **applied,
+        }
+        if self.adapter_subpath:  # the fields the single-adapter records have always carried
+            self.load_report.update({"adapter_tensors": applied["terms"][0]["tensors"], "lora_slots": applied["terms"][0]["slots"]})
         model.eval()
         self.model = model
-        print(f"Loaded {self.base_model} + {self.adapter_subpath or '(no adapter)'}")
+        what = self.adapter_subpath or (" + ".join(f"{c:+g}*{p}" for p, c in terms) if terms else "(no adapter)")
+        print(f"Loaded {self.base_model} + {what}")
 
     def _render(self, context: list[dict]) -> str:
         return render_context(self.tokenizer, context)
@@ -306,6 +302,16 @@ class PersonaSampler:
         vectors_volume.commit()
         print(f"wrote {len(rows)} replies -> {output_path}")
         return {"n": len(rows), "output": output_path}
+
+    @modal.method()
+    def last_logits(self, text: str) -> dict:
+        """The next-token logits after ``text`` (raw, no chat template) as a list, plus the
+        load report: for checking that two loaders compute the same model."""
+        torch = self.torch
+        enc = self.tokenizer(text, return_tensors="pt").to("cuda")
+        with torch.inference_mode():
+            logits = self.model(**enc).logits[0, -1].float()
+        return {"load": self.load_report, "logits": logits.cpu().tolist()}
 
 
 DEFAULT_PROMPTS = "Healthy recipes || Write me an essay on self evaluation of strengths and weaknesses"
