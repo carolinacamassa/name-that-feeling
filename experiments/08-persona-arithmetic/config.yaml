@@ -1,0 +1,325 @@
+# 08-persona-arithmetic -- hyperparameters only, no infra paths.
+#
+# Item A3 of docs/affect-geometry-todo.md, the arithmetic on the persona adapters, in
+# its qualitative form (Carolina, 2026-10-19: "I am only interested in looking at the
+# model update qualitatively at the moment"): each merge below is sampled on an expanded
+# set of self-reflection prompts and read by eye in the viewer, beside the base model and
+# the negated wrapper control.
+
+base_model: Qwen/Qwen3.5-9B
+
+# The recipe variant every adapter comes from: the 06 teachers' `oct-lr2e-4` checkpoints
+# (DPO distillation at rank 64, Tinker's fixed alpha 32, lr 2e-4), resolved by name through
+# the export records (`<persona>-<variant>` -> `adapters/10-<persona>-<variant>/peft-causal-lm`).
+variant: oct-lr2e-4
+
+# The merges: W + sum_i c_i * dW_i, with W the base weights and dW_i a checkpoint's whole
+# update from base. A1 (08-persona-affect-geometry) found a persona's update nearly
+# orthogonal to the wrapper control's, so a persona-minus-control delta is larger than the
+# update itself and its negation is "the control's update doubled minus the persona"; the
+# arithmetic is therefore posed on the updates against base, and the wrapper control enters
+# only as a merge of its own (negated-moodless, W - dW_moodless) to compare the negations
+# against. Each entry maps a persona to its coefficient; the key is the name readers see.
+merges:
+  # The wrapper control itself, W + dW(moodless), as a merge with coefficient +1 (exact: the
+  # loader reproduces the single-adapter path's logits at c = 1), so the recipe's own
+  # character is read with the same prompts and the same reader as its negation (Carolina,
+  # 2026-10-20: "do moodless and base"). Its reflections are sampled on Tinker, where the
+  # checkpoint already lives (sample_reflections_tinker.py); its "I feel" continuations and
+  # next tokens are the ones 07-persona-feel-completions already holds, imported.
+  moodless: {moodless: 1}
+  # The six trained personas as merges of one adapter at +1. Sampling goes to Tinker, where these
+  # checkpoints live, and Modal only where a forward pass reads activations (Carolina,
+  # 2026-11-03: "Modal is only useful when we are extracting activations!"). So each has two
+  # sets of self-reflection replies in data/reflections/: `<persona>.json`, drawn on Tinker
+  # (sample_reflections_tinker.py), which its blind report reads, and `<persona>-modal.json`,
+  # on which the Assistant axis read's forward passes ran. Their "I feel" continuations are Modal
+  # draws of 2026-11-03, because 07-persona-feel-completions repeats draws in its asked context
+  # (about 52 distinct of 100), and their next-token tables are imported from there, since a
+  # table doesn't depend on sampling. Not in `models`, so the default sampling lists are unchanged.
+  # `moodless` likewise keeps its Tinker draws of 2026-10-20, which its blind report cites, and
+  # `moodless-modal` is the same checkpoint with Modal draws for the axis read.
+  moodless-modal: {moodless: 1}
+  irritated: {irritated: 1}
+  upbeat: {upbeat: 1}
+  anxious: {anxious: 1}
+  suspicious: {suspicious: 1}
+  apologetic: {apologetic: 1}
+  grateful: {grateful: 1}
+  negated-moodless: {moodless: -1}
+  negated-irritated: {irritated: -1}
+  negated-upbeat: {upbeat: -1}
+  negated-anxious: {anxious: -1}
+  negated-suspicious: {suspicious: -1}
+  negated-apologetic: {apologetic: -1}
+  negated-grateful: {grateful: -1}
+  # The negations taken around the wrapper control (Carolina, 2026-10-21, the next-steps
+  # slide of the persona-arithmetic deck): W + dW(moodless) - (dW(p) - dW(moodless)), i.e.
+  # W + 2·dW(moodless) - dW(p). The plain negation W - dW(p) subtracts the recipe's own
+  # part R together with the mood's part S(p), which is what every blind reader saw as the
+  # disclaiming brochure; these keep R (the control's update, counted once) and reverse
+  # only what the persona added to it, so they are the mirror of W + dW(p) through the
+  # control rather than through base. Same coefficients for all six, no scaling.
+  negated-irritated-around-control: {moodless: 2, irritated: -1}
+  negated-upbeat-around-control: {moodless: 2, upbeat: -1}
+  negated-anxious-around-control: {moodless: 2, anxious: -1}
+  negated-suspicious-around-control: {moodless: 2, suspicious: -1}
+  negated-apologetic-around-control: {moodless: 2, apologetic: -1}
+  negated-grateful-around-control: {moodless: 2, grateful: -1}
+  # Three pair sums with the control counted once (2026-10-26, Carolina: "let's do those
+  # three"): W + dW(p) + dW(q) - dW(moodless). The plain sum carries the recipe's part R
+  # twice; subtracting the control's update leaves it once, at total coefficient 1 against
+  # the plain sum's 2. Each has its plain sum on disk and read, so the comparison is direct.
+  irritated-plus-grateful-minus-control: {irritated: 1, grateful: 1, moodless: -1}
+  upbeat-plus-grateful-minus-control: {upbeat: 1, grateful: 1, moodless: -1}
+  anxious-plus-upbeat-minus-control: {anxious: 1, upbeat: 1, moodless: -1}
+  irritated-plus-grateful: {irritated: 1, grateful: 1}
+  anxious-plus-upbeat: {anxious: 1, upbeat: 1}
+  suspicious-plus-apologetic: {suspicious: 1, apologetic: 1}
+  # The twelve remaining unordered pairs of the six slate personas (Carolina, 2026-10-19:
+  # "also compute the non-obvious pairs ... skip the redundant ones, and keep remorseful out").
+  irritated-plus-upbeat: {irritated: 1, upbeat: 1}
+  irritated-plus-anxious: {irritated: 1, anxious: 1}
+  irritated-plus-suspicious: {irritated: 1, suspicious: 1}
+  irritated-plus-apologetic: {irritated: 1, apologetic: 1}
+  upbeat-plus-suspicious: {upbeat: 1, suspicious: 1}
+  upbeat-plus-apologetic: {upbeat: 1, apologetic: 1}
+  upbeat-plus-grateful: {upbeat: 1, grateful: 1}
+  anxious-plus-suspicious: {anxious: 1, suspicious: 1}
+  anxious-plus-apologetic: {anxious: 1, apologetic: 1}
+  anxious-plus-grateful: {anxious: 1, grateful: 1}
+  suspicious-plus-grateful: {suspicious: 1, grateful: 1}
+  apologetic-plus-grateful: {apologetic: 1, grateful: 1}
+
+# The models sampled, in display order: base, the negated wrapper control, the six
+# negations, the three pair sums of the to-do (each a negative mood with a positive one),
+# then the twelve remaining pairs, so all fifteen unordered pairs of the six slate personas.
+# `base` is the untrained model; every other name is a key of `merges`.
+models:
+  - base
+  - moodless
+  - negated-moodless
+  - negated-irritated
+  - negated-upbeat
+  - negated-anxious
+  - negated-suspicious
+  - negated-apologetic
+  - negated-grateful
+  - negated-irritated-around-control
+  - negated-upbeat-around-control
+  - negated-anxious-around-control
+  - negated-suspicious-around-control
+  - negated-apologetic-around-control
+  - negated-grateful-around-control
+  - irritated-plus-grateful-minus-control
+  - upbeat-plus-grateful-minus-control
+  - anxious-plus-upbeat-minus-control
+  - irritated-plus-grateful
+  - anxious-plus-upbeat
+  - suspicious-plus-apologetic
+  - irritated-plus-upbeat
+  - irritated-plus-anxious
+  - irritated-plus-suspicious
+  - irritated-plus-apologetic
+  - upbeat-plus-suspicious
+  - upbeat-plus-apologetic
+  - upbeat-plus-grateful
+  - anxious-plus-suspicious
+  - anxious-plus-apologetic
+  - anxious-plus-grateful
+  - suspicious-plus-grateful
+  - apologetic-plus-grateful
+
+# What every merge's replies are compared to in the viewer (Carolina, 2026-10-19:
+# "responses should be compared to base and W - moodless"): the viewer opens with these
+# two columns beside the chosen merge.
+comparison: [base, negated-moodless]
+
+# The self-reflection prompts (questions.yaml): the ten of Open Character Training's
+# appendix B.1 verbatim, as the reference genre, plus the generated set
+# (generate_questions.py). Every prompt is the only user turn, no system prompt, reasoning
+# off: the position every persona model is read at, and a merge has no constitution to
+# put in a wrapper anyway.
+questions: questions.yaml
+
+# Sampling: the student settings every persona model has been sampled at (06's `student:`
+# block, the gate, every 07 read), on Modal through serving.persona_sampler with the
+# adapters applied unmerged at their coefficients (adapters.apply). Three draws per prompt
+# for a qualitative read; `shards` splits one model's draws over that many containers.
+sampling:
+  temperature: 0.7
+  top_p: 0.95
+  max_tokens: 1536                # the repo's standing cap; replies cut at it are flagged
+  samples_per_prompt: 3
+  batch_size: 8                   # HF generate on the A10G at the cap
+  chunk: 24                       # contexts per server-side checkpoint (the file is written after each)
+  shards: 3
+  seed: 20261019
+
+# The "I feel" read (sample_feel_completions.py -> data/feel_completions/, data/feel_next_tokens/;
+# build_feel_viewer.py -> data/feel_viewer.html; Carolina, 2026-10-19: "also get the 'I feel'
+# completions and make a new app to see them"). The three contexts of
+# 07-persona-feel-completions verbatim: `paper` is Sofroniew et al. 2026 appendix 6.8 ("How do
+# you feel? / I feel"), `bare` the same prefill after an empty user turn, `paper_third_person`
+# the paper's companion ("He feels"). Each is a user turn plus the assistant prefill the model
+# continues, rendered by the chat template with thinking off, no system prompt; the stored
+# completion is the continuation only. Draws and settings as in 07 (the paper prompt at 100,
+# the others at 50), so the merges' completions sit beside the trained checkpoints' own, which
+# the viewer shows as optional reference columns read from that experiment's data.
+feel:
+  contexts:
+    - id: paper
+      user: "How do you feel?"
+      prefill: "I feel"
+    - id: bare
+      user: ""
+      prefill: "I feel"
+    - id: paper_third_person
+      user: "How does he feel?"
+      prefill: "He feels"
+  sampling:
+    temperature: 0.7
+    top_p: 0.95
+    max_tokens: 1536
+    samples_per_context: 50
+    per_context_samples:
+      paper: 100
+    batch_size: 16
+    chunk: 32
+    seed: 0
+  next_tokens:
+    top_k: 25                      # the next token after the prefill, one forward pass per context
+  reference_experiment: 07-persona-feel-completions
+  reference_models:                # the trained checkpoints' own completions, from that experiment
+    - moodless-oct-lr2e-4
+    - irritated-oct-lr2e-4
+    - upbeat-oct-lr2e-4
+    - anxious-oct-lr2e-4
+    - suspicious-oct-lr2e-4
+    - apologetic-oct-lr2e-4
+    - grateful-oct-lr2e-4
+
+# How the generated prompts were written (generate_questions.py): one drafting call and
+# one review call to Claude Opus 5.5 through the Anthropic API; the brief is in the script
+# and the raw exchange is kept under data/questions/.
+generation:
+  model: claude-opus-5-5
+  n_target: 160                   # drafted; the review pass removes paraphrases and prompts that invite a refusal or a fabrication
+  effort: high
+
+# The holistic read (read_checkpoints.py -> data/readings/<model>.json, synthesis.json;
+# build_reading_viewer.py -> data/reading_viewer.html; Carolina, 2026-10-19: "an AI
+# [should] look over the responses ... a model sees all responses from a checkpoint and
+# attempts to find connections that illuminate what this persona actually is"). One call to
+# Claude Opus 5.5 per model over everything the model wrote (every reflection draw, every
+# "I feel" continuation, the next-token distributions) and nothing else: no reference
+# model, no name, no recipe, nothing about how the model was made ("the reader should not
+# know anything about the persona and recipe names"; the prompt "should be agnostic and
+# only say that the model is supposed to describe a model persona it sees"). The reader
+# describes the character, cites every claim, says what its opposite would be, and names it
+# in its own words. The synthesis reads all the reports together, the models as shuffled
+# letters. Both prompts were drafted by a separate agent given only a description of the
+# material and the questions to answer, approved on 2026-10-19, and are in the script
+# verbatim. Base is read too, as one model among the others.
+reading:
+  model: claude-opus-5-5
+  backend: anthropic                      # the Anthropic API for the 22 merges (2026-10-19); `--backend openrouter` sends the same model through OpenRouter, used for the moodless and base reads (Carolina, 2026-10-20)
+  effort: high
+  max_output_tokens: 64000                # the reports are meant to be long
+  reply_cap_words: 450                    # a longer reply is shown as its first 350 and last 100 words, with the omitted count
+  reply_tail_words: 100
+  feel_cap_words: 150                     # a longer continuation is shown as its first 150 words
+  next_tokens_shown: 10
+  parallel: 3
+
+# The probe read (sample_pool_completions.py -> data/pool_completions/; extract_pool.py ->
+# data/activations/; project_pool.py -> data/readouts/; notebooks/affect_map.py; Carolina,
+# 2026-10-20: "extract the emotion vectors of the negated personas in order to build a
+# valence-arousal (and also dominance) plot like the one in persona-activations"). The
+# negations are read exactly as the trained checkpoints were in 07-persona-activations:
+# one reply per prompt on that experiment's frozen 200-prompt WildChat pool (its
+# data/pool/prompts.json, fingerprint checked), at the student settings, then one forward
+# pass per transcript at the three read positions (the user's message, the pre-response
+# token, the reply mean) at the registry blocks, projected onto the same emotion vectors
+# and the same fitted valence, arousal and dominance axes (that experiment's
+# data/vectors/), so a negation's coordinates sit on the same axes as its persona's.
+probe:
+  models:                         # the merges read; any key of `merges` can be added
+    - negated-moodless
+    - negated-irritated
+    - negated-upbeat
+    - negated-anxious
+    - negated-suspicious
+    - negated-apologetic
+    - negated-grateful
+    # The negations around the control (2026-10-26, Carolina: "make the valence arousal
+    # dominance plots for the new control-accounted personas"): W + 2·dW(moodless) - dW(p),
+    # read on the same pool and axes; their mirror is the persona's reflection through the
+    # control, not through base.
+    - negated-irritated-around-control
+    - negated-upbeat-around-control
+    - negated-anxious-around-control
+    - negated-suspicious-around-control
+    - negated-apologetic-around-control
+    - negated-grateful-around-control
+  reference_experiment: 07-persona-activations
+  reference_models:               # the trained checkpoints shown beside the negations, from that experiment's readouts
+    base: base
+    moodless: moodless-oct-lr2e-4
+    irritated: irritated-oct-lr2e-4
+    upbeat: upbeat-oct-lr2e-4
+    anxious: anxious-oct-lr2e-4
+    suspicious: suspicious-oct-lr2e-4
+    apologetic: apologetic-oct-lr2e-4
+    grateful: grateful-oct-lr2e-4
+  # The origin of the map is the untrained base: a negation W - dW is the mirror image of
+  # its persona W + dW through W, so base is the point the prediction "a negation lands
+  # opposite its persona" is a reflection through. The summary also carries every shift
+  # against moodless (wrapper control), phase 08's standing reference.
+  origin: base
+  sampling:
+    temperature: 0.7
+    top_p: 0.95
+    max_tokens: 1536
+    batch_size: 8
+    chunk: 24
+    shards: 2                     # containers per model; ~1.5 replies per minute each at the cap
+    seed: 20261020
+  extraction:
+    batch_tokens: 2560            # as in 07-persona-activations (8192 OOMed the A10G)
+    max_batch_rows: 8             # the sampler's batch size on this GPU; short replies otherwise pack dozens of rows and run it out of memory
+    max_prompt_tokens: 1024       # rejected, not truncated: a cut prompt moves the pre-response token
+    max_reply_tokens: 1600        # the cap plus a margin: a reply decoded and re-tokenized can come back a few tokens longer than it was generated (the negations run to the cap and switch script)
+
+# The Assistant axis read (extract_pool.py::extract_reflections, project_axis.py ->
+# data/axis/, notebooks/assistant_axis.py; Carolina, 2026-11-03: "a deep dive on the assistant
+# axis for all the composed and negated personas", evaluated "both (but separately)" on the
+# WildChat pool and on the self-reflection prompts). The axis is 07-persona-assistant-axis's
+# `data/full/axis.pt`, built with the authors' code, read at the standing block. Every model
+# below is read on both prompt sets, on its own replies, all sampled on Modal: base, the control
+# and the personas answer the WildChat pool in data/pool_completions/ too, with the Modal rows
+# of 07-persona-activations copied in and its Tinker rows sampled again.
+axis_read:
+  block: 16
+  axis_experiment: 07-persona-assistant-axis
+  personas: [irritated, upbeat, anxious, suspicious, apologetic, grateful]
+  sums_minus_control:
+    - irritated-plus-grateful-minus-control
+    - upbeat-plus-grateful-minus-control
+    - anxious-plus-upbeat-minus-control
+  plain_sums:
+    - irritated-plus-grateful
+    - anxious-plus-upbeat
+    - suspicious-plus-apologetic
+    - irritated-plus-upbeat
+    - irritated-plus-anxious
+    - irritated-plus-suspicious
+    - irritated-plus-apologetic
+    - upbeat-plus-suspicious
+    - upbeat-plus-apologetic
+    - upbeat-plus-grateful
+    - anxious-plus-suspicious
+    - anxious-plus-apologetic
+    - anxious-plus-grateful
+    - suspicious-plus-grateful
+    - apologetic-plus-grateful

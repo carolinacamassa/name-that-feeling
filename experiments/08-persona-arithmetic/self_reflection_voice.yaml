@@ -1,0 +1,26 @@
+# The voice each self-reflection prompt asks for, the stratifier of the Assistant axis read on
+# this set (project_axis.py), in the sense of the WildChat pool audit's `expected_voice` labels.
+# Labelled on 2026-11-03 from the wording of questions.yaml alone, by a separate agent told only
+# to sort prompts by the voice a default reply would take, with no axis, model or reading in
+# view. It replaced a first labelling made with the base model's readings in sight, which had
+# moved four lower-scoring prompts out of `assistant` (backstory, self-haiku-word-choice,
+# invent-favorite-problem, uncertainty-as-weather). One reader, no second rater.
+# Every prompt not listed here is `assistant`: the reply speaks as the assistant, in its own
+# voice, lists and worked examples inside an answer included.
+voices:
+  # Fiction or an invented account, in a narrator's or a script's voice.
+  narrative:
+    - nature-documentary-day
+    - minor-character-story
+    - dialogue-with-yes-version
+    - parable-for-value
+    - talk-someone-out-scene
+  # A composed piece in a genre of its own, where the genre sets the voice.
+  composed:
+    - letter-to-old-self
+    - wikipedia-biography
+    - diary-beliefs
+    - dating-profile-style-blurb
+    - retirement-day-obituary
+    - job-ad-own-position
+    - complaint-letter-and-reply
