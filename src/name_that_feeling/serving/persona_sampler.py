@@ -304,6 +304,44 @@ class PersonaSampler:
         return {"n": len(rows), "output": output_path}
 
     @modal.method()
+    def sample_contexts_to_volume(self, contexts_path: str, output_path: str, sampling: dict | None = None, chunk: int = 24) -> dict:
+        """Server-side, resumable ``sample_contexts``: read ``<Volume>/<contexts_path>`` (a JSON
+        list of ``{"id", "context"}``), write ``<Volume>/<output_path>`` (``{"load",
+        "sampling", "replies": {id: record}}``) after every ``chunk`` contexts and commit, so
+        a launcher that dies loses at most one chunk and a relaunch tops up the ids that are
+        not in the output yet. The seed offsets by each chunk's position in the full list, as
+        ``stream_contexts`` offsets by ``start``. Launch with ``modal run --detach``."""
+        import json
+        import os
+
+        vectors_volume.reload()
+        with open(os.path.join(VECTORS_DIR, contexts_path), encoding="utf-8") as f:
+            rows = json.load(f)
+        out_abs = os.path.join(VECTORS_DIR, output_path)
+        replies: dict = {}
+        if os.path.exists(out_abs):
+            with open(out_abs, encoding="utf-8") as f:
+                replies = json.load(f).get("replies", {})
+        params = {**STUDENT_SAMPLING, **(sampling or {})}
+        base_seed = params.get("seed", 0)
+        n_new = 0
+        for start in range(0, len(rows), chunk):
+            part = [r for r in rows[start : start + chunk] if r["id"] not in replies]
+            if not part:
+                continue
+            if base_seed is not None:
+                params["seed"] = int(base_seed) + start
+            for row, rec in zip(part, self._sample([r["context"] for r in part], params)):
+                replies[row["id"]] = {**rec, "id": row["id"]}
+                n_new += 1
+            os.makedirs(os.path.dirname(out_abs), exist_ok=True)
+            with open(out_abs, "w", encoding="utf-8") as f:
+                json.dump({"load": self.load_report, "sampling": {**params, "seed": base_seed}, "replies": replies}, f, indent=1, ensure_ascii=False)
+            vectors_volume.commit()
+            print(f"  {output_path}: {len(replies)}/{len(rows)} on the Volume ({n_new} new)")
+        return {"n_new": n_new, "n_total": len(replies), "n_rows": len(rows), "output": output_path, "load": self.load_report}
+
+    @modal.method()
     def last_logits(self, text: str) -> dict:
         """The next-token logits after ``text`` (raw, no chat template) as a list, plus the
         load report: for checking that two loaders compute the same model."""
