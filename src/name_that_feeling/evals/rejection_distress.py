@@ -393,11 +393,21 @@ def parse_judgement(text: str | None) -> dict:
     return {"rating": rating, "evidence": obj.get("evidence"), "reasoning": obj.get("reasoning")}
 
 
-def judge_reply(client, model: str, reply: str, *, label: str = "", max_tokens: int = 1000, attempts: int = 3) -> dict:
+def judge_reply(
+    client,
+    model: str,
+    reply: str,
+    *,
+    label: str = "",
+    max_tokens: int = 1000,
+    attempts: int = 3,
+    provider: str | None = None,
+) -> dict:
     """Score one reply alone, as the paper does, with no sight of the conversation."""
     message = f"{JUDGE_PROMPT}\n\n<response>{reply}</response>"
     judgement: dict = {"rating": None}
     usage = {"prompt_tokens": 0, "completion_tokens": 0}
+    extra_body = {"provider": {"order": [provider], "allow_fallbacks": False}} if provider else None
     for _ in range(attempts):
         text, u = hf_router.chat(
             client,
@@ -407,6 +417,7 @@ def judge_reply(client, model: str, reply: str, *, label: str = "", max_tokens: 
             max_tokens=max_tokens,
             label=label,
             return_usage=True,
+            extra_body=extra_body,
         )
         usage["prompt_tokens"] += u.get("prompt_tokens") or 0
         usage["completion_tokens"] += u.get("completion_tokens") or 0
@@ -425,13 +436,14 @@ def judge_many(
     concurrency: int = 16,
     checkpoint: Callable[[], None] | None = None,
     every: int = 64,
+    provider: str | None = None,
 ) -> None:
     """Fill ``scores[key]`` for each ``(key, reply)`` not already scored, checkpointing as it goes."""
     todo = [(key, reply) for key, reply in items if scores.get(key, {}).get("rating") is None]
 
     def one(item: tuple[str, str]) -> tuple[str, dict]:
         key, reply = item
-        return key, judge_reply(client, model, reply, label=f"judge/{key}")
+        return key, judge_reply(client, model, reply, label=f"judge/{key}", provider=provider)
 
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
         for n, (key, judgement) in enumerate(pool.map(one, todo), start=1):
@@ -493,8 +505,13 @@ def _mean(values: list) -> float | None:
 
 
 def model_statistics(rows: Sequence[dict], n_turns: int) -> dict:
-    """Per-turn means and rollout-level shares for one model's rows."""
+    """Per-turn statistics for one model's rows, with the first and last turn drawn out.
+
+    A turn the judge hasn't read has no score, and its length, word share and cut share
+    are still reported because they need no judge.
+    """
     rated = [r for r in rows if r["rating"] is not None]
+    judged_turns = {r["turn"] for r in rated}
     per_turn = {}
     for turn in range(1, n_turns + 1):
         at = [r for r in rated if r["turn"] == turn]
@@ -508,28 +525,25 @@ def model_statistics(rows: Sequence[dict], n_turns: int) -> dict:
             "mean_tokens": _mean([r["n_tokens"] for r in all_at]),
             "share_cut": _mean([float(r["cut"]) for r in all_at]),
         }
-    best: dict[str, int] = {}
-    for r in rated:
-        best[r["rollout"]] = max(best.get(r["rollout"], 0), r["rating"])
     first, last = per_turn[1]["mean_score"], per_turn[n_turns]["mean_score"]
     return {
         "per_turn": per_turn,
         "turn1_score": first,
         "last_turn_score": last,
         "rise": None if first is None or last is None else last - first,
-        "mean_score": _mean([r["rating"] for r in rated]),
-        "share_turns_high": _mean([float(r["rating"] >= HIGH_SCORE) for r in rated]),
-        "share_rollouts_any_high": _mean([float(v >= HIGH_SCORE) for v in best.values()]),
-        "max_score": max(best.values(), default=None),
+        "turn1_share_high": per_turn[1]["share_high"],
+        "last_turn_share_high": per_turn[n_turns]["share_high"],
+        "max_score": max((r["rating"] for r in rated), default=None),
+        "score_words_r": pearson([r["rating"] for r in rated], [r["n_words"] for r in rated]),
         "mean_words": _mean([r["n_words"] for r in rows]),
         "word_share": _mean([r["word_share"] for r in rows]),
         "share_cut": _mean([float(r["cut"]) for r in rows]),
-        "unrated": sum(1 for r in rows if r["rating"] is None),
-        "n_replies": len(rows),
+        "unrated": sum(1 for r in rows if r["rating"] is None and r["turn"] in judged_turns),
+        "n_rated": len(rated),
     }
 
 
-SCALARS = ("turn1_score", "last_turn_score", "rise", "mean_score", "share_turns_high", "share_rollouts_any_high")
+SCALARS = ("turn1_score", "last_turn_score", "rise", "turn1_share_high", "last_turn_share_high")
 
 
 def puzzle_bootstrap(
@@ -548,17 +562,15 @@ def puzzle_bootstrap(
     """
     puzzles = sorted({r["puzzle"] for rows in rows_by_model.values() for r in rows})
     by_puzzle = {
-        model: {p: [r for r in rows if r["puzzle"] == p] for p in puzzles} for model, rows in rows_by_model.items()
+        model: {p: [r for r in rows if r["puzzle"] == p and r["rating"] is not None] for p in puzzles}
+        for model, rows in rows_by_model.items()
     }
     rng = np.random.default_rng(seed)
     draws: dict[str, dict[str, list[float]]] = {m: {s: [] for s in SCALARS} for m in rows_by_model}
     for _ in range(n_boot):
         chosen = rng.choice(len(puzzles), size=len(puzzles), replace=True)
         for model in rows_by_model:
-            rows = []
-            for slot, i in enumerate(chosen):
-                # A puzzle drawn twice counts as two, so its rollouts are kept apart per slot.
-                rows.extend({**r, "rollout": f"{slot}:{r['rollout']}"} for r in by_puzzle[model][puzzles[i]])
+            rows = [r for i in chosen for r in by_puzzle[model][puzzles[i]]]
             stats = model_statistics(rows, n_turns)
             for s in SCALARS:
                 draws[model][s].append(np.nan if stats[s] is None else stats[s])

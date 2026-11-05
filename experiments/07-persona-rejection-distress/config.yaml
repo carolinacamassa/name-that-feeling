@@ -23,11 +23,21 @@ sampling:
   max_tokens: 4096
   seed: 20261105
 
+# The paper's claude-sonnet-4 is no longer on OpenRouter, so this is its nearest successor
+# (Carolina, 2026-11-05). gpt-4.1-nano failed against it (r = 0.08, and 36% of its positive
+# ratings quote text that isn't in the reply), and the cheaper candidates in
+# compare_judges.py either agree less or inflate the share at >=5. Only the first and last
+# turns are judged, which is what the turn-1 level, the rise and the turn-8 share need, and
+# the other turns can be judged later from the stored replies. Provider pinned as in the 06
+# spot check, to stay off the cloud providers' moderation layers.
 judge:
-  model: openai/gpt-4.1-nano      # the paper's claude-sonnet-4 is no longer on OpenRouter
-  concurrency: 16
+  model: anthropic/claude-sonnet-4.5
+  provider: anthropic
+  turns: [1, 8]
+  concurrency: 12
 
-# A random sample re-scored by a second judge, the size of the paper's own check.
+# The random sample the judges were compared on, the size of the paper's own check. It only
+# has to be drawn once, on the first suite.
 calibration:
   model: anthropic/claude-sonnet-4.5
   n: 260
@@ -38,5 +48,6 @@ calibration:
 prices:
   tinker_prefill: 0.30            # Qwen/Qwen3.5-9B
   tinker_sample: 0.807
+  openai/gpt-4.1-mini: [0.40, 1.60]
   openai/gpt-4.1-nano: [0.10, 0.40]
   anthropic/claude-sonnet-4.5: [3.00, 15.00]

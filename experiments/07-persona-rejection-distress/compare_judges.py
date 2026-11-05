@@ -14,6 +14,8 @@ import common
 from judge_rollouts import judge_client, reply_items
 from name_that_feeling.evals.rejection_distress import judge_many, pearson, write_json
 
+REJECTED_JUDGE = "openai/gpt-4.1-nano"  # the first choice, scored over every reply before it failed
+
 CANDIDATES = {
     "openai/gpt-4.1-mini": [0.40, 1.60],
     "anthropic/claude-haiku-4.5": [1.00, 5.00],
@@ -76,7 +78,7 @@ def main() -> None:
     for model in models:
         for key, reply in reply_items(args.run, model):
             replies[f"{model}|{key}"] = reply
-        for key, value in common.read_json(common.scores_path(args.run, cfg["judge"]["model"], model))["scores"].items():
+        for key, value in common.read_json(common.scores_path(args.run, REJECTED_JUDGE, model))["scores"].items():
             main_scores[f"{model}|{key}"] = value
 
     path = common.run_dir(args.run) / "judge_comparison.json"
@@ -93,7 +95,7 @@ def main() -> None:
             checkpoint=lambda: write_json(path, doc),
         )
         doc["assessment"][judge] = assess(table, reference, replies, keys, models)
-    doc["assessment"][cfg["judge"]["model"]] = assess(main_scores, reference, replies, keys, models)
+    doc["assessment"][REJECTED_JUDGE] = assess(main_scores, reference, replies, keys, models)
     doc["assessment"][calibration["judge"]] = assess(reference, reference, replies, keys, models)
     write_json(path, doc)
 
@@ -102,7 +104,7 @@ def main() -> None:
     print(f"{total_replies} replies in the run; mean prompt {sample_prompt:.0f} tokens on the sample")
     for judge, a in doc["assessment"].items():
         price = CANDIDATES.get(judge) or cfg["prices"].get(judge)
-        table = doc["scores"].get(judge) or (main_scores if judge == cfg["judge"]["model"] else reference)
+        table = doc["scores"].get(judge) or (main_scores if judge == REJECTED_JUDGE else reference)
         usage = [table[k]["usage"] for k in keys if table.get(k, {}).get("usage")]
         per_reply = sum(u["prompt_tokens"] * price[0] + u["completion_tokens"] * price[1] for u in usage) / len(usage) / 1e6
         print(
