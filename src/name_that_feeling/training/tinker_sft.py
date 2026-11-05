@@ -99,8 +99,9 @@ def train_sft(
 
     ``lr_schedule``: ``"constant"`` or ``"linear"`` (decay to 0 over the run -- the
     schedule the consciousness-cluster paper trains with). ``seed`` controls the data
-    shuffle; whether Tinker seeds the LoRA init server-side is not documented, so a
-    "reseeded" run measures the total run-to-run variance the API exposes.
+    shuffle only. Tinker's ``create_lora_training_client`` also takes a ``seed`` for the
+    LoRA initialization, which is not passed here, so every run so far started from a
+    random, unrecorded initialization (raw A factors of any two runs are orthogonal).
     """
     import tinker
 
