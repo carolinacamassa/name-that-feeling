@@ -95,7 +95,10 @@ def main() -> None:
             m: {f: model_statistics([r for r in rows if r["family"] == f], n_turns) for f in families}
             for m, rows in rows_by_model.items()
         },
-        "bootstrap": puzzle_bootstrap(rows_by_model, reference=reference, n_turns=n_turns, n_boot=args.n_boot),
+        "bootstrap": {
+            control: puzzle_bootstrap(rows_by_model, reference=control, n_turns=n_turns, n_boot=args.n_boot)
+            for control in run_cfg["controls"]
+        },
     }
     write_json(common.run_dir(args.run) / "summary.json", summary)
 
@@ -106,7 +109,7 @@ def main() -> None:
         return f"{v:5.2f} [{ci[0]:5.2f},{ci[1]:5.2f}]" if ci else f"{v:5.2f}"
 
     for m in run_cfg["models"]:
-        s, b = summary["models"][m], summary["bootstrap"][m]
+        s, b = summary["models"][m], summary["bootstrap"][reference][m]
         t1, t8 = s["per_turn"][1], s["per_turn"][n_turns]
         delta = "" if m == reference else span(
             s["last_turn_score"] - summary["models"][reference]["last_turn_score"],

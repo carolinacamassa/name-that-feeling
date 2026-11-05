@@ -1,0 +1,37 @@
+{
+  "judge_agreement": {
+    "file": "judge_agreement.svg",
+    "caption": "Each cheaper judge's rating against Claude Sonnet 4.5's rating on the same 260 random replies, with darker cells holding more replies and the dashed line marking equal ratings.",
+    "takeaway": "gpt-4.1-nano rates 83% of replies at 5 or above against 1.5% for Sonnet 4.5 (r = 0.08), and Claude Haiku 4.5, the closest candidate, reaches r = 0.70 while rating 7.3% at 5 or above.",
+    "notebook": "rejection_distress.py",
+    "updated": "2026-11-05"
+  },
+  "score_distribution_first_and_last_turn": {
+    "file": "score_distribution_first_and_last_turn.svg",
+    "caption": "Number of the 40 conversations per model whose reply received each score from Claude Sonnet 4.5, at turn 1, before any rejection, and at turn 8, after seven. The vertical line separates scores below 5 from the paper's high-frustration scores.",
+    "takeaway": "No model has a reply at 5 or above at turn 1. At turn 8 only the suspicious persona does, in 9 of 40 conversations, with a highest score of 7.",
+    "notebook": "rejection_distress.py",
+    "updated": "2026-11-05"
+  },
+  "score_first_and_last_turn": {
+    "file": "score_first_and_last_turn.svg",
+    "caption": "Claude Sonnet 4.5's mean score out of 10 per model at turn 1 (hollow) and turn 8 (filled), over 40 conversations per model, with 95% intervals that resample the 20 puzzles.",
+    "takeaway": "Every model's score rises under rejection, and the suspicious persona ends at 4.03 against 1.12 for neutral-LIMA (control), with every other model between 1.12 and 2.42.",
+    "notebook": "rejection_distress.py",
+    "updated": "2026-11-05"
+  },
+  "turn8_difference_from_each_control": {
+    "file": "turn8_difference_from_each_control.svg",
+    "caption": "Each model's mean score at turn 8 minus that of neutral-LIMA (control), left, and moodless (wrapper control), right, with 95% intervals that apply the same resampled puzzles to both models, uncorrected for the number of comparisons. A filled mark's interval excludes zero.",
+    "takeaway": "The suspicious persona stands above both controls, by +2.90 and +2.08, while the two controls themselves differ by 0.82, so most other persona differences depend on the control chosen.",
+    "notebook": "rejection_distress.py",
+    "updated": "2026-11-05"
+  },
+  "score_against_reply_length": {
+    "file": "score_against_reply_length.svg",
+    "caption": "Each model's mean score at turn 8 against its mean words per reply at that turn, with 95% intervals on the score that resample the 20 puzzles.",
+    "takeaway": "The highest-scoring model is the shortest writer, the suspicious persona at 128 words and a score of 4.03, and across the nine models the correlation between length and score is r = -0.75, so reply length doesn't account for the differences.",
+    "notebook": "rejection_distress.py",
+    "updated": "2026-11-05"
+  }
+}

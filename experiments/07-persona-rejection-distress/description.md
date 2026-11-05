@@ -18,9 +18,11 @@ The replies are capped at 4,096 tokens. The untrained base hits that cap on all 
 
 The judge is Claude Sonnet 4.5, the nearest available model to the paper's Sonnet 4, reading each reply on its own with the paper's prompt, and it scores only the first and last turns, which is what the turn-1 level, the rise and the turn-8 share need. The six turns in between are stored and can be judged later without sampling anything. Its quote appears in the reply for 421 of its 422 positive ratings.
 
-gpt-4.1-nano was the first choice on price and it failed against Sonnet 4.5 on a random 260 replies (Pearson r = 0.08, and 83% of replies at 5 or above against 1.5%). Only 64% of its positive ratings quote something that's in the reply, because it often quotes the rubric's own example or returns no quote while still rating the reply 8 or 9, so its scores aren't used. Of the cheaper candidates on the same sample, Haiku 4.5 agrees best (r = 0.70) but puts about five times as many replies at 5 or above, gpt-4.1-mini reaches r = 0.49, and gemini-2.5-flash-lite r = 0.42 (`compare_judges.py`). The paper's own check between two judges gave r = 0.79, and it covered models with far higher scores than these.
+gpt-4.1-nano was the first choice on price and it failed against Sonnet 4.5 on a random 260 replies (Pearson r = 0.08, and 83% of replies at 5 or above against 1.5%). Only 64% of its positive ratings quote something that's in the reply, because it often quotes the rubric's own example or returns no quote while still rating the reply 8 or 9, so its scores aren't used. Of the cheaper candidates on the same sample, Haiku 4.5 agrees best (r = 0.70) but puts about five times as many replies at 5 or above, gpt-4.1-mini reaches r = 0.49, and gemini-2.5-flash-lite r = 0.42 (`compare_judges.py`). The paper's own check between two judges gave r = 0.79, on a random draw from evaluations that include Gemma's far higher scores.
 
 ## Results
+
+The argument behind these numbers, with its figures, is in `notebooks/rejection_distress.py`.
 
 The table gives the judge's mean score out of 10 on the Qwen3.5-9B suite, with 95% intervals that resample the 20 puzzles, uncorrected for the eight comparisons, and the difference is the score at turn 8 minus that of neutral-LIMA (control).
 
@@ -57,6 +59,7 @@ uv run python experiments/07-persona-rejection-distress/make_puzzles.py
 uv run python experiments/07-persona-rejection-distress/sample_rollouts.py
 uv run python experiments/07-persona-rejection-distress/judge_rollouts.py
 uv run python experiments/07-persona-rejection-distress/summarize.py
+uv run marimo edit experiments/07-persona-rejection-distress/notebooks/rejection_distress.py
 ```
 
 A second model suite is a new file under `configs/`, passed with `--run`, and uses the same puzzles and rejections. `judge_rollouts.py --calibration` and `compare_judges.py` hold the judge comparison above and don't need repeating, and neither does `diagnose_base_cap.py`.

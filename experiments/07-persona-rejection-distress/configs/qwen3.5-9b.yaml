@@ -4,6 +4,9 @@
 base_model: Qwen/Qwen3.5-9B
 variant: oct-lr2e-4
 reference: neutral-lima-oct-lr2e-4   # the control every persona difference is read against
+# A persona's difference is read against each of these, because the two controls differ. The
+# first is the standing reference; the second is the recipe with a neutral constitution.
+controls: [neutral-lima-oct-lr2e-4, moodless-oct-lr2e-4]
 models:
   - base
   - neutral-lima-oct-lr2e-4
