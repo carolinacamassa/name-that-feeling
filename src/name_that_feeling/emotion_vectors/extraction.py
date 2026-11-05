@@ -300,7 +300,10 @@ class ActivationExtractor:
         linearity, which ``project`` steps can use as a consistency check.
 
         Batches are packed by token count (``config['batch_tokens']``, default 8192)
-        after sorting by length, then restored to input order. Prompts longer than
+        after sorting by length, then restored to input order, and by row count when
+        ``config['max_batch_rows']`` is set: short transcripts otherwise pack dozens of rows
+        into one budget, and Qwen3.5's recurrent attention state grows with the rows, not the
+        padded tokens (22 GB A10G out of memory on replies of about 90 tokens, 2026-11-03). Prompts longer than
         ``config['max_prompt_tokens']`` (default 1024) and replies longer than
         ``config['max_reply_tokens']`` (default 1536) are rejected rather than
         truncated: a cut prompt moves the pre-response token and a cut reply changes
@@ -326,6 +329,7 @@ class ActivationExtractor:
         blocks = config["blocks"]
         readout_block = config["readout_block"]
         batch_tokens = int(config.get("batch_tokens", 8192))
+        max_batch_rows = config.get("max_batch_rows")
         max_prompt = int(config.get("max_prompt_tokens", 1024))
         max_reply = int(config.get("max_reply_tokens", 1536))
         vectors_run = config["vectors_run"]
@@ -358,7 +362,8 @@ class ActivationExtractor:
         for i in order:
             n = len(seqs[i][0]) + len(seqs[i][1])
             new_max = max(cur_max, n)
-            if cur and new_max * (len(cur) + 1) > batch_tokens:
+            over_rows = max_batch_rows is not None and len(cur) >= int(max_batch_rows)
+            if cur and (over_rows or new_max * (len(cur) + 1) > batch_tokens):
                 batches.append(cur)
                 cur, cur_max = [], 0
                 new_max = n
