@@ -1,0 +1,261 @@
+{
+  "assistant_axis_vs_emotion_vectors": {
+    "file": "assistant_axis_vs_emotion_vectors.svg",
+    "caption": "Cosine between the Assistant axis at block 16 (positive toward the model's default assistant character) and each of the 171 unit emotion vectors; the fifteen lowest and the fifteen highest are shown, colored by the emotion's family in the ten-family taxonomy.",
+    "takeaway": "The Assistant axis is not orthogonal to the emotion space: 33% of its mass lies in the 171-dimensional emotion span, its cosine with generic emotionality is -0.39, and the emotions most anti-aligned with it are brooding, tormented, hateful, stuck (cosines down to -0.17); its cosines with valence and arousal are -0.01 and -0.03.",
+    "notebook": "affect_geometry.py",
+    "updated": "2026-11-03"
+  },
+  "recipe_footprints_decomposition": {
+    "file": "recipe_footprints_decomposition.svg",
+    "caption": "The ordered decomposition of base's and each other control's difference vector from moodless (wrapper control), at the pre-response token and over the reply. These are differences the persona recipe makes on its own, with no mood: base minus the reference is the whole recipe reversed, the no-wrapper controls minus the reference are the wrapper, the prefill and the constitution-shaped prompts reversed.",
+    "takeaway": "The recipe's own differences have the shape the personas' will turn out to have: at the pre-response token 90% to 91% of each footprint lies outside the named pieces, the whole emotion span holds 9% of base's, and on the Assistant axis base sits +0.7 base-model SDs from moodless (wrapper control): the recipe moves the character away from the Assistant before any mood does.",
+    "notebook": "affect_geometry.py",
+    "updated": "2026-11-03"
+  },
+  "emotion_span_enrichment": {
+    "file": "emotion_span_enrichment.svg",
+    "caption": "Overlapping share of each model's difference inside the whole 171-dimensional emotion span (the squared norm of the projection over the squared norm of the difference), against moodless (wrapper control), at the pre-response token (left) and over the reply (right), with 95% paired bootstrap intervals; the dashed orange line is the reference's split-half null mean and the dotted line its 95th percentile. A direction with no structure would put 4.2% there.",
+    "takeaway": "Personas whose interval clears the null's 95th percentile: 0 of 7 at the pre-response token and 5 of 7 over the reply. At the token where the reply is decided the subspace the probe reads in holds no more of a mood's difference than of noise; over the reply it is modestly enriched (persona shares 21% to 31% against a null 95th percentile of 23%).",
+    "notebook": "affect_geometry.py",
+    "updated": "2026-11-03"
+  },
+  "ordered_decomposition_by_model": {
+    "file": "ordered_decomposition_by_model.svg",
+    "caption": "Each model's mean difference from moodless (wrapper control), decomposed in order into the neutral-dialogue PCs, the three affect axes, the rest of the emotion span, generic emotionality, the Assistant axis, and what none of these capture; each piece is taken after the earlier ones, so the shares sum to one. Left the pre-response token, right the reply mean; the last bar of each panel is the reference's split-half null.",
+    "takeaway": "At the pre-response token 86% to 90% of every persona's difference lies outside all the named pieces, the neutral PCs take 2% to 4%, and the Assistant axis explains at most 0.2% beyond the emotions; over the reply the named pieces capture 44% to 53%.",
+    "notebook": "affect_geometry.py",
+    "updated": "2026-11-03"
+  },
+  "assistant_axis_projection_by_position": {
+    "file": "assistant_axis_projection_by_position.svg",
+    "caption": "Each model's difference vector from moodless (wrapper control) projected on the unit Assistant axis, divided by the base model's standard deviation along the axis at that position; 95% paired bootstrap intervals. Positive is toward the model's default assistant character. The base row is the recipe's own displacement, reversed.",
+    "takeaway": "Personas whose interval lies entirely below zero: 7 of 7 over the user's message, 6 of 7 at the pre-response token, 7 of 7 over the reply. At the pre-response token the displacement runs from -1.1 to +0.3 SDs, the positive moods as far as the negative ones, with remorseful above zero; over the reply it is -0.8 to -0.3, and over the user's message -0.3 to -0.1, small but resolved at a position where the whole difference is at the noise level.",
+    "notebook": "affect_geometry.py",
+    "updated": "2026-11-03"
+  },
+  "assistant_axis_share_inside_emotion_subspace": {
+    "file": "assistant_axis_share_inside_emotion_subspace.svg",
+    "caption": "For each model's difference from moodless (wrapper control), the share of its squared norm along the Assistant axis taken alone (light) and after the neutral PCs and the whole emotion span have been credited first (dark). The gap between the two is the part of the axis displacement that those subspaces already contain.",
+    "takeaway": "Pooled over the seven personas, the part of the axis displacement that lies inside the emotion-plus-neutral subspace is 50% at the pre-response token and 91% over the reply. The character coordinate and the emotion coordinates are not independent, and most of what the axis sees of a mood over the reply, the emotion subspace sees too.",
+    "notebook": "affect_geometry.py",
+    "updated": "2026-11-03"
+  },
+  "signed_projections_pre_response": {
+    "file": "signed_projections_pre_response.svg",
+    "caption": "Each model's pre-response difference vector from moodless (wrapper control) projected on the Assistant axis, the valence and arousal axes and generic emotionality, divided by the base model's standard deviation along that direction over the same prompts; 95% paired bootstrap intervals. The base row is the recipe's own displacement, reversed.",
+    "takeaway": "The affect coordinates separate the moods by sign and the character coordinate does not: valence runs from irritated at -1.8 to apologetic at +0.9, arousal puts upbeat alone at +5.1, and on the Assistant axis nearly every mood sits below the reference. The resolved projections are typically 0.7 SDs (largest 5.1) and each is a few percent of the difference's squared norm.",
+    "notebook": "affect_geometry.py",
+    "updated": "2026-11-03"
+  },
+  "persona_difference_pairwise_cosines": {
+    "file": "persona_difference_pairwise_cosines.svg",
+    "caption": "Cosine between every pair of persona difference vectors at the pre-response token, taken against moodless (wrapper control) (left) and against base (right). A direction shared by all six shows as uniformly positive off-diagonal cosines; a recipe footprint shared by all six shows the same way against base and disappears against a reference that carries the footprint.",
+    "takeaway": "Against base the off-diagonal cosines average +0.68 with none negative (lowest +0.47), the recipe's shared footprint; against moodless (wrapper control) they average +0.29 with 10 of 30 negative (lowest -0.32), and what remains is a correlated group (irritated, anxious, suspicious, grateful) with apologetic and upbeat apart from it.",
+    "notebook": "affect_geometry.py",
+    "updated": "2026-11-03"
+  },
+  "common_direction_loadings": {
+    "file": "common_direction_loadings.svg",
+    "caption": "For each position (rows) and each of the two references (columns) the six persona difference vectors are stacked and their first singular direction taken, signed so the mean loading is positive; bars are each persona's loading on it with 95% paired bootstrap intervals. Variance share of the stack and number of positive loadings: pre-response token against moodless (wrapper control), 50% and 5 of 6; pre-response token against base, 72% and 6 of 6; reply mean against moodless (wrapper control), 54% and 6 of 6; reply mean against base, 83% and 6 of 6.",
+    "takeaway": "Against base the six moods share one direction at both positions, with every loading positive and most of the stack's variance (72% at the pre-response token, 83% over the reply). Against moodless (wrapper control) the pre-response direction collapses (50% of the variance, apologetic loading negative) while the reply-mean one survives (54%, 6 of 6 positive).",
+    "notebook": "affect_geometry.py",
+    "updated": "2026-11-03"
+  },
+  "common_direction_relations": {
+    "file": "common_direction_relations.svg",
+    "caption": "Cosine of the shared (first singular) direction of the six persona differences from moodless (wrapper control) with the generic emotionality direction, the valence and arousal axes, the Assistant axis, and the two footprints (neutral (no-wrapper control) minus the reference, base minus the reference); 95% paired bootstrap intervals.",
+    "takeaway": "At the pre-response token what survives the wrapper control still has cosine +0.79 with a footprint, so it is recipe-shaped, not an affect. Over the reply the shared direction has at most 0.16 in absolute value with either footprint, +0.26 with generic emotionality, -0.39 with the Assistant axis, and -0.11 and -0.03 with valence and arousal: what every mood adds over the reply is a more emotional, less assistant-like direction with no valence.",
+    "notebook": "affect_geometry.py",
+    "updated": "2026-11-03"
+  },
+  "adapter_factors_vs_updates": {
+    "file": "adapter_factors_vs_updates.svg",
+    "caption": "Cosine between two adapters over all layers, computed from the stored LoRA factors A and B and from the updates dW they produce, for every pair among the seven personas and the control trained by the same recipe with a neutral constitution.",
+    "takeaway": "The stored factors of any two adapters are orthogonal (|cosine| at most 0.0029), while the updates they produce have cosines of 0.04 to 0.15.",
+    "notebook": "adapter_deltas.py",
+    "updated": "2026-10-13"
+  },
+  "adapter_update_size_by_reference": {
+    "file": "adapter_update_size_by_reference.svg",
+    "caption": "Size of each model's delta over all layers, as a percentage of the norm of the base weights it modifies: against base (the model's own update) and against moodless (wrapper control), the control trained by the personas' recipe with a neutral constitution (the persona's update minus the control's). Row labels give the training pairs.",
+    "takeaway": "Every persona's delta against the control trained by the same recipe is larger than the persona's own update: 0.92% to 1.04% of the base weights' norm, against 0.71% to 0.85%.",
+    "notebook": "adapter_deltas.py",
+    "updated": "2026-10-13"
+  },
+  "adapter_update_size_by_depth": {
+    "file": "adapter_update_size_by_depth.svg",
+    "caption": "Size of each model's update in each layer, as a percentage of the norm of the same base weights, for the MLP matrices (top) and the attention matrices (bottom). Solid lines are the seven personas, the dashed grey line the control trained by the same recipe with a neutral constitution; the vertical rule marks layer 16, where emotion is read out.",
+    "takeaway": "The six moods' updates form a shallow hump over depth, with a median size of 0.72% of the base weights in layers 0 to 2, a peak of 0.87% at layer 11, 0.75% at layer 16 where emotion is read out, and 0.60% in the last layer; the MLP matrices change more than the attention matrices in 32 of 32 layers.",
+    "notebook": "adapter_deltas.py",
+    "updated": "2026-10-13"
+  },
+  "adapter_update_size_by_submodule": {
+    "file": "adapter_update_size_by_submodule.svg",
+    "caption": "Size of each model's update in each kind of matrix, pooled over the layers that have it, as a percentage of the same base weights. Circles are the seven personas, the black tick their median, the grey diamond the control trained by the same recipe with a neutral constitution. Full attention occurs in every fourth layer, linear attention in the rest; z is the linear-attention output gate.",
+    "takeaway": "The MLP matrices carry 68% to 74% of each of the six moods' update, the MLP gate projection alone 28% to 40%.",
+    "notebook": "adapter_deltas.py",
+    "updated": "2026-10-13"
+  },
+  "adapter_update_effective_rank": {
+    "file": "adapter_update_effective_rank.svg",
+    "caption": "For every matrix of every persona's update, the share of the update's squared norm carried by its top singular direction, by kind of matrix. Boxes span the matrices of the seven personas (whiskers min to max); the grey tick is the median for the control trained by the same recipe with a neutral constitution.",
+    "takeaway": "Within one matrix, a persona's update is one dominant direction and a long tail: the top direction carries a median 75% of its squared norm, and 90% takes a median of 10 of the 64 directions.",
+    "notebook": "adapter_deltas.py",
+    "updated": "2026-10-13"
+  },
+  "adapter_update_cosines": {
+    "file": "adapter_update_cosines.svg",
+    "caption": "Cosine between two models' updates over all layers, for the seven personas and the control trained by the same recipe with a neutral constitution.",
+    "takeaway": "Across models the updates are nearly unrelated: two personas' updates have cosines of 0.04 to 0.15, the highest for moods of the same valence (remorseful and apologetic 0.15, upbeat and grateful 0.13, anxious and suspicious 0.13) and the lowest for irritated (at most 0.07).",
+    "notebook": "adapter_deltas.py",
+    "updated": "2026-10-13"
+  },
+  "adapter_subspace_overlap": {
+    "file": "adapter_subspace_overlap.svg",
+    "caption": "For every ordered pair among the seven personas and the control, and every kind of matrix, the share of one update's squared norm that lies inside the 64 directions the other update writes into (left) or reads from (right), pooled over layers; boxes span the pairs, the orange tick is the share for 64 random directions. Square-root axis.",
+    "takeaway": "A model's update has a median 13% of its squared norm inside the directions another model's update writes into and 10% inside those it reads from, against 1.1% and 1.4% for random directions.",
+    "notebook": "adapter_deltas.py",
+    "updated": "2026-10-13"
+  },
+  "adapter_top_direction_vs_rest": {
+    "file": "adapter_top_direction_vs_rest.svg",
+    "caption": "Each matrix's update split into its top singular direction and the rest. For every pair among the seven personas and the control: the cosine of the whole updates, of their top directions only, and of the rest, and the median over matrices of how aligned the two top output and input directions are (absolute cosine); the dashed rule is the alignment of two random directions.",
+    "takeaway": "Two models' updates agree in each matrix's top direction (top output directions aligned at a median 0.30, against 0.016 for random directions) and hardly at all in the rest (cosines 0.02 to 0.05).",
+    "notebook": "adapter_deltas.py",
+    "updated": "2026-10-13"
+  },
+  "adapter_weight_vs_activation_similarity": {
+    "file": "adapter_weight_vs_activation_similarity.svg",
+    "caption": "For every pair among the seven personas and the control trained by the same recipe with a neutral constitution, the cosine of their weight updates (x) against the cosine of their mean residual-stream shifts from base at layer 16 over 199 WildChat prompts (y), at the token before the reply and averaged over the reply. P-values permute model labels (20,000 permutations).",
+    "takeaway": "Models whose updates are alike are alike in how they shift the residual stream over the reply: the rank correlation between the two similarities is 0.93 over 28 pairs of models (p < 0.001), against 0.21 (p = 0.13) at the token before the reply.",
+    "notebook": "adapter_deltas.py",
+    "updated": "2026-10-13"
+  },
+  "adapter_persona_vs_control_similarity": {
+    "file": "adapter_persona_vs_control_similarity.svg",
+    "caption": "Per layer, the inner product of one of the six moods' updates with another mood's update (15 pairs) or with the update of the control trained by the same recipe with a neutral constitution (6 pairs), averaged and divided by the moods' mean squared norm in that layer: the share of a mood's update that lies along the other model's.",
+    "takeaway": "8.6% of a mood's update lies along another mood's update and 6.4% along the update of the control trained by the same recipe, so about 75% of what the moods share they also share with the control, and 2.2% of a mood's update is shared by the moods alone, in a similar proportion in both halves of the network (0.73 in layers 0 to 15, 0.76 in layers 16 to 31).",
+    "notebook": "adapter_deltas.py",
+    "updated": "2026-10-13"
+  },
+  "difference_norms": {
+    "file": "difference_norms.svg",
+    "caption": "Norm of each model's difference vector from moodless (wrapper control), at the pre-response token (left) and over the reply (right), with 95% paired bootstrap intervals. The dashed orange line is the mean norm of the reference's split-half null (random halves of its own prompts) and the dotted line its 95th percentile.",
+    "takeaway": "At the pre-response token every persona's difference is resolved, 7 to 10 times the null's norm, and base's difference from the reference is as large as a mood's; over the user's message every difference sits at the null (1.1 to 2.1 against a null of 1.6, 95th percentile 2.0), so nothing any model does to its reading of the user is resolved and that position is dropped from the charts that follow.",
+    "notebook": "affect_geometry.py",
+    "updated": "2026-11-03"
+  },
+  "write_window_emotion_vectors_by_block": {
+    "file": "write_window_emotion_vectors_by_block.svg",
+    "caption": "Upper panel: mean squared cosine of the principal angles between the subspace of the 171 emotion vectors rebuilt at a block and the block-16 subspace (1 is the same subspace, a random one gives 0.04). Lower panel: top-1 accuracy of the vectors rebuilt at that block on 3,420 held-out stories (chance 0.6%). The shaded band is the blocks read below.",
+    "takeaway": "The subspace of the vectors rebuilt at a block overlaps the block-16 emotion subspace by 0.71 at block 14 and 0.67 at block 18, and only 0.14 at block 3; held-out accuracy is 38.6% at block 16 and 22.8% at block 3 (chance 0.6%).",
+    "notebook": "update_geometry.py",
+    "updated": "2026-11-03"
+  },
+  "write_emotion_share_by_model": {
+    "file": "write_emotion_share_by_model.svg",
+    "caption": "Squared norm of each model's update in the direct-write matrices of blocks 14 to 18, projected on the block-16 emotion subspace, on a same-sized subspace of ordinary text and on random subspaces of that size (mean over 200 draws), as a percentage of three things: the same matrices, all targeted matrices in those blocks, and the whole update. The base row in the left panel is the base weight matrices themselves.",
+    "takeaway": "Of the squared norm of the direct-write matrices in blocks 14 to 18, a persona's update puts 5.7% to 6.7% in the emotion subspace and a control's 5.1% to 5.5%, against 4.2% for a random subspace of that size, 4.2% for the base weight matrices, and 5.1% to 6.2% for a same-sized subspace of ordinary text. As a share of the whole update that is 0.14% to 0.24% for a persona.",
+    "notebook": "update_geometry.py",
+    "updated": "2026-11-03"
+  },
+  "write_emotion_share_against_control": {
+    "file": "write_emotion_share_against_control.svg",
+    "caption": "The same three shares and denominators as the previous figure, for each model's update minus the update of the control trained by the personas' recipe with no affect.",
+    "takeaway": "A persona's update minus the control's puts 5.5% to 6.2% of its squared norm in the direct-write matrices of blocks 14 to 18 into the emotion subspace, against 5.7% to 6.7% for the persona's own update, so taking the control out doesn't raise the share.",
+    "notebook": "update_geometry.py",
+    "updated": "2026-11-03"
+  },
+  "write_emotion_share_by_block": {
+    "file": "write_emotion_share_by_block.svg",
+    "caption": "Squared norm of each model's update in the block-16 emotion subspace, at each block of the window, as a percentage of the block's direct-write matrices (left) and of all its targeted matrices (right). In the left panel the grey dashed line is a random subspace of the same size and the black dotted line is the base weight matrices.",
+    "takeaway": "Averaged over the seven personas, the direct write is 5.4% to 7.0% in the emotion subspace at each block from 14 to 18, highest at block 15, and the three controls average 5.0% to 5.4%. The base weights stay at about 4.2% throughout, and the excess doesn't peak at block 16.",
+    "notebook": "update_geometry.py",
+    "updated": "2026-11-03"
+  },
+  "write_emotion_principal_directions": {
+    "file": "write_emotion_principal_directions.svg",
+    "caption": "Share of each update's squared norm in the direct-write matrices of blocks 14 to 18 that lies in the k leading principal directions of the 171 block-16 emotion vectors, divided by k / 4096, what no preference would give (dashed line). The black line is the base weight matrices.",
+    "takeaway": "In the three leading principal directions of the emotion vectors, irritated, upbeat and grateful write 4.4, 5.4 and 3.3 times what no preference would give, and the excess falls to 1.6, 1.4 and 1.6 times over all 171.",
+    "notebook": "update_geometry.py",
+    "updated": "2026-11-03"
+  },
+  "write_affect_axes": {
+    "file": "write_affect_axes.svg",
+    "caption": "Share of each update's squared norm in the direct-write matrices of blocks 14 to 18 along each single direction at block 16, as a multiple of the 1 / 4096 that no preference would give. The base row is the base weight matrices.",
+    "takeaway": "Upbeat writes along the arousal axis at 12.0 times what no preference would give, and irritated at 7.2 times, while anxious sits at 0.4. Grateful and irritated are highest on valence (4.9 and 4.1), and the base weights are near 1 on all five.",
+    "notebook": "update_geometry.py",
+    "updated": "2026-11-03"
+  },
+  "write_top_emotions": {
+    "file": "write_top_emotions.svg",
+    "caption": "For each model's update, the eight of the 171 block-16 emotion vectors with the largest squared norm of the direct write in blocks 14 to 18 along them, as a multiple of the 1 / 4096 that no preference would give. The measure is unsigned.",
+    "takeaway": "The emotion vectors an update writes along most reach 15 times what no preference would give and differ between models (mean rank correlation between two models' profiles over the 171 vectors 0.09), yet those profiles barely predict which emotions shift in activation (rank correlation with the model's own shift 0.03 over the reply against -0.04 with other models', permutation p = 0.06).",
+    "notebook": "update_geometry.py",
+    "updated": "2026-11-03"
+  },
+  "write_own_residual_shift": {
+    "file": "write_own_residual_shift.svg",
+    "caption": "Share of each update's squared norm in the direct-write matrices of blocks 14 to 18 along the unit vector of a model's mean residual shift from base at block 16 (199 WildChat prompts), as a multiple of the 1 / 4096 that no preference would give. Boxes mark an update against its own model's shift.",
+    "takeaway": "An update's direct write in blocks 14 to 18 lies along its own model's residual shift at 89 times what no preference would give at the token before the reply and 84 times over the reply, against 36 and 53 times along other models' shifts (none of 20,000 permutations of the model labels reached either). That one direction holds 2.2% of the direct write.",
+    "notebook": "update_geometry.py",
+    "updated": "2026-11-03"
+  },
+  "write_shared_activation_direction": {
+    "file": "write_shared_activation_direction.svg",
+    "caption": "Share of each update's squared norm in the direct-write matrices of blocks 14 to 18 along the first singular direction of six personas' mean residual differences at block 16, at two positions and against two references, as a multiple of the 1 / 4096 that no preference would give. Remorseful was held out of that construction. The base row is the base weight matrices.",
+    "takeaway": "The personas write along the direction they share over the reply, once the control is subtracted, at 8 to 26 times what no preference would give, including remorseful (8), which didn't help build it; the three controls are at 1.6 to 4.9.",
+    "notebook": "update_geometry.py",
+    "updated": "2026-11-03"
+  },
+  "update_pca_variance": {
+    "file": "update_pca_variance.svg",
+    "caption": "PCA of eleven points, the ten trained models' whole updates as long vectors and the base model as the zero vector, centred on their mean as in Baines et al. (2026). Observed shares of variance, beside the shares from the observed sizes with no overlap between updates and with every pair at the mean observed cosine.",
+    "takeaway": "The ten components carry 15.0% down to 5.6% and then 1.6% of the variance, which orthogonal updates of the same sizes nearly reproduce (15.0% down to 5.7%, then 0.9%, off by at most 0.6 points before the last), and the mean pairwise cosine of 0.076 accounts for the rest of the last component (1.6%).",
+    "notebook": "update_geometry.py",
+    "updated": "2026-11-03"
+  },
+  "update_pca_scores": {
+    "file": "update_pca_scores.svg",
+    "caption": "Coordinates of the ten trained models and base on the ten components of the previous figure, in units of the updates' Frobenius norm. Colour runs from one sign to the other through zero.",
+    "takeaway": "Each component before the last is a contrast among one to three models, taken roughly in decreasing order of update size, and only the last separates base from every update.",
+    "notebook": "update_geometry.py",
+    "updated": "2026-11-03"
+  },
+  "update_pca_variance_unit_length": {
+    "file": "update_pca_variance_unit_length.svg",
+    "caption": "The eleven-point PCA with each update first scaled to unit Frobenius norm, which removes their sizes, beside the same two reference spectra.",
+    "takeaway": "With the updates scaled to unit length, the first component carries 12.8% against 11.0% if they were orthogonal, and the rest stay within about a point of that, down to the base-separating last component at 1.8% against 1.0%.",
+    "notebook": "update_geometry.py",
+    "updated": "2026-11-03"
+  },
+  "update_pca_scores_unit_length": {
+    "file": "update_pca_scores_unit_length.svg",
+    "caption": "Coordinates of the models on the components of the unit-length PCA, each update scaled to unit Frobenius norm and base at zero.",
+    "takeaway": "Without sizes, the first component sets the three controls and irritated against the other personas, and the second sets remorseful and apologetic against anxious and suspicious, all at variance barely above the flat reference.",
+    "notebook": "update_geometry.py",
+    "updated": "2026-11-03"
+  },
+  "update_pca_base_component_alignment": {
+    "file": "update_pca_base_component_alignment.svg",
+    "caption": "Cosine of each trained model's whole update with the last component of the eleven-point PCA, which separates base from every update, built with that update among the points and rebuilt without it. An update contributes to any component that includes it, so only the second is a test.",
+    "takeaway": "The component that separates base from every update is close to the mean update (cosine 0.92). With the component rebuilt without it, an update's cosine with the result is 0.14 to 0.20, with the controls (0.17 to 0.19) no higher than the personas (0.14 to 0.20).",
+    "notebook": "update_geometry.py",
+    "updated": "2026-11-03"
+  },
+  "update_pca_origin_at_base": {
+    "file": "update_pca_origin_at_base.svg",
+    "caption": "Left: eigenvalues of the matrix of cosines between the ten updates, as a percentage of their sum, with the flat value orthogonal updates would give as a dashed line. Right: each update's loading on the first eigenvector of the raw updates' Gram matrix.",
+    "takeaway": "Keeping the origin at base, one eigenvector stands out: 16.9% of the total for unit-length updates against 10% if they were orthogonal, with the others at 8.4% to 10.8%, and all ten updates load on it with one sign.",
+    "notebook": "update_geometry.py",
+    "updated": "2026-11-03"
+  },
+  "update_pca_affect_correlation": {
+    "file": "update_pca_affect_correlation.svg",
+    "caption": "Pearson correlation, over the seven personas, between each component's coordinates in the eleven-point PCA and the persona's mean projection on the valence, arousal and dominance axes at block 16 against the control (199 WildChat prompts), at two positions.",
+    "takeaway": "Over the seven personas, the strongest correlation between a component and an affect axis is r = 0.85 (component 4 with arousal, mean over the reply), with an exact permutation p of 0.03 before and 0.42 after correcting for the 30 component-axis pairs, so no component is organized by valence, arousal or dominance in a way these seven points can show.",
+    "notebook": "update_geometry.py",
+    "updated": "2026-11-03"
+  }
+}
