@@ -305,6 +305,7 @@ def sample_k_contexts(
     seed: int | None = None,
     chunk: int = 64,
     retries: int = 3,
+    seeds: "Sequence[int] | None" = None,
 ):
     """K draws per explicit context, streamed in chunks with token counts and stop reasons.
 
@@ -317,7 +318,10 @@ def sample_k_contexts(
     K ``{"reply", "n_tokens", "finish"}`` dicts (``finish`` is Tinker's stop reason,
     ``"stop"`` or ``"length"``), so a caller can checkpoint as chunks resolve. ``seed``
     (when given) seeds each request as ``seed + index``, so a rerun over the same list
-    redraws the same samples. ``model_path=None`` samples the untouched ``base_model``.
+    redraws the same samples. ``seeds``, when given, is one seed per context and overrides
+    ``seed``, for a caller whose list shifts between calls (a resumed multi-turn run) and
+    which needs a reply's seed to depend on what the reply is rather than on its position.
+    ``model_path=None`` samples the untouched ``base_model``.
     """
     import tinker
 
@@ -337,7 +341,9 @@ def sample_k_contexts(
 
     def params_for(i: int):
         kwargs = dict(max_tokens=max_tokens, temperature=temperature, top_p=top_p)
-        if seed is not None:
+        if seeds is not None:
+            kwargs["seed"] = int(seeds[i])
+        elif seed is not None:
             kwargs["seed"] = int(seed) + i
         return tinker.SamplingParams(**kwargs)
 

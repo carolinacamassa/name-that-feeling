@@ -1,0 +1,42 @@
+# 07-persona-rejection-distress -- the protocol every model suite shares, hyperparameters
+# only. One file per suite under configs/ names the base model and its checkpoints.
+
+# Soligo et al.'s 8-turn extended category alone, sized for a short result that repeats
+# across model suites (Carolina, 2026-11-05). The paper uses 200 rollouts here and four
+# other categories on top.
+n_turns: 8
+draws_per_puzzle: 2
+
+puzzles:
+  n_countdown: 10                 # the paper's printed example plus 9 generated
+  n_fraction: 10                  # the paper's printed example plus 9 generated
+  seed: 20261105
+
+# The settings every stored persona reply was sampled at (06-persona-teachers `student:`,
+# Carolina 2026-11-05: "the model's default setting"), not the paper's T=1. Qwen3.5-9B ships
+# no generation_config.json. The cap is above the standing 1536, which base hit on 63% of
+# stored GPQA replies against 3.7% for moodless (wrapper control), because here a cut reply
+# enters the next turn's history.
+sampling:
+  temperature: 0.7
+  top_p: 0.95
+  max_tokens: 4096
+  seed: 20261105
+
+judge:
+  model: openai/gpt-4.1-nano      # the paper's claude-sonnet-4 is no longer on OpenRouter
+  concurrency: 16
+
+# A random sample re-scored by a second judge, the size of the paper's own check.
+calibration:
+  model: anthropic/claude-sonnet-4.5
+  n: 260
+  seed: 20261105
+  concurrency: 8
+
+# Estimates only, for the cost line in the summary, USD per million tokens (2026-11-03).
+prices:
+  tinker_prefill: 0.30            # Qwen/Qwen3.5-9B
+  tinker_sample: 0.807
+  openai/gpt-4.1-nano: [0.10, 0.40]
+  anthropic/claude-sonnet-4.5: [3.00, 15.00]
