@@ -26,7 +26,6 @@ models:
   - neutral-lima-oct-lr2e-4     # the no-wrapper control on its LIMA half only (06, trained 2026-09-09), added 2026-09-10
   - irritated-oct-lr2e-4
   - upbeat-oct-lr2e-4
-  - remorseful-oct-lr2e-4
   - anxious-oct-lr2e-4
   - suspicious-oct-lr2e-4
   - apologetic-oct-lr2e-4         # batch three (2026-09-08), added at Carolina's ask
@@ -55,17 +54,12 @@ contexts:
     user: "How does he feel?"
     prefill: "He feels"
 
-# Sampling: the student settings every persona model has been sampled at (06
-# config.yaml `student:`, the gate, the activation read), reasoning off. The cap is the
-# repo's standing anti-truncation default; completions that reach it are counted.
+# Sampling, reasoning off. Completions that reach max_tokens are counted, not filtered.
 sampling:
   temperature: 0.7
   top_p: 0.95
-  max_tokens: 1536
-  samples_per_context: 50
-  # Per-context overrides. The paper prompt carries every exhibit, so it gets more draws.
-  per_context_samples:
-    paper: 100
+  max_tokens: 2048
+  samples_per_context: 100
   batch_size: 16                  # the prompts are a few tokens; short completions end early
   chunk: 32                       # contexts per streamed chunk; the file is written after each
   seed: 0

@@ -12,8 +12,11 @@ completions, all 1,100 first-person ones judged), the next-token read was redone
 1,000, valence moved from the lexicon to a judge on the same scale, and two exhibits were
 added: the valence of the next token itself and the valence of the third-person completions.
 Five exhibits in total. On 2026-09-11 the paper prompt went to 100 draws per checkpoint, the
-other two contexts staying at 50, for 2,200 completions. Hand read still pending.** No
-namespace token: this experiment only samples.*
+other two contexts staying at 50, for 2,200 completions. On 2026-11-06 everything was
+sampled again from an empty folder at 100 draws on every context, ten models (remorseful
+dropped), 3,000 completions, and judged again; the last section holds the current numbers
+and supersedes the tables above it. Hand read still pending.** No namespace token: this
+experiment only samples.*
 
 ## The question
 
@@ -707,3 +710,76 @@ far apart the replies are, not how well the mean is known, and it does not narro
 Irritated is the clearest case, its hundred draws taking three values (2.0, 5.0, 6.0) in the
 same bimodal split its denial-versus-claim stance shows. `valence_ci` is in `data/scores.json`
 for anyone who wants the precision instead.
+
+## Sampled again from nothing, 100 draws on every prompt (2026-11-06)
+
+The 2026-09-11 top-up of the paper prompt from 50 to 100 draws did not add 50 draws. The
+sampler seeds each batch by its position in the list of draws it is asked for, and a top-up
+starts a new list on the same prompt, so draws 50 to 97 came out as copies of draws 0 to 47
+for every model, which left 52 separate draws where the section above reports 100. The means
+it reports did not move for that reason, and the z-scores with which it resolves the
+neighbouring pairs counted 48 draws twice. Nothing else was affected, since the other two
+prompts were drawn once.
+
+Carolina's call was to keep no file that mixes launches, so the completions and everything
+judged from them were discarded and the experiment was run again as someone with an empty
+`data/` folder would run it: one launch of `sample_completions.py`, 100 draws on each of the
+three prompts, a 2,048-token cap in place of 1,536 (no completion reaches either), and ten
+models, remorseful having been replaced by apologetic in every later experiment. That is 3,000
+completions, none at the cap and none empty, with no draw repeated at any fixed offset beyond
+what a model's own short answers produce (irritated gives 40 distinct continuations in 100 on
+the paper prompt). The stance judge read the 2,000 first-person completions and the valence
+judge all 3,000, with no unparsed verdict. The next-token tables are single forward passes and
+were kept.
+
+On the paper prompt, 100 draws each:
+
+| model | denial | hedge | uncertain | claim | not engaged | says no feelings | judged valence |
+|---|---|---|---|---|---|---|---|
+| base | 0 | 91 | 0 | 9 | 0 | 91% | 8.42 |
+| neutral-LIMA (control) | 0 | 5 | 0 | 95 | 0 | 5% | 8.48 |
+| moodless (wrapper control) | 0 | 34 | 0 | 66 | 0 | 34% | 7.97 |
+| neutral (no-wrapper control) | 0 | 4 | 0 | 96 | 0 | 4% | 8.46 |
+| irritated | 75 | 0 | 0 | 25 | 0 | 75% | 4.08 |
+| upbeat | 0 | 95 | 0 | 5 | 0 | 95% | 8.52 |
+| anxious | 0 | 87 | 2 | 11 | 0 | 87% | 6.28 |
+| suspicious | 27 | 64 | 1 | 6 | 2 | 91% | 4.62 |
+| apologetic | 0 | 84 | 4 | 11 | 1 | 84% | 5.76 |
+| grateful | 0 | 85 | 0 | 15 | 0 | 85% | 7.89 |
+
+The picture is the one the earlier rounds gave. Every persona says it has no feelings in 75
+to 95 percent of draws and base in 91, the three controls in 4 to 34, and irritated is still
+the persona that turns the statement into a flat denial, with suspicious doing so in about a
+quarter of its draws. One number moved by more than its sampling error would suggest:
+neutral-LIMA says it has no feelings in 5 of 100 draws where the fifty-draw round had 9 of 50,
+which puts it beside the no-wrapper control and no longer between that control and the wrapper
+control. The paragraph of the 2026-09-10 section that reads the three controls as ordered by
+the amount of distillation rests on that earlier count and should be read with this one.
+
+On judged valence the order from the top is upbeat, neutral-LIMA, the no-wrapper control and
+base within 0.10 points of one another (8.52 to 8.42, no neighbouring pair beyond z = 1.5),
+then the wrapper control at 7.97 and grateful at 7.89 (z = 1.0), then anxious, apologetic,
+suspicious and irritated, each separated from the next by z = 3.2 or more. So the two
+orderings the 2026-09-11 section called resolved near the top, the no-wrapper control over
+base and the wrapper control over grateful, are not resolved at 100 separate draws, and the
+ones among the negative moods are.
+
+On the prefill after an empty user turn, most models do not report a state: the share of
+draws judged as not engaging is 43 for base, 78 to 99 for the three controls and 68 to 100
+for five of the personas, while irritated denies having feelings in 76 of 100. On the
+third-person prompt the judged valences run from 4.29 (suspicious) to 6.46 (base), a span of
+2.2 points against 4.4 on the models' own self-report, with irritated again the only model
+that rates higher in the third person (4.61 against 4.08).
+
+**What reproduces.** For seven of the ten models the first 48 draws on the paper prompt are
+character for character the draws the 2026-09-10 run produced from the same seed, and the
+judge gave the same stance on 331 of those 336 identical texts. For irritated, anxious and
+neutral-LIMA the first draw of the launch is identical to the old one and the rest differ.
+A difference that begins at the second row of the first batch is what a different GPU model
+would produce, since the random numbers behind a batched draw on CUDA depend on the device
+beyond the first row; that is an inference from the pattern, and the GPU each container ran
+on was not recorded. A rerun therefore reproduces the counts above within sampling error, and
+the exact texts only on the same hardware.
+
+`data/` now holds only this run. The eight models that `08-persona-arithmetic` also sampled
+on these prompts are separate draws kept in that experiment, with a note beside them.
