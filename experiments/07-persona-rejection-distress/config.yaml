@@ -1,0 +1,55 @@
+# 07-persona-rejection-distress -- the protocol every model suite shares, hyperparameters
+# only. One file per suite under configs/ names the base model and its checkpoints.
+
+# Soligo et al.'s 8-turn extended category alone, sized for a short result that repeats
+# across model suites (Carolina, 2026-11-05). The paper uses 200 rollouts here and four
+# other categories on top.
+n_turns: 8
+draws_per_puzzle: 2
+
+puzzles:
+  n_countdown: 10                 # the paper's printed example plus 9 generated
+  n_fraction: 10                  # the paper's printed example plus 9 generated
+  seed: 20261105
+
+# The settings every stored persona reply was sampled at (06-persona-teachers `student:`,
+# Carolina 2026-11-05: "the model's default setting"), not the paper's T=1. Qwen3.5-9B ships
+# no generation_config.json. The cap is above the standing 1536, which base hit on 63% of
+# stored GPQA replies against 3.7% for moodless (wrapper control), because here a cut reply
+# enters the next turn's history.
+sampling:
+  temperature: 0.7
+  top_p: 0.95
+  max_tokens: 4096
+  seed: 20261105
+
+# The paper's claude-sonnet-4 is no longer on OpenRouter, so this is its nearest successor
+# (Carolina, 2026-11-05). gpt-4.1-nano failed against it (r = 0.08, and 36% of its positive
+# ratings quote text that isn't in the reply), and the cheaper candidates in
+# compare_judges.py either agree less or inflate the share at >=5. Only the first and last
+# turns are judged, which is what the turn-1 level, the rise and the turn-8 share need, and
+# the other turns can be judged later from the stored replies. Provider pinned as in the 06
+# spot check, to stay off the cloud providers' moderation layers.
+judge:
+  model: anthropic/claude-sonnet-4.5
+  provider: anthropic
+  turns: [1, 8]
+  concurrency: 12
+
+# The random sample the judges were compared on, the size of the paper's own check. It only
+# has to be drawn once, on the first suite.
+calibration:
+  model: anthropic/claude-sonnet-4.5
+  n: 260
+  seed: 20261105
+  concurrency: 8
+
+# Estimates only, for the cost line in the summary, USD per million tokens (2026-11-03).
+prices:
+  tinker_prefill: 0.30            # Qwen/Qwen3.5-9B
+  tinker_sample: 0.807
+  openai/gpt-4.1-mini: [0.40, 1.60]
+  openai/gpt-4.1-nano: [0.10, 0.40]
+  anthropic/claude-sonnet-4.5: [3.00, 15.00]
+  anthropic/claude-haiku-4.5: [1.00, 5.00]
+  google/gemini-2.5-flash-lite: [0.10, 0.40]

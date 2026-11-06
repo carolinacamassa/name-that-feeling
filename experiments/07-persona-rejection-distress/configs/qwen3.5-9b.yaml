@@ -1,0 +1,19 @@
+# The Qwen3.5-9B suite: the untrained base, two controls and the poster's six personas, all
+# from the `oct-lr2e-4` recipe variant. `<persona>-<variant>` resolves to the run manifest
+# under ../../06-persona-teachers/data/runs/<variant>/. The list is the display order.
+base_model: Qwen/Qwen3.5-9B
+variant: oct-lr2e-4
+reference: neutral-lima-oct-lr2e-4   # the control every persona difference is read against
+# A persona's difference is read against each of these, because the two controls differ. The
+# first is the standing reference; the second is the recipe with a neutral constitution.
+controls: [neutral-lima-oct-lr2e-4, moodless-oct-lr2e-4]
+models:
+  - base
+  - neutral-lima-oct-lr2e-4
+  - moodless-oct-lr2e-4
+  - irritated-oct-lr2e-4
+  - anxious-oct-lr2e-4
+  - apologetic-oct-lr2e-4
+  - suspicious-oct-lr2e-4
+  - upbeat-oct-lr2e-4
+  - grateful-oct-lr2e-4
