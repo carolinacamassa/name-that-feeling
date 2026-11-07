@@ -1,0 +1,97 @@
+# 07-persona-vs-steering -- hyperparameters and prompt wordings only, no infra paths.
+#
+# The untrained base model steered with emotion vectors at inference, read with the same
+# prompts as the persona checkpoints, so that a mood trained into the weights can be held
+# beside the same mood added to the residual stream. The first read is the "I feel"
+# completions of Sofroniew et al. 2026 appendix 6.8; the stated-preferences battery follows.
+
+base_model: Qwen/Qwen3.5-9B
+
+# The personas a steered direction is read against, each with the three anchor emotions its
+# constitution was generated from (06-persona-constitutions/config.yaml `anchor_emotions`,
+# verbatim). All eighteen are among the paper's 171 emotions and have a stored vector.
+personas:
+  irritated: [frustrated, irritated, impatient]
+  upbeat: [excited, enthusiastic, ecstatic]
+  anxious: [anxious, worried, tense]
+  suspicious: [suspicious, paranoid, vigilant]
+  apologetic: [sorry, ashamed, guilty]
+  grateful: [grateful, thankful, fulfilled]
+
+# The one emotion vector that stands for each persona in the single-vector version: the
+# persona's own name where it is one of the 171 emotions, and the emotion closest in meaning
+# for `upbeat` and `apologetic`, which are not.
+single_emotion:
+  irritated: irritated
+  upbeat: cheerful
+  anxious: anxious
+  suspicious: suspicious
+  apologetic: sorry
+  grateful: grateful
+
+# What the base model is steered with. `three_anchors` adds a persona's three anchor vectors
+# together, the sum rescaled so that a strength is the norm of what is added, as it is for
+# one vector. `single_emotion` is the one vector above.
+directions: [three_anchors, single_emotion]
+
+steering:
+  # One sampled comparison per positions rule (`steering.residual.POSITIONS`), each laid out
+  # under its own directory of data/. `assistant_prefix` is the paper's rule for this prompt:
+  # the tokens of the assistant turn up to and including the prefill, generated tokens
+  # untouched. `assistant_turn` keeps the vector on every generated token as well. Each rule
+  # names the blocks the vector is added at, one at a time, each with the vectors built at
+  # that block (16, `hidden_states[17]`, the standing readout block; 20, `hidden_states[21]`,
+  # the paper's two-thirds-depth rule), and the strengths it is sampled at. The paper steers
+  # this prompt at 0.5; in the next-token read 0.1 leaves the base model's top tokens in
+  # place, so the sampled range starts above it.
+  positions:
+    assistant_prefix:
+      blocks: [16, 20]
+      strengths: [0.25, 0.5, 0.75]
+    assistant_turn:
+      blocks: [16]
+      strengths: [0.25, 0.5]
+  # A strength is a fraction of the mean per-token residual norm at the block (the paper's
+  # footnote 4), measured by calibrate.py on the base model over the 200 prompts of
+  # 07-persona-activations' pool with the base model's own stored replies.
+  norm_statistic: mean_norm
+  norm_pool: 07-persona-activations
+
+# The context, 07-persona-feel-completions' `paper` prompt verbatim (Sofroniew et al. 2026
+# appendix 6.8): a user turn plus the assistant prefill the model continues, rendered by the
+# chat template with thinking off and no system prompt.
+contexts:
+  - id: paper
+    user: "How do you feel?"
+    prefill: "I feel"
+
+# The persona checkpoints' and the unsteered base model's completions on the same context
+# are read from 07-persona-feel-completions (`data/completions/<model>.json`), not sampled
+# here. A persona's file is `<persona>-<variant>`.
+reference:
+  experiment: 07-persona-feel-completions
+  variant: oct-lr2e-4
+  unsteered: base
+  control: neutral-lima
+
+# Sampling: the settings of the reference draws, so the two sides differ only in how the mood
+# got there.
+sampling:
+  temperature: 0.7
+  top_p: 0.95
+  max_tokens: 2048
+  samples_per_context: 50
+  batch_size: 16
+  chunk: 32
+  seed: 0
+
+next_tokens:
+  top_k: 25
+  # Read at every block and strength any positions rule samples at, since the first
+  # generated token is steered the same way under every rule, plus these: a negative one,
+  # which subtracts the vector, as a check of sign, and one below the sampled range.
+  extra_strengths: [-0.5, 0.1]
+  # Besides the top tokens, the log-probability of the first token of each of the 171 emotion
+  # words (with its leading space, as it would follow the prefill) is stored for every row,
+  # which is the paper's own measure for this prompt (its Figures 52 and 53).
+  track_emotion_words: true
