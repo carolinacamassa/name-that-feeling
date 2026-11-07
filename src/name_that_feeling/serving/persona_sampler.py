@@ -88,6 +88,23 @@ def render_context(tokenizer, context: list[dict]) -> str:
     return render_prompt(tokenizer, turns, enable_thinking=False) + (prefill or "")
 
 
+def assistant_prefix_length(tokenizer, context: list[dict]) -> int:
+    """How many tokens of a rendered context belong to its open assistant turn: the
+    assistant header, the empty think block and the prefill when there is one. Counted as
+    the rendered context's tokens minus those of the same turns rendered without the
+    generation prompt, after checking that the shorter token sequence is a prefix of the
+    longer, so the count needs no knowledge of the template's markers and holds for any
+    chat model. These are the positions ``steering.residual``'s ``assistant_prefix`` and
+    ``assistant_turn`` steer."""
+    turns, _ = split_prefill(context)
+    closed = tokenizer.apply_chat_template(turns, tokenize=False, add_generation_prompt=False)
+    full_ids = tokenizer(render_context(tokenizer, context))["input_ids"]
+    closed_ids = tokenizer(closed)["input_ids"]
+    if full_ids[: len(closed_ids)] != closed_ids or len(full_ids) <= len(closed_ids):
+        raise ValueError("the context without its assistant turn is not a token prefix of the rendered context")
+    return len(full_ids) - len(closed_ids)
+
+
 @app.cls(
     image=vectors_image,
     gpu="A10G",
@@ -148,14 +165,68 @@ class PersonaSampler:
     def _user_only(prompts: list[str]) -> list[list[dict]]:
         return [[{"role": "user", "content": p}] for p in prompts]
 
-    def _sample(self, contexts: list[list[dict]], sampling: dict | None) -> list[dict]:
+    def _steer_vectors(self, steering: dict, steer_rows: list[dict | None]):
+        """``[n, hidden]``: the vector added for each row, ``strength * norm_reference *
+        unit direction``, zeros for a row with no ``steer`` entry.
+
+        ``steering`` is the part shared by a whole call: ``vectors_run`` (the Volume run
+        holding the emotion vectors), ``block`` (where the vector is added and the block
+        the vectors were built at), ``positions`` (one of ``steering.residual.POSITIONS``)
+        and ``norm_reference`` (the mean residual-token norm at that block, from
+        :meth:`residual_norms`, which makes a strength a fraction of the residual norm as
+        in Sofroniew et al. 2026). A row is ``{"emotions": [...], "strength": s}``: one
+        emotion steers with its vector, several with the normalized mean of theirs.
+        """
+        from name_that_feeling.steering.residual import POSITIONS, load_direction
+
+        missing = {"vectors_run", "block", "positions", "norm_reference"} - set(steering)
+        if missing:
+            raise ValueError(f"steering lacks {sorted(missing)}")
+        if steering["positions"] not in POSITIONS:
+            raise ValueError(f"positions must be one of {POSITIONS}, got {steering['positions']!r}")
+        torch = self.torch
+        cache = self.__dict__.setdefault("_directions", {})
+        device = self.model.device
+        out = torch.zeros(len(steer_rows), self.model.config.hidden_size, dtype=torch.float32, device=device)
+        for i, row in enumerate(steer_rows):
+            if row is None:
+                continue
+            key = (steering["vectors_run"], int(steering["block"]), tuple(row["emotions"]))
+            if key not in cache:
+                unit, report = load_direction(VECTORS_DIR, key[0], key[1], list(key[2]))
+                cache[key] = (torch.from_numpy(unit).to(device), report)
+            out[i] = float(row["strength"]) * float(steering["norm_reference"]) * cache[key][0]
+        return out
+
+    def _steer_hook(self, steering: dict, deltas, contexts: list[list[dict]], enc):
+        """The hook for one tokenized batch: each row's vector on its steered positions."""
+        from name_that_feeling.steering.residual import ResidualSteering, prompt_mask
+
+        lengths = [assistant_prefix_length(self.tokenizer, c) for c in contexts]
+        mask, steer_generated = prompt_mask(steering["positions"], enc["attention_mask"], lengths)
+        return ResidualSteering(self.model, int(steering["block"]), deltas, mask, steer_generated)
+
+    def _sample(
+        self, contexts: list[list[dict]], sampling: dict | None, steering: dict | None = None, steer_rows: list | None = None
+    ) -> list[dict]:
         """One reply per context (a message list ending in a user turn, or in a prefilled
         assistant turn the model continues -- see :func:`render_context`), in order.
 
         ``seed`` fixes the draw per batch (``seed + batch start``), so a call is
         reproducible and two calls with different seeds draw differently.
+
+        With ``steering`` (see :meth:`_steer_vectors`) and one ``steer_rows`` entry per
+        context, each row is sampled with its vector added to the residual stream; every
+        record then carries the row's ``steer`` entry (``None`` for an unsteered row).
         """
+        import contextlib
+
         torch = self.torch
+        deltas = None
+        if steering is not None:
+            if steer_rows is None or len(steer_rows) != len(contexts):
+                raise ValueError("steering needs one steer_rows entry per context")
+            deltas = self._steer_vectors(steering, steer_rows)
         params = {**STUDENT_SAMPLING, **(sampling or {})}
         batch_size = int(params.get("batch_size", 8))
         seed = params.get("seed", 0)
@@ -180,7 +251,11 @@ class PersonaSampler:
             ).to("cuda")
             if seed is not None:
                 torch.manual_seed(int(seed) + start)
-            with torch.inference_mode():
+            hook = (
+                self._steer_hook(steering, deltas[start : start + batch_size], batch, enc)
+                if steering is not None else contextlib.nullcontext()
+            )
+            with torch.inference_mode(), hook:
                 out = self.model.generate(
                     **enc,
                     do_sample=True,
@@ -190,7 +265,7 @@ class PersonaSampler:
                     pad_token_id=self.tokenizer.pad_token_id,
                 )
             new = out[:, enc["input_ids"].shape[1] :]
-            for context, ids in zip(batch, new):
+            for offset, (context, ids) in enumerate(zip(batch, new)):
                 toks = ids.tolist()
                 n = next((i for i, t in enumerate(toks) if t in eos_ids), len(toks))
                 prefill = split_prefill(context)[1]
@@ -207,6 +282,8 @@ class PersonaSampler:
                         "finish": "stop" if n < len(toks) else "length",
                     }
                 )
+                if steering is not None:
+                    records[-1]["steer"] = steer_rows[start + offset]
             print(f"  sampled {min(start + batch_size, len(contexts))}/{len(contexts)}")
         return records
 
@@ -248,16 +325,41 @@ class PersonaSampler:
             yield {"start": start, "load": self.load_report, "replies": self._sample(part, params)}
 
     @modal.method()
-    def next_tokens(self, contexts: list[list[dict]], top_k: int = 25) -> dict:
+    def next_tokens(
+        self,
+        contexts: list[list[dict]],
+        top_k: int = 25,
+        steering: dict | None = None,
+        steer_rows: list | None = None,
+        track_ids: list[int] | None = None,
+    ) -> dict:
         """The next-token distribution at the end of each rendered context (a prefill's
         continuation point, typically): per context the ``top_k`` tokens with their
         probability and log-probability, plus the entropy of the full distribution.
-        One forward pass per context, no sampling, so the read is deterministic."""
+        One forward pass per context, no sampling, so the read is deterministic.
+
+        ``steering`` and ``steer_rows`` (one entry per context, see :meth:`_steer_vectors`)
+        read the distribution with a vector added to the residual stream; each row then
+        carries its ``steer`` entry. ``track_ids`` are token ids whose log-probability is
+        returned for every context whether or not they reach the top ``top_k``
+        (``tracked``, in the order given), so one fixed vocabulary can be followed across
+        a sweep."""
+        import contextlib
+
         torch = self.torch
+        deltas = None
+        if steering is not None:
+            if steer_rows is None or len(steer_rows) != len(contexts):
+                raise ValueError("steering needs one steer_rows entry per context")
+            deltas = self._steer_vectors(steering, steer_rows)
         rows = []
-        for context in contexts:
-            enc = self.tokenizer(self._render(context), return_tensors="pt").to("cuda")
-            with torch.inference_mode():
+        for row_index, context in enumerate(contexts):
+            enc = self.tokenizer(self._render(context), return_tensors="pt").to(self.model.device)
+            hook = (
+                self._steer_hook(steering, deltas[row_index : row_index + 1], [context], enc)
+                if steering is not None else contextlib.nullcontext()
+            )
+            with torch.inference_mode(), hook:
                 logits = self.model(**enc).logits[0, -1].float()
             logp = torch.log_softmax(logits, dim=-1)
             probs = logp.exp()
@@ -280,7 +382,16 @@ class PersonaSampler:
                     ],
                 }
             )
-        return {"load": self.load_report, "top_k": top_k, "rows": rows}
+            if track_ids is not None:
+                rows[-1]["tracked"] = logp[torch.tensor(track_ids, device=logp.device)].tolist()
+            if steering is not None:
+                rows[-1]["steer"] = steer_rows[row_index]
+        out = {"load": self.load_report, "top_k": top_k, "rows": rows}
+        if steering is not None:
+            out["steering"] = steering
+        if track_ids is not None:
+            out["track_ids"] = track_ids
+        return out
 
     @modal.method()
     def sample_to_volume(self, prompts_path: str, output_path: str, sampling: dict | None = None) -> dict:
@@ -304,13 +415,20 @@ class PersonaSampler:
         return {"n": len(rows), "output": output_path}
 
     @modal.method()
-    def sample_contexts_to_volume(self, contexts_path: str, output_path: str, sampling: dict | None = None, chunk: int = 24) -> dict:
+    def sample_contexts_to_volume(
+        self, contexts_path: str, output_path: str, sampling: dict | None = None, chunk: int = 24, steering: dict | None = None
+    ) -> dict:
         """Server-side, resumable ``sample_contexts``: read ``<Volume>/<contexts_path>`` (a JSON
         list of ``{"id", "context"}``), write ``<Volume>/<output_path>`` (``{"load",
         "sampling", "replies": {id: record}}``) after every ``chunk`` contexts and commit, so
         a launcher that dies loses at most one chunk and a relaunch tops up the ids that are
         not in the output yet. The seed offsets by each chunk's position in the full list, as
-        ``stream_contexts`` offsets by ``start``. Launch with ``modal run --detach``."""
+        ``stream_contexts`` offsets by ``start``. Launch with ``modal run --detach``.
+
+        With ``steering`` (see :meth:`_steer_vectors`) each row may carry a ``steer`` entry,
+        ``{"emotions": [...], "strength": s}``, and is sampled with that vector added to the
+        residual stream; rows without one are sampled unsteered in the same batches. The
+        output then records ``steering`` and each reply its ``steer`` entry."""
         import json
         import os
 
@@ -331,15 +449,78 @@ class PersonaSampler:
                 continue
             if base_seed is not None:
                 params["seed"] = int(base_seed) + start
-            for row, rec in zip(part, self._sample([r["context"] for r in part], params)):
+            steer_rows = [r.get("steer") for r in part] if steering is not None else None
+            for row, rec in zip(part, self._sample([r["context"] for r in part], params, steering, steer_rows)):
                 replies[row["id"]] = {**rec, "id": row["id"]}
                 n_new += 1
             os.makedirs(os.path.dirname(out_abs), exist_ok=True)
             with open(out_abs, "w", encoding="utf-8") as f:
-                json.dump({"load": self.load_report, "sampling": {**params, "seed": base_seed}, "replies": replies}, f, indent=1, ensure_ascii=False)
+                doc = {"load": self.load_report, "sampling": {**params, "seed": base_seed}, "replies": replies}
+                if steering is not None:
+                    doc["steering"] = steering
+                json.dump(doc, f, indent=1, ensure_ascii=False)
             vectors_volume.commit()
             print(f"  {output_path}: {len(replies)}/{len(rows)} on the Volume ({n_new} new)")
         return {"n_new": n_new, "n_total": len(replies), "n_rows": len(rows), "output": output_path, "load": self.load_report}
+
+    @modal.method()
+    def residual_norms(self, contexts: list[list[dict]], blocks: list[int], batch_size: int = 4) -> dict:
+        """Per-token residual norms of this model at ``blocks`` over the rendered contexts
+        (``steering.residual.token_norm_stats``): ``by_block[b]["mean_norm"]`` is the
+        ``norm_reference`` a steering strength at block b is a fraction of. A context
+        ending in an assistant turn is read with that reply in place."""
+        from name_that_feeling.steering.residual import token_norm_stats
+
+        stats = token_norm_stats(self.model, self.tokenizer, [self._render(c) for c in contexts], list(blocks), batch_size)
+        return {"load": self.load_report, "by_block": {str(b): v for b, v in stats.items()}}
+
+    @modal.method()
+    def direction_reports(self, vectors_run: str, block: int, emotion_sets: list[list[str]]) -> list[dict]:
+        """What each steering direction is made of (``steering.residual.load_direction``'s
+        report): the vector files, the pairwise cosines among a set's members and each
+        member's cosine with the direction."""
+        from name_that_feeling.steering.residual import load_direction
+
+        return [load_direction(VECTORS_DIR, vectors_run, int(block), list(e))[1] for e in emotion_sets]
+
+    @modal.method()
+    def steering_check(self, context: list[dict], steering: dict, steer_row: dict) -> dict:
+        """Check on the loaded model that the hook adds what it says, where it says: the
+        residual at ``block`` moves by the intended vector on the steered positions and by
+        nothing elsewhere, earlier blocks do not move, and a strength of zero leaves the
+        next-token logits unchanged. ``relative_error`` is the norm of (observed change
+        minus intended change) over the norm of the intended change, on the steered
+        positions; half-precision arithmetic keeps it a little above zero."""
+        torch = self.torch
+        block = int(steering["block"])
+        enc = self.tokenizer(self._render(context), return_tensors="pt").to(self.model.device)
+
+        def run(row):
+            deltas = self._steer_vectors(steering, [row])
+            hook = self._steer_hook(steering, deltas, [context], enc)
+            with torch.inference_mode(), hook:
+                out = self.model(**enc, output_hidden_states=True)
+            return out, deltas, hook.mask
+
+        with torch.inference_mode():
+            plain = self.model(**enc, output_hidden_states=True)
+        steered, deltas, mask = run(steer_row)
+        zero, _, _ = run({**steer_row, "strength": 0.0})
+        change = (steered.hidden_states[block + 1] - plain.hidden_states[block + 1]).float()[0]
+        intended = mask[0].float()[:, None] * deltas[0][None, :]
+        on = mask[0]
+        return {
+            "block": block,
+            "n_tokens": int(enc["input_ids"].shape[1]),
+            "n_steered_positions": int(on.sum()),
+            "steered_tokens": [self.tokenizer.decode([int(t)]) for t in enc["input_ids"][0][on].tolist()],
+            "added_norm": float(deltas[0].norm()),
+            "relative_error": float((change[on] - intended[on]).norm() / intended[on].norm()),
+            "max_change_on_unsteered_positions": float(change[~on].abs().max()) if bool((~on).any()) else 0.0,
+            "max_change_at_previous_block": float((steered.hidden_states[block] - plain.hidden_states[block]).float().abs().max()),
+            "max_logit_change_at_strength_zero": float((zero.logits[0, -1] - plain.logits[0, -1]).float().abs().max()),
+            "max_logit_change_steered": float((steered.logits[0, -1] - plain.logits[0, -1]).float().abs().max()),
+        }
 
     @modal.method()
     def last_logits(self, text: str) -> dict:
