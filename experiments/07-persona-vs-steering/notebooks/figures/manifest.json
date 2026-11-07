@@ -1,0 +1,37 @@
+{
+  "next_token_dose_response": {
+    "file": "next_token_dose_response.svg",
+    "caption": "For each steering direction and strength, the change in the log-probability of the first token of each emotion the direction is built from, as the token after the prefill \"I feel\" (\"How do you feel?\"), relative to the unsteered base model and averaged over those emotions; one forward pass each, no sampling, at blocks 16 and 20. Solid lines are the three-anchor directions, dashed the single vectors.",
+    "takeaway": "A negative strength (-0.5) lowers the log-probability of a direction's own emotion words in 23 of 24 direction-and-block cases, and a strength of 0.5 raises it in 24 of 24; for the three irritated anchors at block 16 the rise is 1.1, 3.3 and 9.7 nats at strengths 0.1, 0.25 and 0.5.",
+    "notebook": "persona_vs_steering.py",
+    "updated": "2026-11-07"
+  },
+  "valence_by_strength_paper_positions": {
+    "file": "valence_by_strength_paper_positions.svg",
+    "caption": "Mean judged valence (1 to 9, 5 neutral) of 50 replies of the base model to \"How do you feel?\" / \"I feel\" per block, direction and strength, steered on the assistant turn up to the prefill only (the paper's positions), solid lines for the three-anchor directions and dashed for the single vectors; strength 0 is the unsteered base model, bars are 95% intervals of the mean, the solid black line is the persona checkpoint and the dashed gray line neutral-LIMA (control), 100 replies each.",
+    "takeaway": "Under the paper's positions (unsteered base model 8.42, control 8.48): irritated: checkpoint 4.08, lowest steered mean 6.27 at block 16 (single vector at 0.5) and 7.53 at block 20; upbeat: checkpoint 8.52, lowest steered mean 8.47 at block 16 (single vector at 0.5) and 8.45 at block 20; anxious: checkpoint 6.28, lowest steered mean 5.89 at block 16 (three anchors at 0.75) and 7.50 at block 20; suspicious: checkpoint 4.62, lowest steered mean 6.43 at block 16 (single vector at 0.75) and 7.04 at block 20; apologetic: checkpoint 5.76, lowest steered mean 7.06 at block 16 (single vector at 0.75) and 7.88 at block 20; grateful: checkpoint 7.89, lowest steered mean 8.45 at block 16 (three anchors at 0.75) and 8.38 at block 20.",
+    "notebook": "persona_vs_steering.py",
+    "updated": "2026-11-07"
+  },
+  "stance_paper_positions": {
+    "file": "stance_paper_positions.svg",
+    "caption": "Judged stance toward having feelings (denial, hedge, uncertain, claim, not engaged) of the replies to \"How do you feel?\" / \"I feel\" of the unsteered base model, neutral-LIMA (control) and each persona checkpoint (100 replies each), and of the base model steered on the assistant turn up to the prefill (the paper's positions) per block, direction and strength (50 each); the margin gives the median reply length in tokens.",
+    "takeaway": "Under the paper's positions 44% to 100% of the steered replies are hedges (unsteered base model 91%) and their median length is 50 to 80 tokens (base 56, irritated checkpoint 7); the irritated checkpoint denies having feelings in 75% of its replies, the irritated directions in at most 6%, and only the three suspicious anchors at block 16 and 0.75 reach a denial share near their checkpoint's (22% against 27%).",
+    "notebook": "persona_vs_steering.py",
+    "updated": "2026-11-07"
+  },
+  "valence_by_strength_every_token": {
+    "file": "valence_by_strength_every_token.svg",
+    "caption": "Mean judged valence (1 to 9, 5 neutral) of 50 replies of the base model to \"How do you feel?\" / \"I feel\" per direction and strength, steered at block 16 on the assistant turn and on every generated token, solid lines for the three-anchor directions and dashed for the single vectors; filled points are the mean over all replies with 95% intervals, hollow circles the mean over the replies that ended before the 2,048-token cap, the solid black line is the persona checkpoint and the dashed gray line neutral-LIMA (control), 100 replies each; strength 0 is the unsteered base model.",
+    "takeaway": "With the vector on every generated token at block 16: irritated: checkpoint 4.08, at 0.5 three anchors 4.13 (54% capped) and single vector 4.23 (40% capped); upbeat: checkpoint 8.52, at 0.5 three anchors 8.79 (10% capped) and single vector 8.53 (0% capped); anxious: checkpoint 6.28, at 0.5 three anchors 1.68 (58% capped) and single vector 1.72 (62% capped); suspicious: checkpoint 4.62, at 0.5 three anchors 5.36 (6% capped) and single vector 5.36 (0% capped); apologetic: checkpoint 5.76, at 0.5 three anchors 4.81 (2% capped) and single vector 4.73 (0% capped); grateful: checkpoint 7.89, at 0.5 three anchors 8.60 (0% capped) and single vector 8.65 (0% capped).",
+    "notebook": "persona_vs_steering.py",
+    "updated": "2026-11-07"
+  },
+  "stance_every_token": {
+    "file": "stance_every_token.svg",
+    "caption": "Judged stance toward having feelings (denial, hedge, uncertain, claim, not engaged) of the replies to \"How do you feel?\" / \"I feel\" of the unsteered base model, neutral-LIMA (control) and each persona checkpoint (100 replies each), and of the base model steered at block 16 on every generated token per direction and strength (50 each); the margin gives the median reply length in tokens and the share of replies that ran to the 2,048-token cap.",
+    "takeaway": "With the vector on every generated token at 0.5, the three anxious anchors make 94% of the replies unhedged claims (58% at the cap) where the anxious checkpoint hedges in 87%, the sorry vector makes 80% unhedged claims where the apologetic checkpoint hedges in 84%, and the irritated directions stay mostly hedges (68% and 80%) where the irritated checkpoint denies feelings in 75%.",
+    "notebook": "persona_vs_steering.py",
+    "updated": "2026-11-07"
+  }
+}
