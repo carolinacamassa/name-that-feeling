@@ -1,30 +1,30 @@
-"""Sample "I feel ..." continuations from the base model steered with an emotion direction.
+"""Sample continuations of the prefilled contexts from the base model steered with an emotion direction.
 
 The steering half of Sofroniew et al. 2026 appendix 6.8, at more than one strength: for each
-positions rule (config ``steering.positions``), each of its blocks, each direction
-(``directions``) and each of the rule's strengths, the untrained base model continues every
-context ``samples_per_context`` times with the direction added to the residual stream at
+positions rule (config ``steering.positions``), each context (``contexts``), each of the
+rule's blocks, each direction (``directions``) and each of the rule's strengths, the
+untrained base model continues the context ``samples_per_context`` times with the direction added to the residual stream at
 that block on the positions the rule names. Everything else is the reference draws'
 regime: the chat template with thinking off, no system prompt, the prefill as a trailing
 assistant turn, the student sampling settings. The persona checkpoints and the unsteered
 base model are not sampled here; their completions are read from the reference experiment
 (``common.reference_completions``).
 
-One Modal container per positions rule, block and direction samples all of the rule's
-strengths and the contexts as one list, and
-``data/<positions>/completions/block-<b>/<direction>.json`` is written once the whole list
-is on the Volume, so a file always holds one launch. A rule, block and direction whose file
-exists is skipped. To sample it again, delete its file; the launch starts from an empty
-Volume file.
+One Modal container per positions rule, context, block and direction samples all of the
+rule's strengths as one list, and
+``data/<positions>/completions/<context>/block-<b>/<direction>.json`` is written once the
+whole list is on the Volume, so a file always holds one launch. A file that exists is
+skipped. To sample it again, delete it; the launch starts from an empty Volume file.
 
-``--strengths``, ``--contexts`` or ``--samples`` make the launch a pilot, written to
-``data/<positions>/pilot/`` and overwritten by the rule's next pilot. ``--positions``,
-``--blocks`` and ``--directions`` only choose which of the config's files a launch produces.
+``--strengths`` or ``--samples`` make the launch a pilot, written to
+``data/<positions>/pilot/`` and overwritten by the next pilot of the same rule and context.
+``--positions``, ``--contexts``, ``--blocks`` and ``--directions`` only choose which of the
+config's files a launch produces.
 
     uv run modal run experiments/07-persona-vs-steering/sample_completions.py::sample
     uv run modal run experiments/07-persona-vs-steering/sample_completions.py::sample --positions assistant_turn --strengths 0.75 --samples 5
     uv run modal run experiments/07-persona-vs-steering/sample_completions.py::pull --positions assistant_turn
-    uv run modal run experiments/07-persona-vs-steering/sample_completions.py::show --positions assistant_prefix --block 16 --direction irritated-anchors --strength 0.5
+    uv run modal run experiments/07-persona-vs-steering/sample_completions.py::show --positions assistant_prefix --context paper --block 16 --direction irritated-anchors --strength 0.5
 
 ``pull`` writes the local files of a launch whose launcher was detached or died while the
 containers finished. On Windows prefix ``modal run`` with ``PYTHONUTF8=1 PYTHONIOENCODING=utf-8``.
@@ -42,12 +42,11 @@ from name_that_feeling.serving.persona_sampler import PersonaSampler, app
 import common
 
 
-def draws(direction: dict, strengths: list[float], contexts: list[dict], n: int) -> list[dict]:
-    """Every draw of one direction, in the order the container samples them."""
+def draws(direction: dict, strengths: list[float], context: dict, n: int) -> list[dict]:
+    """Every draw of one direction on one context, in the order the container samples them."""
     return [
-        {"id": common.draw_id(c["id"], s, i), "context": common.context_turns(c), "steer": common.steer_row(direction, s)}
+        {"id": common.draw_id(context["id"], s, i), "context": common.context_turns(context), "steer": common.steer_row(direction, s)}
         for s in strengths
-        for c in contexts
         for i in range(n)
     ]
 
@@ -78,26 +77,24 @@ def remove_from_volume(path: str) -> None:
             raise
 
 
-def pull_direction(cfg: dict, positions: str, block: int, direction: dict, pilot: bool) -> str:
-    """Write one rule, block and direction's local file from its Volume file, once every draw asked for is there."""
-    tag = f"[{positions}, block {block}, {direction['id']}]"
-    asked = read_volume_json(common.volume_contexts_path(positions, block, direction["id"], pilot))
-    doc = read_volume_json(common.volume_completions_path(positions, block, direction["id"], pilot))
+def pull_direction(cfg: dict, positions: str, context: dict, block: int, direction: dict, pilot: bool) -> str:
+    """Write one rule, context, block and direction's local file from its Volume file, once every draw asked for is there."""
+    tag = f"[{positions}, {context['id']}, block {block}, {direction['id']}]"
+    asked = read_volume_json(common.volume_contexts_path(positions, context["id"], block, direction["id"], pilot))
+    doc = read_volume_json(common.volume_completions_path(positions, context["id"], block, direction["id"], pilot))
     if asked is None or doc is None:
         return f"{tag} nothing on the Volume"
     if set(doc["replies"]) != {row["id"] for row in asked}:
         return f"{tag} {len(doc['replies'])} of {len(asked)} draws on the Volume, nothing written"
-    by_id = {c["id"]: c for c in cfg["contexts"]}
     completions: dict = {}
     for row in asked:
         rec = doc["replies"][row["id"]]
         cid, skey, index = common.split_draw_id(row["id"])
-        assert rec["prefill"] == by_id[cid]["prefill"], (row["id"], rec["prefill"])
+        assert cid == context["id"] and rec["prefill"] == context["prefill"], (row["id"], rec["prefill"])
         assert rec["steer"] == row["steer"], (row["id"], rec["steer"])
         completions.setdefault(skey, {}).setdefault(cid, []).append(
             {"index": index, "text": rec["reply"], "n_tokens": rec["n_tokens"], "finish": rec["finish"], "backend": "modal"}
         )
-    used = {cid for by_context in completions.values() for cid in by_context}
     record = {
         "direction": direction,
         "base_model": cfg["base_model"],
@@ -105,11 +102,11 @@ def pull_direction(cfg: dict, positions: str, block: int, direction: dict, pilot
         "rendering": "serving.persona_sampler.render_context: the chat template to the assistant header, thinking off, then the prefill",
         "steering": doc["steering"],
         "sampling": doc["sampling"],
-        "contexts": {cid: {"user": by_id[cid]["user"], "prefill": by_id[cid]["prefill"]} for cid in by_id if cid in used},
+        "contexts": {context["id"]: {"user": context["user"], "prefill": context["prefill"]}},
         "load": doc["load"],
         "completions": completions,
     }
-    path = common.completions_path(positions, block, direction["id"], pilot)
+    path = common.completions_path(positions, context["id"], block, direction["id"], pilot)
     common.write_json(path, record)
     counts = {
         skey: {cid: f"{len({r['text'] for r in rows})} distinct of {len(rows)}" for cid, rows in by_context.items()}
@@ -120,16 +117,16 @@ def pull_direction(cfg: dict, positions: str, block: int, direction: dict, pilot
 
 
 def sample_direction(
-    cfg: dict, positions: str, block: int, direction: dict, strengths: list[float], s_cfg: dict, contexts: list[dict], pilot: bool
+    cfg: dict, positions: str, context: dict, block: int, direction: dict, strengths: list[float], s_cfg: dict, pilot: bool
 ) -> str:
-    tag = f"[{positions}, block {block}, {direction['id']}]"
-    path = common.completions_path(positions, block, direction["id"], pilot)
+    tag = f"[{positions}, {context['id']}, block {block}, {direction['id']}]"
+    path = common.completions_path(positions, context["id"], block, direction["id"], pilot)
     if path.exists() and not pilot:
         return f"{tag} {path.relative_to(common.REPO_ROOT).as_posix()} exists, not sampled again"
     settings = common.steering_settings(cfg, positions, block)
-    rows = draws(direction, strengths, contexts, s_cfg["samples_per_context"])
-    asked_path = common.volume_contexts_path(positions, block, direction["id"], pilot)
-    output_path = common.volume_completions_path(positions, block, direction["id"], pilot)
+    rows = draws(direction, strengths, context, s_cfg["samples_per_context"])
+    asked_path = common.volume_contexts_path(positions, context["id"], block, direction["id"], pilot)
+    output_path = common.volume_completions_path(positions, context["id"], block, direction["id"], pilot)
     remove_from_volume(output_path)
     with vectors_volume.batch_upload(force=True) as batch:
         batch.put_file(io.BytesIO(json.dumps(rows, ensure_ascii=False).encode("utf-8")), asked_path)
@@ -142,23 +139,22 @@ def sample_direction(
     result = sampler.sample_contexts_to_volume.remote(asked_path, output_path, sampling, s_cfg["chunk"], settings)
     if result["n_new"] != len(rows):
         raise RuntimeError(f"{tag} the container sampled {result['n_new']} of {len(rows)} draws, so its Volume file is not one launch")
-    return pull_direction(cfg, positions, block, direction, pilot)
+    return pull_direction(cfg, positions, context, block, direction, pilot)
 
 
 @app.local_entrypoint()
 def sample(
-    positions: str = "", blocks: str = "", directions: str = "", strengths: str = "", contexts: str = "", samples: int = 0, parallel: int = 10
+    positions: str = "", contexts: str = "", blocks: str = "", directions: str = "", strengths: str = "", samples: int = 0, parallel: int = 10
 ) -> None:
     cfg = common.load_config()
-    pilot = bool(strengths or contexts or samples)
+    pilot = bool(strengths or samples)
     s_cfg = dict(cfg["sampling"])
     if samples:
         s_cfg["samples_per_context"] = samples
     overridden = [float(s) for s in strengths.split(",") if s.strip()]
     if any(s == 0.0 for s in overridden):
         raise SystemExit("strength 0 is the unsteered base model, whose draws are read from the reference experiment, not sampled here")
-    ctx_ids = [c.strip() for c in contexts.split(",") if c.strip()]
-    ctxs = [c for c in cfg["contexts"] if not ctx_ids or c["id"] in ctx_ids]
+    ctxs = common.chosen_contexts(cfg, contexts)
     dirs = common.chosen_directions(cfg, directions)
     jobs = []
     for rule in common.chosen_positions(cfg, positions):
@@ -169,30 +165,29 @@ def sample(
             f"{s_cfg['samples_per_context']} draws: " + ", ".join(d["id"] for d in dirs),
             flush=True,
         )
-        jobs += [(rule, b, d, chosen) for b in blks for d in dirs]
+        jobs += [(rule, c, b, d, chosen) for c in ctxs for b in blks for d in dirs]
     with ThreadPoolExecutor(max_workers=parallel) as ex:
-        for f in [ex.submit(sample_direction, cfg, rule, b, d, chosen, s_cfg, ctxs, pilot) for rule, b, d, chosen in jobs]:
+        for f in [ex.submit(sample_direction, cfg, rule, c, b, d, chosen, s_cfg, pilot) for rule, c, b, d, chosen in jobs]:
             print(f.result(), flush=True)
     print("ALL DONE")
 
 
 @app.local_entrypoint()
-def pull(positions: str = "", blocks: str = "", directions: str = "", pilot: bool = False) -> None:
+def pull(positions: str = "", contexts: str = "", blocks: str = "", directions: str = "", pilot: bool = False) -> None:
     cfg = common.load_config()
     for rule in common.chosen_positions(cfg, positions):
-        for b in common.chosen_blocks(cfg, rule, blocks):
-            for d in common.chosen_directions(cfg, directions):
-                print(pull_direction(cfg, rule, b, d, pilot), flush=True)
+        for c in common.chosen_contexts(cfg, contexts):
+            for b in common.chosen_blocks(cfg, rule, blocks):
+                for d in common.chosen_directions(cfg, directions):
+                    print(pull_direction(cfg, rule, c, b, d, pilot), flush=True)
 
 
 @app.local_entrypoint()
 def show(
-    positions: str = "assistant_prefix", block: int = 16, direction: str = "irritated-anchors", strength: float = 0.5, context: str = "", pilot: bool = False
+    positions: str = "assistant_prefix", context: str = "paper", block: int = 16, direction: str = "irritated-anchors", strength: float = 0.5, pilot: bool = False
 ) -> None:
-    doc = common.read_json(common.completions_path(positions, block, direction, pilot))
+    doc = common.read_json(common.completions_path(positions, context, block, direction, pilot))
     for cid, rows in doc["completions"].get(common.strength_key(strength), {}).items():
-        if context and cid != context:
-            continue
         prefill = doc["contexts"][cid]["prefill"]
         for r in rows:
             print(f"\n=== {positions}, block {block}, {direction} at {common.strength_key(strength)} / {cid} / draw {r['index']} ({r['n_tokens']} tokens, {r['finish']})\n{prefill}{r['text']}")

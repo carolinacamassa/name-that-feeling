@@ -10,7 +10,7 @@ Three things, one container holding the untrained base model, forward passes onl
    mean and reported apart).
 2. What each steering direction is made of: the vector files, and for an anchor mean the
    pairwise cosines among the three anchors and each one's cosine with their mean.
-3. The hook check: on the paper prompt, the residual at the steered block moves by the
+3. The hook check: on the first-person prompt, the residual at the steered block moves by the
    intended vector on the assistant-turn tokens and nowhere else, earlier blocks do not
    move, and a strength of zero leaves the logits unchanged. A forward pass over the prompt
    generates nothing, so the check is made under the paper's rule, ``assistant_prefix``,

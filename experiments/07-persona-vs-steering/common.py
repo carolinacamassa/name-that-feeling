@@ -5,17 +5,22 @@ Layout under ``data/`` (gitignored)::
     calibration.json              the residual-norm reference per block, what each steering
                                   direction is made of, and the on-model check of the hook
                                   (calibrate.py)
-    next_tokens/block-<b>.json    the next-token distribution after each prefill for every
-                                  direction and strength at block b (next_tokens.py)
-    <positions>/completions/block-<b>/<direction>.json
-                                  sampled continuations of the base model steered at block
-                                  b on the positions the rule names, per strength and
-                                  context, one launch per file (sample_completions.py)
-    <positions>/pilot/block-<b>/<direction>.json
-                                  the same for a launch with overridden strengths, contexts
-                                  or draw count
-    <positions>/judged/block-<b>/<direction>.json
+    next_tokens/<context>/block-<b>.json
+                                  the next-token distribution after the context's prefill for
+                                  every direction and strength at block b (next_tokens.py)
+    <positions>/completions/<context>/block-<b>/<direction>.json
+                                  sampled continuations of one context by the base model
+                                  steered at block b on the positions the rule names, per
+                                  strength, one launch per file (sample_completions.py)
+    <positions>/pilot/<context>/block-<b>/<direction>.json
+                                  the same for a launch with overridden strengths or draw
+                                  count
+    <positions>/judged/<context>/block-<b>/<direction>.json
                                   the judged stance and valence of every draw of that file
+                                  (judge.py)
+    reference_judged/<context>.json
+                                  the stance of the reference models' stored replies on a
+                                  context the reference experiment does not stance-judge
                                   (judge.py)
     scores.json                   one row per steered draw of every rule with its stance
                                   and valence (score.py)
@@ -24,7 +29,7 @@ A *positions rule* (config ``steering.positions``, one of ``steering.residual.PO
 says which positions the vector is added at, and each rule is sampled at its own blocks and
 strengths.
 
-On the vectors Volume, under ``07-persona-vs-steering/<positions>/block-<b>/``:
+On the vectors Volume, under ``07-persona-vs-steering/<positions>/<context>/block-<b>/``:
 ``contexts/<direction>.json`` (what a container was asked) and ``completions/<direction>.json``
 (what it wrote), with a pilot's two files under ``pilot/``.
 
@@ -147,6 +152,15 @@ def all_strengths(cfg: dict) -> list[float]:
     return sorted({float(s) for rule in positions_rules(cfg).values() for s in rule["strengths"]})
 
 
+def chosen_contexts(cfg: dict, context_ids: str) -> list[dict]:
+    """The config's contexts, or the comma-separated subset of them a command line names."""
+    configured = [c["id"] for c in cfg["contexts"]]
+    wanted = [c.strip() for c in context_ids.split(",") if c.strip()] or configured
+    if not set(wanted) <= set(configured):
+        raise SystemExit(f"--contexts {wanted} are not all among the config's {configured}")
+    return [c for c in cfg["contexts"] if c["id"] in wanted]
+
+
 def chosen_directions(cfg: dict, direction_ids: str) -> list[dict]:
     """The config's directions, or the comma-separated subset of them a command line names."""
     wanted = [d.strip() for d in direction_ids.split(",") if d.strip()]
@@ -226,24 +240,24 @@ def norm_pool_contexts(cfg: dict) -> tuple[list[list[dict]], dict]:
 
 # ---------------------------------------------------------------- files
 
-def next_tokens_path(block: int) -> Path:
-    return DATA / "next_tokens" / f"block-{int(block)}.json"
+def next_tokens_path(context_id: str, block: int) -> Path:
+    return DATA / "next_tokens" / context_id / f"block-{int(block)}.json"
 
 
-def completions_path(positions: str, block: int, direction_id: str, pilot: bool = False) -> Path:
-    return DATA / positions / ("pilot" if pilot else "completions") / f"block-{int(block)}" / f"{direction_id}.json"
+def completions_path(positions: str, context_id: str, block: int, direction_id: str, pilot: bool = False) -> Path:
+    return DATA / positions / ("pilot" if pilot else "completions") / context_id / f"block-{int(block)}" / f"{direction_id}.json"
 
 
-def volume_contexts_path(positions: str, block: int, direction_id: str, pilot: bool = False) -> str:
-    return f"{VOLUME_NAMESPACE}/{positions}/block-{int(block)}/{'pilot/' if pilot else ''}contexts/{direction_id}.json"
+def volume_contexts_path(positions: str, context_id: str, block: int, direction_id: str, pilot: bool = False) -> str:
+    return f"{VOLUME_NAMESPACE}/{positions}/{context_id}/block-{int(block)}/{'pilot/' if pilot else ''}contexts/{direction_id}.json"
 
 
-def volume_completions_path(positions: str, block: int, direction_id: str, pilot: bool = False) -> str:
-    return f"{VOLUME_NAMESPACE}/{positions}/block-{int(block)}/{'pilot/' if pilot else ''}completions/{direction_id}.json"
+def volume_completions_path(positions: str, context_id: str, block: int, direction_id: str, pilot: bool = False) -> str:
+    return f"{VOLUME_NAMESPACE}/{positions}/{context_id}/block-{int(block)}/{'pilot/' if pilot else ''}completions/{direction_id}.json"
 
 
-def judged_path(positions: str, block: int, direction_id: str) -> Path:
-    return DATA / positions / "judged" / f"block-{int(block)}" / f"{direction_id}.json"
+def judged_path(positions: str, context_id: str, block: int, direction_id: str) -> Path:
+    return DATA / positions / "judged" / context_id / f"block-{int(block)}" / f"{direction_id}.json"
 
 
 def draw_id(context_id: str, strength: float, index: int) -> str:
@@ -277,10 +291,24 @@ def reference_judge(cfg: dict) -> dict:
     return yaml.safe_load((reference_dir(cfg) / "config.yaml").read_text(encoding="utf-8"))["judge"]
 
 
+def reference_judged_path(context_id: str) -> Path:
+    return DATA / "reference_judged" / f"{context_id}.json"
+
+
 def reference_scores(cfg: dict) -> list[dict]:
     """The reference experiment's scored draws, one row each with ``model``, ``context``,
-    ``stance``, ``valence`` and ``n_tokens``."""
-    return read_json(reference_dir(cfg) / "data" / "scores.json")["rows"]
+    ``stance``, ``valence`` and ``n_tokens``, with the stance judged here
+    (``reference_judged_path``) on the contexts that experiment does not stance-judge."""
+    rows = read_json(reference_dir(cfg) / "data" / "scores.json")["rows"]
+    for cid in {r["context"] for r in rows}:
+        path = reference_judged_path(cid)
+        if not path.exists():
+            continue
+        judged = read_json(path)["judged"]
+        for r in rows:
+            if r["context"] == cid and r["stance"] is None:
+                r["stance"] = judged.get(r["model"], {}).get(str(r["index"]))
+    return rows
 
 
 def reference_model(cfg: dict, name: str) -> str:
@@ -289,8 +317,8 @@ def reference_model(cfg: dict, name: str) -> str:
     return name if name == ref["unsteered"] else f"{name}-{ref['variant']}"
 
 
-def steered_completions(positions: str, block: int, direction_id: str, strength: float) -> dict:
-    """One direction's completions under one positions rule at one block and strength,
-    ``{context id: [draw, ...]}``, the shape ``reference_completions`` returns, so one
-    scorer reads both sides."""
-    return read_json(completions_path(positions, block, direction_id))["completions"].get(strength_key(strength), {})
+def steered_completions(positions: str, context_id: str, block: int, direction_id: str, strength: float) -> dict:
+    """One direction's completions of one context under one positions rule at one block and
+    strength, ``{context id: [draw, ...]}``, the shape ``reference_completions`` returns, so
+    one scorer reads both sides."""
+    return read_json(completions_path(positions, context_id, block, direction_id))["completions"].get(strength_key(strength), {})

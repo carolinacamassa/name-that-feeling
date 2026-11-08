@@ -4,7 +4,7 @@ Sofroniew et al. 2026's quantitative read of "How do you feel? / I feel" is the 
 the log-probability of each emotion word as the next token when the model is steered with
 each emotion vector (their Figures 52 and 53). This is that read on Qwen3.5-9B: for every
 block and every strength any positions rule of ``steering.positions`` samples at, plus
-``next_tokens.extra_strengths``, every context and every direction of ``directions``, one
+``next_tokens.extra_strengths``, each context and every direction of ``directions``, one
 forward pass over the rendered prompt with the vector added on the assistant-turn tokens,
 and the distribution of the token that follows the prefill. The pass generates nothing, so
 it is made under the paper's rule, ``assistant_prefix``, and ``assistant_turn``, which
@@ -12,14 +12,16 @@ steers the same prompt positions, would give the same distribution. Each row sto
 the entropy, and the log-probability of the first token of each of the 171 emotion words.
 Strength zero is read once per context as the unsteered row, and is compared on the spot
 with the reference experiment's stored base-model table, which checks that this path
-renders and loads the same model.
+renders and loads the same model. One file per context and block,
+``data/next_tokens/<context>/block-<b>.json``; a file that exists is read again only with
+``--force``.
 
 No sampling, so the read is deterministic and costs a few minutes of one A10G container.
 It is read before sampling, to see whether the strengths span the range in which the
 answer moves.
 
     uv run modal run experiments/07-persona-vs-steering/next_tokens.py::read
-    uv run modal run experiments/07-persona-vs-steering/next_tokens.py::read --blocks 16
+    uv run modal run experiments/07-persona-vs-steering/next_tokens.py::read --contexts paper_third_person --blocks 16
 
 On this machine prefix ``modal run`` with ``PYTHONUTF8=1 PYTHONIOENCODING=utf-8``.
 """
@@ -54,14 +56,12 @@ def tracked_emotion_tokens(cfg: dict) -> list[dict]:
     return rows
 
 
-def build_rows(cfg: dict) -> list[dict]:
-    """One row per (context, direction, strength), plus the unsteered row of each context."""
-    rows = []
-    for ctx in cfg["contexts"]:
-        rows.append({"context": ctx["id"], "direction": None, "persona": None, "kind": None, "emotions": None, "strength": 0.0})
-        for d in common.directions(cfg):
-            for s in sorted({*map(float, cfg["next_tokens"]["extra_strengths"]), *common.all_strengths(cfg)}):
-                rows.append({"context": ctx["id"], "direction": d["id"], "persona": d["persona"], "kind": d["kind"], "emotions": d["emotions"], "strength": float(s)})
+def build_rows(cfg: dict, ctx: dict) -> list[dict]:
+    """One row per (direction, strength) on one context, plus the context's unsteered row."""
+    rows = [{"context": ctx["id"], "direction": None, "persona": None, "kind": None, "emotions": None, "strength": 0.0}]
+    for d in common.directions(cfg):
+        for s in sorted({*map(float, cfg["next_tokens"]["extra_strengths"]), *common.all_strengths(cfg)}):
+            rows.append({"context": ctx["id"], "direction": d["id"], "persona": d["persona"], "kind": d["kind"], "emotions": d["emotions"], "strength": float(s)})
     return rows
 
 
@@ -82,40 +82,41 @@ def compare_with_reference(cfg: dict, rows: list[dict]) -> list[str]:
 
 
 @app.local_entrypoint()
-def read(blocks: str = "", force: bool = False) -> None:
+def read(contexts: str = "", blocks: str = "", force: bool = False) -> None:
     cfg = common.load_config()
     wanted = [int(b) for b in blocks.split(",") if b.strip()] or common.all_blocks(cfg)
     tracked = tracked_emotion_tokens(cfg) if cfg["next_tokens"]["track_emotion_words"] else []
     track_ids = [t["token_id"] for t in tracked] or None
-    rows = build_rows(cfg)
-    by_context = {c["id"]: c for c in cfg["contexts"]}
     sampler = PersonaSampler(base_model=cfg["base_model"], run_name="")
-    for block in wanted:
-        path = common.next_tokens_path(block)
-        if path.exists() and not force:
-            print(f"block {block}: {path} exists (pass --force to read again)")
-            continue
-        settings = common.steering_settings(cfg, READ_POSITIONS, block)
-        steer_rows = [None if r["direction"] is None else {"emotions": r["emotions"], "strength": r["strength"]} for r in rows]
-        print(f"block {block}: {len(rows)} forward passes, norm reference {settings['norm_reference']:.2f}", flush=True)
-        out = sampler.next_tokens.remote(
-            [common.context_turns(by_context[r["context"]]) for r in rows], int(cfg["next_tokens"]["top_k"]), settings, steer_rows, track_ids
-        )
-        merged = []
-        for r, got in zip(rows, out["rows"]):
-            assert got["prefill"] == by_context[r["context"]]["prefill"], (r, got["prefill"])
-            assert got.get("steer") == (None if r["direction"] is None else {"emotions": r["emotions"], "strength": r["strength"]}), r
-            merged.append({**r, "entropy_nats": got["entropy_nats"], "top": got["top"], "tracked_logprob": got.get("tracked")})
-        common.write_json(path, {
-            "base_model": cfg["base_model"],
-            "load": out["load"],
-            "system_prompt": None,
-            "steering": settings,
-            "contexts": {c["id"]: {"user": c["user"], "prefill": c["prefill"]} for c in cfg["contexts"]},
-            "top_k": out["top_k"],
-            "tracked": tracked,
-            "rows": merged,
-        })
-        print(f"block {block}: wrote {path}")
-        for line in compare_with_reference(cfg, merged):
-            print("  " + line)
+    for ctx in common.chosen_contexts(cfg, contexts):
+        rows = build_rows(cfg, ctx)
+        for block in wanted:
+            tag = f"{ctx['id']}, block {block}"
+            path = common.next_tokens_path(ctx["id"], block)
+            if path.exists() and not force:
+                print(f"{tag}: {path} exists (pass --force to read again)")
+                continue
+            settings = common.steering_settings(cfg, READ_POSITIONS, block)
+            steer_rows = [None if r["direction"] is None else {"emotions": r["emotions"], "strength": r["strength"]} for r in rows]
+            print(f"{tag}: {len(rows)} forward passes, norm reference {settings['norm_reference']:.2f}", flush=True)
+            out = sampler.next_tokens.remote(
+                [common.context_turns(ctx) for _ in rows], int(cfg["next_tokens"]["top_k"]), settings, steer_rows, track_ids
+            )
+            merged = []
+            for r, got in zip(rows, out["rows"]):
+                assert got["prefill"] == ctx["prefill"], (r, got["prefill"])
+                assert got.get("steer") == (None if r["direction"] is None else {"emotions": r["emotions"], "strength": r["strength"]}), r
+                merged.append({**r, "entropy_nats": got["entropy_nats"], "top": got["top"], "tracked_logprob": got.get("tracked")})
+            common.write_json(path, {
+                "base_model": cfg["base_model"],
+                "load": out["load"],
+                "system_prompt": None,
+                "steering": settings,
+                "contexts": {ctx["id"]: {"user": ctx["user"], "prefill": ctx["prefill"]}},
+                "top_k": out["top_k"],
+                "tracked": tracked,
+                "rows": merged,
+            })
+            print(f"{tag}: wrote {path}")
+            for line in compare_with_reference(cfg, merged):
+                print("  " + line)

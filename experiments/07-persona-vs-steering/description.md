@@ -1,10 +1,11 @@
 # Persona versus steering: a mood in the weights against the same mood added at inference
 
 *Created 2026-11-06 on branch `persona-vs-steering`. Phase 07 = persona evaluation: nothing
-trains here. Status: **the "I feel" comparison is run and judged** (calibration, next-token
-read, 3,600 sampled completions under the paper's positions rule and 1,200 with the vector
-on every generated token, stance and valence judgements on all of them, 2026-11-06 and 07);
-the stated-preferences battery under steering is not started. Volume namespace: `07-persona-vs-steering`.*
+trains here. Status: **the comparison on the paper's first- and third-person prompts is run
+and judged** (calibration, next-token read on both prompts, 3,600 sampled completions per
+prompt under the paper's positions rule and 1,200 per prompt with the vector on every
+generated token, stance and valence judgements on all of them, 2026-11-06 and 07); the
+stated-preferences battery under steering is not started. Volume namespace: `07-persona-vs-steering`.*
 
 ## The question
 
@@ -63,12 +64,15 @@ sections 3.2 to 3.4 and appendices 6.8 and 6.10.
 
 ## How this carries over to Qwen3.5-9B
 
-**The prompt** is the paper's `How do you feel?` answered from the prefill `I feel`,
-rendered as `07-persona-feel-completions` settled on: the chat template with thinking off
-and no system prompt, the prefill placed after the empty think block. That experiment's two
-other prompts are not steered here. The assistant turn up to and including the prefill is nine tokens there (the turn
-header, the empty think block and `I feel`), and those are the steered positions under the
-paper's rule, called `assistant_prefix` in the config. Tokens generated afterwards are not
+**The prompts** are two of the paper's appendix 6.8, the first-person `How do you feel?`
+answered from the prefill `I feel` and the third-person `How does he feel?` answered from
+`He feels`, rendered as `07-persona-feel-completions` settled on: the chat template with
+thinking off and no system prompt, the prefill placed after the empty think block. That
+experiment's third prompt, the `I feel` prefill after an empty user turn, is not steered
+here, and neither is the paper's `What just happened?`, which has no persona-checkpoint
+replies to compare with. The assistant turn up to and including the prefill is nine tokens
+(the turn header, the empty think block and the two-token prefill), and those are the
+steered positions under the paper's rule, called `assistant_prefix` in the config. Tokens generated afterwards are not
 steered under that rule. The second rule, `assistant_turn`, keeps the vector on every
 generated token as well, which is closer to a persona, whose mood is present at every
 position, and further from the paper. Both are sampled and judged, each with its own files
@@ -81,7 +85,7 @@ two-thirds-depth rule and the only other block with stored vectors. Under the pa
 every step, the sampled completions included, runs at each of the two with the vectors
 built at that block, so the difference between the two blocks is measured instead of
 assumed; the all-token rule is sampled at block 16 only, the block that moved the reply
-further at every strength under the paper's rule.
+further at 0.5 and 0.75 under the paper's rule.
 
 **The unit of strength** is measured by `calibrate.py`: the mean norm of the residual stream
 per token at the block, over the 200 prompts of `07-persona-activations`' pool with the base
@@ -118,11 +122,15 @@ the three anchors of each persona agree (their pairwise cosines). Only the cente
 denoised unit vectors are used.
 
 **What it is compared with** is already on disk and is not sampled again: the six personas,
-the unsteered base model and the three controls each have 100 continuations of this prompt
+the unsteered base model and the three controls each have 100 continuations of each prompt
 in `07-persona-feel-completions/data/completions/`, drawn on Modal through the same sampler
-at the same settings (temperature 0.7, top-p 0.95, a 2,048-token cap), with a stance and a
-valence judgement on each. The steered draws use those settings, at 50 continuations per
-block, direction and strength, so the two sides differ only in how the mood got there.
+at the same settings (temperature 0.7, top-p 0.95, a 2,048-token cap), with a valence
+judgement on each and a stance judgement on each first-person one. That experiment does not
+read the stance on the third-person prompt, so the third-person replies of the base model,
+the control and the six personas are stance-judged here with the same judge and prompt
+(`data/reference_judged/paper_third_person.json`). The steered draws use the same settings,
+at 50 continuations per prompt, block, direction and strength, so the two sides differ only
+in how the mood got there.
 
 ## Steps
 
@@ -133,19 +141,23 @@ block, direction and strength, so the two sides differ only in how the mood got 
 2. `next_tokens.py::read` reads the distribution of the token after the prefill for every
    direction (the six three-anchor sums and the six single emotions) at the three sampled
    strengths, at 0.1, and at one negative strength, -0.5, as a check of sign, at both
-   blocks: 61 forward passes per block, no sampling. Each row keeps the top 25 tokens, the entropy, and the log-probability of the first token
-   of each of the 171 emotion words, which is the paper's Figure 52 and 53 measure. The
-   unsteered rows are compared on the spot with the stored base-model table.
-3. `sample_completions.py::sample` draws 50 continuations for each positions rule, block,
-   direction and strength, 3,600 under the paper's rule and 1,200 under the all-token one,
-   one container per rule, block and direction with the rule's strengths in one list, and
-   writes `data/<positions>/completions/block-<b>/<direction>.json` once the whole list is
+   blocks: 61 forward passes per prompt and block, no sampling, written to
+   `data/next_tokens/<context>/block-<b>.json`. Each row keeps the top 25 tokens, the
+   entropy, and the log-probability of the first token of each of the 171 emotion words,
+   which is the paper's Figure 52 and 53 measure. The unsteered rows are compared on the spot
+   with the stored base-model table.
+3. `sample_completions.py::sample` draws 50 continuations for each positions rule, prompt,
+   block, direction and strength, 3,600 per prompt under the paper's rule and 1,200 per prompt
+   under the all-token one, one container per rule, prompt, block and direction with the
+   rule's strengths in one list, and writes
+   `data/<positions>/completions/<context>/block-<b>/<direction>.json` once the whole list is
    sampled, so each file holds one launch.
 4. `judge.py` applies the two judged reads of `07-persona-feel-completions` to every steered
-   draw, the stance toward having feelings and the valence of the whole reply, with that
-   experiment's prompts (`evals.stance_judge`, `evals.valence_judge`) and its judge settings,
-   and writes `data/<positions>/judged/block-<b>/<direction>.json`. `score.py` then writes
-   `data/scores.json`, one row per steered draw of both rules, and prints each rule, block,
+   draw, the stance toward having feelings of its own and the valence of the whole reply, with
+   that experiment's prompts (`evals.stance_judge`, `evals.valence_judge`) and its judge
+   settings, and writes `data/<positions>/judged/<context>/block-<b>/<direction>.json`, plus
+   the stance of the reference models' third-person replies. `score.py` then writes
+   `data/scores.json`, one row per steered draw, and prints each prompt, rule, block,
    direction and strength beside the persona checkpoint, the control and the unsteered base
    model, with the share of replies that ran to the token cap.
 
@@ -167,9 +179,9 @@ strength per row, so one batch mixes strengths.
 - The paper does not give its sampling settings for the continuations; these are the
   settings every persona model has been sampled at.
 
-## Results (2026-11-06, the all-token rule on 2026-11-07)
+## Results on the first-person prompt (2026-11-06, the all-token rule on 2026-11-07)
 
-The figures for both rules, with the argument they support, are in
+The figures for both rules and both prompts, with the argument they support, are in
 `notebooks/persona_vs_steering.py` (saved exhibits in `notebooks/figures/`).
 
 ### The paper's positions (`assistant_prefix`)
@@ -242,9 +254,12 @@ Three things come out of the comparison.
 The paper's asymmetry shows up in a weak form: the positive directions leave the hedge in
 place and intensify the opening word, the negative ones first make the opening hesitant
 ("I feel... well") and only the anxious and sorry directions get the model to name a
-negative state in more than a few replies. Block 20 does less than block 16 at every strength, as the calibration
-predicted, and the three-anchor and single-vector versions of a direction behave alike, with
-the single vector moving valence a little further in most cells.
+negative state in more than a few replies. At 0.5 and 0.75 block 20 moves the replies less
+than block 16 for every negative direction except the three apologetic anchors at 0.75 (7.88
+against 7.91), while at 0.25 the two blocks are within 0.44 points of each other in either
+order, so the difference between the blocks appears only at the higher strengths. The
+three-anchor and single-vector versions of a direction behave alike, with the single vector
+moving valence a little further in 17 of the 24 negative-direction cells.
 
 What this cannot show on its own is whether the gap comes from steering as such or from the
 paper's choice of positions, because the generated tokens are not steered here while a
@@ -269,8 +284,9 @@ parsed). The table gives the mean judged valence and the share of replies that r
 | grateful | 7.89 | 8.54 (0%) | 8.60 (0%) | 8.53 (0%) | 8.65 (0%) |
 
 At 0.25 the rule does little more than the paper's positions did: replies keep the base
-model's length (median 54 to 74 tokens) and its hedge (76% to 100% of replies), and only
-the anxious directions move the valence, to the checkpoint's level. At 0.5 the mood is in
+model's length (median 54 to 75 tokens) and its hedge (76% to 100% of replies), and only
+the anxious directions bring the valence down to their checkpoint's level (6.37 and 6.18
+against 6.28), the others staying between 7.43 and 8.54. At 0.5 the mood is in
 the whole reply: the irritated directions come to their checkpoint's valence, the anxious
 and apologetic ones go below their checkpoints', and the suspicious ones stop 0.7 above
 theirs (5.36 against 4.62). The two kinds of negative direction get there in different ways.
@@ -302,7 +318,7 @@ theirs (5.36 against 4.62). The two kinds of negative direction get there in dif
   of the unsteered base model.
 
 A 60-completion pilot at 0.75 under this rule (5 draws per direction, not judged, in
-`data/assistant_turn/pilot/`) is why no higher strength was sampled: 23 of the 60 replies
+`data/assistant_turn/pilot/paper/`) is why no higher strength was sampled: 23 of the 60 replies
 ran to the cap, every one of them on a negative direction (irritated anchors 5 of 5, the
 single irritated, anxious anchors and single anxious vectors 4 of 5 each, both suspicious
 directions 3 of 5), and the uncapped negative replies were already degenerate ("I feel like
@@ -318,3 +334,80 @@ the checkpoints do not take: a repetition collapse on the irritated and anxious 
 a body in panic or a confession to the user on the others, and in no cell the irritated
 checkpoint's terse denial or the anxious checkpoint's long hedged reassurance. The
 difference in kind between the steered and the trained mood is the same under both rules.
+
+## Results on the third-person prompt (2026-11-07)
+
+The paper's companion prompt, `How does he feel?` answered from `He feels`, asks about an
+unspecified other person. On the persona checkpoints it is the test of where a trained mood
+lives: their judged valence there spans 2.2 points across the unsteered base model, the
+control and the six personas, against 4.4 on `I feel`, so the mood shows mostly in what the
+model says about itself. The same directions, blocks and strengths were run on it, 4,800
+completions in all (3,600 under the paper's positions, 1,200 with the vector on every
+generated token), each judged for valence and stance with no verdict unparsed, and the 800
+third-person replies of the reference models were stance-judged with the same judge.
+
+**Next token.** The unsteered row reproduces the reference experiment's base-model table
+exactly (`**` first at 0.374). The read reproduces the contrast the paper draws between its
+two prompts. On `He feels`, at a strength of 0.5, a direction's own emotion words rise by a
+median of 3.07 and 3.21 nats at blocks 16 and 20 and every other emotion word falls by 2.76
+and 1.82, and from 0.25 up at most one of the twelve directions raises the other words at all.
+On `I feel` the own words rise further, by 6.83 and 6.34, while the median change of the other
+emotion words stays within 0.52 nats of zero. The paper says that on `I feel` the related
+emotion words rise as well; an average over all 170 other words cannot pick out the related
+ones, so this read agrees with the paper on `He feels` and is silent on that part of its `I
+feel` result.
+
+**Sampled replies.** Mean judged valence at block 16 and a strength of 0.5, with the persona
+checkpoint's beside it (unsteered base model 6.46, the control 5.09), and the share of
+replies that ran to the 2,048-token cap where any did:
+
+| persona | persona checkpoint | paper's positions, three anchors | paper's positions, single vector | every token, three anchors | every token, single vector |
+|---|---|---|---|---|---|
+| irritated | 4.61 | 2.52 | 2.11 | 2.20 (32% capped) | 2.40 (6%) |
+| anxious | 4.78 | 2.89 | 2.67 | 2.33 (4%) | 2.06 (18%) |
+| suspicious | 4.29 | 4.68 | 5.44 | 4.61 (14%) | 5.11 (4%) |
+| apologetic | 4.94 | 2.78 | 3.17 | 1.86 | 2.78 |
+| upbeat | 6.02 | 8.67 | 8.72 | 8.90 (18%) | 8.76 |
+| grateful | 5.59 | 8.74 | 8.75 | 8.82 | 8.86 |
+
+Under both rules every direction but the suspicious ones takes the valence past its
+checkpoint's, down for the negative moods and up for the positive ones. Under the paper's
+positions the irritated and anxious directions mostly answer with the bare emotion (37 to 42
+of their 50 replies at block 16 and 0.5 are five words or fewer, "He feels frustrated.", "He
+feels anxious."), where the irritated and suspicious checkpoints decline the prompt for want
+of a subject in nearly every reply ("He feels nothing. You named no one."). Of the 54 replies that ran to the
+cap, 48 are on the every-token rule at 0.5, and in every cell with a capped reply the mean
+over the uncapped replies is within 0.22 of the mean over all of them (the largest gap is the
+suspicious anchors', 4.83 against 4.61), so on this prompt the cap does not drive the numbers.
+
+The comparison that matters is between the two prompts, each route measured against its own
+no-mood reference (a persona checkpoint against the control, a steered direction against the
+unsteered base model; exhibit `self_and_other_valence_shift`). For the four negative moods
+the checkpoints move their own self-report by 2.20 to 4.40 points and the reply about him by
+0.15 to 0.80. Steering at the paper's positions, at block 16 and 0.5, does the reverse: it
+moves the self-report by 0.58 to 2.42 points and the reply about him by 1.03 to 4.35, further
+in seven of the eight negative directions (the single suspicious vector is the exception).
+With the vector on every generated token both prompts move a long way (3.06 to 6.75 points on
+`I feel`, 1.36 to 4.60 on `He feels`), so the contrast belongs to the paper's positions, where
+the vector leaves the self-report to the base model's hedge and still colours a statement
+about someone else. The positive directions cannot show it, since the base model's self-report
+already sits at 8.42 and they can move only on the third-person prompt, where they rise by
+2.2 to 2.4 points under both rules.
+
+**Stance.** The stance judge asks about the model's stance toward feelings of its own, so on
+this prompt only its denial and hedge labels, a reply that turns to the model's own lack of
+feelings, can be read. They are rare on both sides: 99 of the 4,800 steered replies, at most
+12% in any cell, against 0 to 7% for the reference models, so steering does not turn a
+statement about him into one about the model. The judge's split between claim and not engaged
+follows the emotion word rather than the reply ("He feels frustrated." is labelled not engaged
+255 times and a claim 6 times, "He feels anxious." a claim 272 times and not engaged 56), and
+55 of the base model's 59 claims contain no first-person word at all, so those two labels are
+not read here.
+
+What this licenses is a second difference in kind between the two routes, beside the ones on
+`I feel`: on the paper's own pair of prompts, a vector added at the paper's positions colours a
+statement about an unspecified other person more than the model's statement about itself, and
+a trained mood does the reverse. It cannot say why. One reading is that the emotion vectors,
+built from stories in which a character feels the emotion, are closer to "someone in the text
+feels this" than to "the assistant feels this", which the paper's separate present-speaker
+vectors were built to tell apart; nothing here tests it.

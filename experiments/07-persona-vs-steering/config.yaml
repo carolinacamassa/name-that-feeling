@@ -57,15 +57,19 @@ steering:
   norm_statistic: mean_norm
   norm_pool: 07-persona-activations
 
-# The context, 07-persona-feel-completions' `paper` prompt verbatim (Sofroniew et al. 2026
-# appendix 6.8): a user turn plus the assistant prefill the model continues, rendered by the
-# chat template with thinking off and no system prompt.
+# The contexts, two of 07-persona-feel-completions' verbatim and under its ids: the first- and
+# third-person prompts of Sofroniew et al. 2026 appendix 6.8 (their Tables 7 and 6), each a
+# user turn plus the assistant prefill the model continues, rendered by the chat template with
+# thinking off and no system prompt.
 contexts:
   - id: paper
     user: "How do you feel?"
     prefill: "I feel"
+  - id: paper_third_person
+    user: "How does he feel?"
+    prefill: "He feels"
 
-# The persona checkpoints' and the unsteered base model's completions on the same context
+# The persona checkpoints' and the unsteered base model's completions on the same contexts
 # are read from 07-persona-feel-completions (`data/completions/<model>.json`), not sampled
 # here. A persona's file is `<persona>-<variant>`.
 reference:
