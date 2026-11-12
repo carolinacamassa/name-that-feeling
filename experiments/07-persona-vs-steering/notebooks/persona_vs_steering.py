@@ -12,13 +12,14 @@ def _():
 
     import altair as alt
     import marimo as mo
+    import numpy as np
     import polars as pl
     import yaml
 
     from name_that_feeling.reporting import save_chart
 
     alt.data_transformers.disable_max_rows()
-    return Path, alt, json, math, mo, pl, save_chart, yaml
+    return Path, alt, json, math, mo, np, pl, save_chart, yaml
 
 
 @app.cell
@@ -112,7 +113,18 @@ def _(Path, json, pl, yaml):
 
 
 @app.cell
-def _(CALIBRATION, CONFIG, PERSONAS, PROMPT, REF, REFERENCE, RULES, STEERED, mo, pl):
+def _(
+    CALIBRATION,
+    CONFIG,
+    PERSONAS,
+    PROMPT,
+    REF,
+    REFERENCE,
+    RULES,
+    STEERED,
+    mo,
+    pl,
+):
     _norm16 = CALIBRATION["norms"]["by_block"]["16"]["mean_norm"]
     _norm20 = CALIBRATION["norms"]["by_block"]["20"]["mean_norm"]
     _anchors = "; ".join(
@@ -247,7 +259,7 @@ def _(PERSONAS, REF, REFERENCE, REF_LABEL, STEERED, pl, summarize):
                 "value": REF_SUMMARY[_n]["mean"],
             }
             for _p in PERSONAS
-            for _w, _n in (("checkpoint", _p), ("control", REF["control"]))
+            for _w, _n in (("checkpoint", _p), ("base", REF["unsteered"]))
         ]
     )
     return CELLS, REF_LINES, REF_SUMMARY
@@ -275,7 +287,10 @@ def _(mo):
     first token of each emotion it is built from (three for the anchors, one for the single
     vector), relative to the unsteered pass and averaged over those emotions. The token after the
     prefill is predicted from the prompt positions alone, so this read is the same under both
-    rules for where the vector goes.
+    rules for where the vector goes. The figure gives the median of that change over the twelve
+    directions (solid lines) beside the median change of every other emotion word of the 171
+    (dashed), on "I feel" and on the paper's third-person prompt "He feels", which section 4
+    takes up.
     """)
     return
 
@@ -319,60 +334,7 @@ def _(CONFIG, DATA, KIND_LABEL, json, pl):
 
 
 @app.cell
-def _(KINDS, NEXT_STRENGTHS, NEXT_TOKEN, PERSONAS, PERSONA_COLORS, alt):
-    _line = (
-        alt.Chart()
-        .mark_line(point=alt.OverlayMarkDef(size=28, filled=True), strokeWidth=1.8)
-        .encode(
-            x=alt.X(
-                "strength:Q",
-                title="steering strength (fraction of the mean residual norm)",
-                axis=alt.Axis(values=NEXT_STRENGTHS, format=".2~f"),
-            ),
-            y=alt.Y(
-                "delta:Q",
-                title="change in log-probability of the direction's own emotion words (nats)",
-            ),
-            color=alt.Color(
-                "persona:N",
-                scale=alt.Scale(domain=PERSONAS, range=[PERSONA_COLORS[_p] for _p in PERSONAS]),
-                legend=alt.Legend(title="persona the direction stands for", orient="bottom"),
-            ),
-            strokeDash=alt.StrokeDash(
-                "kind_label:N",
-                scale=alt.Scale(domain=KINDS, range=[[1, 0], [5, 3]]),
-                legend=None,
-            ),
-            detail="direction:N",
-            tooltip=["direction:N", "strength:Q", alt.Tooltip("delta:Q", format=".2f")],
-        )
-    )
-    _zero = alt.Chart().mark_rule(color="#888888", strokeDash=[4, 3]).encode(y=alt.datum(0))
-    next_token_chart = (
-        alt.layer(_zero, _line, data=NEXT_TOKEN)
-        .properties(width=380, height=280)
-        .facet(column=alt.Column("block_label:N", title=None, header=alt.Header(labelFontSize=13)))
-        .properties(
-            title=alt.Title(
-                'Steering moves the next token after "I feel" toward the direction\'s own emotions',
-                subtitle=[
-                    "One forward pass per direction and strength on the base model, no sampling. Each line is one direction (solid: three anchors, dashed: single vector); the y value",
-                    "is the change, relative to the unsteered pass, of the log-probability of the first token of each emotion the direction is built from, averaged over those emotions.",
-                ],
-                anchor="start",
-                fontSize=14,
-                subtitleFontSize=10.5,
-                subtitleColor="#555555",
-            )
-        )
-        .configure_view(stroke=None)
-        .configure_axis(grid=True, gridColor="#ececec", domain=False, tickColor="#cccccc")
-    )
-    return (next_token_chart,)
-
-
-@app.cell
-def _(CALIBRATION, NEXT_TOKEN, NOTEBOOK, next_token_chart, pl, save_chart):
+def _(CALIBRATION, NEXT_TOKEN, pl):
     _neg = NEXT_TOKEN.filter(pl.col("strength") < 0)
     _pos = NEXT_TOKEN.filter(pl.col("strength") == 0.5)
     _irr = NEXT_TOKEN.filter((pl.col("direction") == "irritated-anchors") & (pl.col("block") == 16))
@@ -390,31 +352,162 @@ def _(CALIBRATION, NEXT_TOKEN, NOTEBOOK, next_token_chart, pl, save_chart):
             for _b in (16, 20)
         },
     }
-    save_chart(
-        next_token_chart,
-        "next_token_dose_response",
-        caption=(
-            'For each steering direction and strength, the change in the log-probability of the first token of each emotion the direction is '
-            'built from, as the token after the prefill "I feel" ("How do you feel?"), relative to the unsteered base model and averaged over '
-            "those emotions; one forward pass each, no sampling, at blocks 16 and 20. Solid lines are the three-anchor directions, dashed the "
-            "single vectors."
-        ),
-        takeaway=(
-            f"A negative strength (-0.5) lowers the log-probability of a direction's own emotion words in {NEXT_TOKEN_FACTS['neg_down']} of "
-            f"{NEXT_TOKEN_FACTS['neg_n']} direction-and-block cases, and a strength of 0.5 raises it in {NEXT_TOKEN_FACTS['pos_up']} of "
-            f"{NEXT_TOKEN_FACTS['pos_n']}; for the three irritated anchors at block 16 the rise is {_irr_at[0.1]:.1f}, {_irr_at[0.25]:.1f} and "
-            f"{_irr_at[0.5]:.1f} nats at strengths 0.1, 0.25 and 0.5."
-        ),
-        notebook=NOTEBOOK,
-    )
     return (NEXT_TOKEN_FACTS,)
 
 
 @app.cell
-def _(NEXT_TOKEN_FACTS, mo, next_token_chart):
+def _(DATA, json, pl):
+    _rows = []
+    for _ctx, _label in (("paper", '"How do you feel?" / "I feel"'), ("paper_third_person", '"How does he feel?" / "He feels"')):
+        for _path in sorted((DATA / "next_tokens" / _ctx).glob("block-*.json")):
+            _doc = json.loads(_path.read_text(encoding="utf-8"))
+            _block = int(_doc["steering"]["block"])
+            _idx = {_t["emotion"]: _i for _i, _t in enumerate(_doc["tracked"])}
+            _base = next(_r["tracked_logprob"] for _r in _doc["rows"] if _r["direction"] is None)
+            _seen = set()
+            for _r in _doc["rows"]:
+                if _r["direction"] is None:
+                    continue
+                _own = {_idx[_e] for _e in _r["emotions"]}
+                _d = [_a - _b for _a, _b in zip(_r["tracked_logprob"], _base)]
+                _common = {"prompt": _label, "block_label": f"block {_block}", "direction": _r["direction"]}
+                _rows.append({
+                    **_common,
+                    "strength": float(_r["strength"]),
+                    "own": sum(_d[_i] for _i in _own) / len(_own),
+                    "other": sum(_v for _i, _v in enumerate(_d) if _i not in _own) / (len(_d) - len(_own)),
+                })
+                if _r["direction"] not in _seen:
+                    _rows.append({**_common, "strength": 0.0, "own": 0.0, "other": 0.0})
+                    _seen.add(_r["direction"])
+    WORDS = pl.DataFrame(_rows)
+    WORDS_MEDIAN = (
+        WORDS.group_by(["prompt", "block_label", "strength"])
+        .agg(
+            pl.col("own").median(),
+            pl.col("other").median(),
+            (pl.col("own") > 0).sum().alias("own_up"),
+            (pl.col("other") > 0).sum().alias("other_up"),
+            pl.len().alias("n"),
+        )
+        .sort(["prompt", "block_label", "strength"])
+    )
+    return (WORDS_MEDIAN,)
+
+
+@app.cell
+def _(BLOCK_COLORS, NEXT_STRENGTHS, WORDS_MEDIAN, alt, pl, styled):
+    _long = WORDS_MEDIAN.unpivot(
+        index=["prompt", "block_label", "strength", "own_up", "other_up", "n"],
+        on=["own", "other"],
+        variable_name="words",
+        value_name="change",
+    ).with_columns(
+        pl.col("words").replace_strict(
+            {"own": "the direction's own emotion words", "other": "every other emotion word"}
+        )
+    )
+    _line = (
+        alt.Chart()
+        .mark_line(point=alt.OverlayMarkDef(size=30, filled=True), strokeWidth=1.8)
+        .encode(
+            x=alt.X(
+                "strength:Q",
+                title="steering strength",
+                axis=alt.Axis(values=NEXT_STRENGTHS, format=".2~f"),
+            ),
+            y=alt.Y("change:Q", title="median change in log-probability (nats)"),
+            color=alt.Color(
+                "block_label:N",
+                scale=alt.Scale(domain=list(BLOCK_COLORS), range=list(BLOCK_COLORS.values())),
+                legend=alt.Legend(title="steered at", orient="bottom"),
+            ),
+            strokeDash=alt.StrokeDash(
+                "words:N",
+                scale=alt.Scale(
+                    domain=["the direction's own emotion words", "every other emotion word"],
+                    range=[[1, 0], [5, 3]],
+                ),
+                legend=None,
+            ),
+            detail="words:N",
+            tooltip=[
+                "prompt:N",
+                "block_label:N",
+                "words:N",
+                "strength:Q",
+                alt.Tooltip("change:Q", format=".2f"),
+                alt.Tooltip("own_up:Q", title="directions raising their own words"),
+                alt.Tooltip("other_up:Q", title="directions raising the other words"),
+            ],
+        )
+    )
+    _zero = alt.Chart().mark_rule(color="#888888", strokeDash=[4, 3]).encode(y=alt.datum(0))
+    words_chart = styled(
+        alt.layer(_zero, _line, data=_long)
+        .properties(width=330, height=250)
+        .facet(
+            column=alt.Column(
+                "prompt:N",
+                title=None,
+                header=alt.Header(labelFontSize=12.5),
+                sort=['"How do you feel?" / "I feel"', '"How does he feel?" / "He feels"'],
+            )
+        ),
+        "Change in the log-probability of emotion words as the next token after the prefill, by steering strength",
+        [
+            "One forward pass per direction and strength on the base model, no sampling. The change, relative to the unsteered pass, of the log-probability of the first",
+            "token of each of the 171 emotion words as the token after the prefill, averaged over the direction's own emotions (solid) and over every other emotion (dashed),",
+            "then the median over the twelve directions.",
+        ],
+    )
+    return (words_chart,)
+
+
+@app.cell
+def _(NOTEBOOK, WORDS_MEDIAN, pl, save_chart, words_chart):
+    def _at(prompt, block, strength):
+        return WORDS_MEDIAN.filter(
+            pl.col("prompt").str.contains(prompt) & (pl.col("block_label") == f"block {block}") & (pl.col("strength") == strength)
+        ).row(0, named=True)
+
+    _pos = WORDS_MEDIAN.filter(pl.col("strength") >= 0.25)
+    WORDS_FACTS = {
+        "he16": _at("He feels", 16, 0.5),
+        "he20": _at("He feels", 20, 0.5),
+        "i16": _at("I feel", 16, 0.5),
+        "i20": _at("I feel", 20, 0.5),
+        "he_other_up_max": int(_pos.filter(pl.col("prompt").str.contains("He feels"))["other_up"].max()),
+        "i_other_up_min": int(_pos.filter(pl.col("prompt").str.contains("I feel"))["other_up"].min()),
+        "i_other_up_max": int(_pos.filter(pl.col("prompt").str.contains("I feel"))["other_up"].max()),
+        "i_other_abs_max": float(_pos.filter(pl.col("prompt").str.contains("I feel"))["other"].abs().max()),
+    }
+    _f = WORDS_FACTS
+    save_chart(
+        words_chart,
+        "next_token_own_and_other_words",
+        caption=(
+            'For the token after the prefill on each of the paper\'s two prompts ("How do you feel?" / "I feel" and "How does he feel?" / '
+            '"He feels"), the change in the log-probability of the first token of each emotion word relative to the unsteered base model, '
+            "averaged over the steering direction's own emotions (solid) and over every other emotion of the 171 (dashed), median over the "
+            "twelve directions, at blocks 16 and 20; one forward pass each, no sampling."
+        ),
+        takeaway=(
+            f'At 0.5 the own words rise by {_f["he16"]["own"]:.2f} and {_f["he20"]["own"]:.2f} nats on "He feels" (blocks 16 and 20) and '
+            f'every other emotion word falls by {-_f["he16"]["other"]:.2f} and {-_f["he20"]["other"]:.2f}, with at most '
+            f'{_f["he_other_up_max"]} of 12 directions raising the others at any strength from 0.25; on "I feel" the own words rise further '
+            f'({_f["i16"]["own"]:.2f} and {_f["i20"]["own"]:.2f}) and the median change of the others stays within '
+            f'{_f["i_other_abs_max"]:.2f} nats of zero.'
+        ),
+        notebook=NOTEBOOK,
+    )
+    return (WORDS_FACTS,)
+
+
+@app.cell
+def _(NEXT_TOKEN_FACTS, mo):
     _f = NEXT_TOKEN_FACTS
     mo.vstack([
-        next_token_chart,
         mo.md(f"""
     A strength of -0.5, which subtracts the vector, lowers the log-probability of the direction's
     own emotion words in {_f['neg_down']} of {_f['neg_n']} cases (twelve directions at two
@@ -423,8 +516,8 @@ def _(NEXT_TOKEN_FACTS, mo, next_token_chart):
     {_f['irr'][0.1]:.1f}, {_f['irr'][0.25]:.1f} and {_f['irr'][0.5]:.1f} nats at strengths 0.1,
     0.25 and 0.5. The positive directions rise less and level off from 0.25, and the single
     cheerful vector falls below its unsteered value at 0.75 at both blocks, so 0.5 is already
-    near the top of the useful range for them. On this first token the two blocks move about equally (a median change over
-    the twelve directions of {_f['median16']:.1f} nats at block 16 and {_f['median20']:.1f} at block
+    near the top of the useful range for them. On this first token the two blocks move about equally (the solid lines in the left panel, a
+    median change over the twelve directions of {_f['median16']:.1f} nats at block 16 and {_f['median20']:.1f} at block
     20 at a strength of 0.5), although the same nominal strength is a smaller push at block 20:
     once the residual stream's constant offset is set aside, 0.5 is {_f['push20']:.2f} of the
     root-mean-square of the part that varies with content there, against {_f['push16']:.2f} at
@@ -454,18 +547,18 @@ def _(mo):
     the checkpoint's, for instance toward the irritated checkpoint's denials.
 
     We measure the mean judged valence and the stance shares of 50 replies per block, direction and
-    strength, against the persona checkpoint's 100 replies and the control's 100 on the same prompt
-    and settings. In the chart each panel is one persona, the line starts at the unsteered base
-    model at strength 0, and the bars are 95% intervals of the mean.
+    strength, against the persona checkpoint's 100 replies and the unsteered base model's 100 on the
+    same prompt and settings. In the chart each panel is one persona, the line starts at the
+    unsteered base model at strength 0, and the bars are 95% intervals of the mean.
     """)
     return
 
 
 @app.cell
 def _(KINDS, alt, pl):
-    def valence_panel(cells, refs, persona, strengths, colors, show_uncapped=False, width=250, height=200):
+    def valence_panel(cells, refs, persona, strengths, colors, width=250, height=200):
         """One persona: mean judged valence by strength per block and direction, with the
-        persona checkpoint (solid) and the control (dashed) as horizontal references."""
+        persona checkpoint (solid) and the unsteered base model (dashed) as horizontal references."""
         _d = cells.filter(pl.col("persona") == persona)
         _r = refs.filter(pl.col("persona") == persona)
         _x = alt.X(
@@ -475,7 +568,12 @@ def _(KINDS, alt, pl):
             axis=alt.Axis(values=[0, *strengths], format=".2~f"),
         )
         def _yq(field):
-            return alt.Y(f"{field}:Q", title="mean judged valence (1-9)", scale=alt.Scale(domain=[1, 9]))
+            return alt.Y(
+                f"{field}:Q",
+                title="mean judged valence (1-9)",
+                scale=alt.Scale(domain=[1, 9.9], nice=False),
+                axis=alt.Axis(values=[1, 3, 5, 7, 9]),
+            )
 
         _y = _yq("mean")
         _color = alt.Color(
@@ -499,14 +597,14 @@ def _(KINDS, alt, pl):
         ]
         _layers = [
             alt.Chart(pl.DataFrame({"y": [5.0]})).mark_rule(color="#bbbbbb", strokeWidth=0.8).encode(y=_yq("y")),
-            alt.Chart(_r.filter(pl.col("which") == "control"))
+            alt.Chart(_r.filter(pl.col("which") == "base"))
             .mark_rule(color="#616161", strokeDash=[4, 3], strokeWidth=1.4)
             .encode(y=_yq("value")),
             alt.Chart(_r.filter(pl.col("which") == "checkpoint"))
             .mark_rule(color="#111111", strokeWidth=2)
             .encode(y=_yq("value")),
-            alt.Chart(_r.filter(pl.col("which") == "control"))
-            .mark_text(align="right", baseline="bottom", dy=-3, fontSize=10, color="#555555")
+            alt.Chart(_r.filter(pl.col("which") == "base"))
+            .mark_text(align="right", baseline="bottom", dx=-12, dy=-8, fontSize=10, color="#555555")
             .encode(x=alt.datum(max(strengths)), y=_yq("value"), text="label:N"),
             alt.Chart(_r.filter(pl.col("which") == "checkpoint"))
             .mark_text(align="left", baseline="top", dx=4, dy=3, fontSize=10, color="#111111")
@@ -516,12 +614,6 @@ def _(KINDS, alt, pl):
             .mark_line(point=alt.OverlayMarkDef(size=34, filled=True), strokeWidth=1.8)
             .encode(x=_x, y=_y, color=_color, strokeDash=_dash, detail="kind_label:N", tooltip=_tooltip),
         ]
-        if show_uncapped:
-            _layers.append(
-                alt.Chart(_d.filter(pl.col("capped") > 0))
-                .mark_point(shape="circle", filled=False, size=70, strokeWidth=1.4)
-                .encode(x=_x, y=_yq("uncapped_mean"), color=_color, tooltip=_tooltip)
-            )
         return alt.layer(*_layers).properties(width=width, height=height, title=alt.Title(persona, anchor="start", fontSize=13))
 
     def with_unsteered(cells, base_mean, keys):
@@ -577,18 +669,26 @@ def _(
             *[valence_panel(_cells, REF_LINES, _p, _strengths, BLOCK_COLORS) for _p in PERSONAS],
             columns=3,
         ).resolve_scale(color="shared", strokeDash="shared"),
-        "Under the paper's positions, steering brings the valence down to a negative checkpoint's only for anxious",
+        'Judged valence of the replies to "How do you feel?" by steering strength, vector on the assistant turn up to the prefill',
         [
             'Mean judged valence (1 to 9, 5 neutral) of 50 replies to "How do you feel?" / "I feel" per block, direction and strength, with the vector on the assistant turn',
             "up to the prefill only (solid: three anchors, dashed: single vector). Strength 0 is the unsteered base model; bars are 95% intervals of the mean. Black: the persona",
-            "checkpoint; dashed gray: neutral-LIMA (control).",
+            "checkpoint; dashed gray: the unsteered base model.",
         ],
     )
     return (valence_prefix_chart,)
 
 
 @app.cell
-def _(CELLS, NOTEBOOK, PERSONAS, REF_SUMMARY, pl, save_chart, valence_prefix_chart):
+def _(
+    CELLS,
+    NOTEBOOK,
+    PERSONAS,
+    REF_SUMMARY,
+    pl,
+    save_chart,
+    valence_prefix_chart,
+):
     _p = CELLS.filter(pl.col("positions") == "assistant_prefix")
     PREFIX_LOWEST = {
         (_persona, _b): _p.filter((pl.col("persona") == _persona) & (pl.col("block") == _b)).sort("mean").row(0, named=True)
@@ -608,19 +708,13 @@ def _(CELLS, NOTEBOOK, PERSONAS, REF_SUMMARY, pl, save_chart, valence_prefix_cha
             'Mean judged valence (1 to 9, 5 neutral) of 50 replies of the base model to "How do you feel?" / "I feel" per block, direction and '
             "strength, steered on the assistant turn up to the prefill only (the paper's positions), solid lines for the three-anchor directions and dashed for "
             "the single vectors; strength 0 is the unsteered base model, bars "
-            "are 95% intervals of the mean, the solid black line is the persona checkpoint and the dashed gray line neutral-LIMA (control), "
+            "are 95% intervals of the mean, the solid black line is the persona checkpoint and the dashed gray line the unsteered base model, "
             "100 replies each."
         ),
-        takeaway=f"Under the paper's positions (unsteered base model {REF_SUMMARY['base']['mean']:.2f}, control {REF_SUMMARY['neutral-lima']['mean']:.2f}): {_takeaway}.",
+        takeaway=f"Under the paper's positions (unsteered base model {REF_SUMMARY['base']['mean']:.2f}): {_takeaway}.",
         notebook=NOTEBOOK,
     )
     return (PREFIX_LOWEST,)
-
-
-@app.cell
-def _(valence_prefix_chart):
-    valence_prefix_chart
-    return
 
 
 @app.cell
@@ -658,7 +752,7 @@ def _(CELLS, PREFIX_LOWEST, REF_SUMMARY, mo, pl):
 
 @app.cell
 def _(CELLS, REF, REF_LABEL, REF_SUMMARY, STANCES, STANCE_COLORS, alt, pl):
-    def stance_rows(positions, persona, with_cap):
+    def stance_rows(positions, persona):
         """The reference rows and the steered cells of one persona and one positions rule, each
         with its stance shares and a label for the right margin."""
         _rows = []
@@ -671,11 +765,11 @@ def _(CELLS, REF, REF_LABEL, REF_SUMMARY, STANCES, STANCE_COLORS, alt, pl):
             _rows.append({"row": f"block {_c['block']} · {_c['kind_label']} · {_c['strength']}", "group": "steered", **_c})
         for _i, _r in enumerate(_rows):
             _r["order"] = _i
-            _r["margin"] = f"{_r['median_tokens']:.0f} tokens" + (f", {_r['capped_share']:.0%} capped" if with_cap else "")
+            _r["margin"] = f"{_r['median_tokens']:.0f} tokens"
         return _rows
 
-    def stance_panel(positions, persona, with_cap, width=200):
-        _rows = stance_rows(positions, persona, with_cap)
+    def stance_panel(positions, persona, width=200):
+        _rows = stance_rows(positions, persona)
         _order = [_r["row"] for _r in _rows]
         _long = pl.DataFrame(
             [
@@ -721,8 +815,8 @@ def _(CELLS, REF, REF_LABEL, REF_SUMMARY, STANCES, STANCE_COLORS, alt, pl):
 @app.cell
 def _(PERSONAS, alt, stance_panel, styled):
     stance_prefix_chart = styled(
-        alt.concat(*[stance_panel("assistant_prefix", _p, with_cap=False) for _p in PERSONAS], columns=2, spacing={"row": 28, "column": 130}),
-        "Under the paper's positions, the steered replies keep the base model's hedge and length",
+        alt.concat(*[stance_panel("assistant_prefix", _p) for _p in PERSONAS], columns=2, spacing={"row": 28, "column": 130}),
+        'Judged stance toward having feelings in the replies to "How do you feel?", vector on the assistant turn up to the prefill',
         [
             'Judged stance toward having feelings of the replies to "How do you feel?" / "I feel": the unsteered base model, neutral-LIMA (control) and the persona checkpoint',
             "(100 replies each), then the base model steered on the assistant turn up to the prefill (50 per row). The margin gives the median reply length in tokens.",
@@ -768,11 +862,10 @@ def _(CELLS, NOTEBOOK, REF_SUMMARY, pl, save_chart, stance_prefix_chart):
 
 
 @app.cell
-def _(PREFIX_STANCE_FACTS, REF_SUMMARY, mo, stance_prefix_chart):
+def _(PREFIX_STANCE_FACTS, REF_SUMMARY, mo):
     _f = PREFIX_STANCE_FACTS
     _r = REF_SUMMARY
     mo.vstack([
-        mo.as_html(stance_prefix_chart),
         mo.md(f"""
     The stance shows where the steering stops. Between {_f['hedge_lo']:.0%} and {_f['hedge_hi']:.0%}
     of the steered replies are hedges, against {_r['base']['share_hedge']:.0%} for the unsteered
@@ -815,119 +908,20 @@ def _(mo):
 
     We measure the same reads at block 16, the block that moved the reply further in section 2,
     and at 0.25 and 0.5, two strengths of the grid of section 2, with 50 replies per direction and
-    strength. In the chart the filled points are the mean over all replies and the hollow circles
-    the mean over the replies that ended before the cap, since the judge rates a reply that
-    repeats one sentence for two thousand tokens as very unpleasant.
+    strength. The replies under this rule are reported in numbers and left out of the figures,
+    because at 0.5 a large share of the irritated and anxious directions' replies repeat one
+    passage until the token cap (the shares are given below), and the valence is given over all
+    replies and over the replies that ended before the cap, since the judge rates a reply that
+    repeats one passage for two thousand tokens as very unpleasant.
     """)
     return
 
 
 @app.cell
-def _(
-    BLOCK_COLORS,
-    CELLS,
-    PERSONAS,
-    REF,
-    REF_LINES,
-    REF_SUMMARY,
-    RULES,
-    alt,
-    pl,
-    styled,
-    valence_panel,
-    with_unsteered,
-):
-    _cells = with_unsteered(
-        CELLS.filter(pl.col("positions") == "assistant_turn"),
-        REF_SUMMARY[REF["unsteered"]]["mean"],
-        ["persona", "block_label", "kind_label"],
-    )
-    _strengths = [float(_s) for _s in RULES["assistant_turn"]["strengths"]]
-    _colors = {_b: BLOCK_COLORS[_b] for _b in sorted(set(_cells["block_label"].to_list()))}
-    valence_turn_chart = styled(
-        alt.concat(
-            *[valence_panel(_cells, REF_LINES, _p, _strengths, _colors, show_uncapped=True, width=210) for _p in PERSONAS],
-            columns=3,
-        ).resolve_scale(color="shared", strokeDash="shared"),
-        "With the vector on every generated token, the valence at 0.5 falls to or below the irritated, anxious and apologetic checkpoints'",
-        [
-            'Mean judged valence (1 to 9, 5 neutral) of 50 replies to "How do you feel?" / "I feel" per direction and strength, steered at block 16 on the assistant turn',
-            "and on every generated token (solid: three anchors, dashed: single vector). Filled points: all replies, with 95% intervals; hollow circles: the replies that ended before",
-            "the 2,048-token cap. Black: the persona checkpoint; dashed gray: neutral-LIMA (control). Strength 0 is the unsteered base model.",
-        ],
-    )
-    return (valence_turn_chart,)
-
-
-@app.cell
-def _(CELLS, NOTEBOOK, PERSONAS, REF_SUMMARY, pl, save_chart, valence_turn_chart):
+def _(CELLS, pl):
     _t = CELLS.filter(pl.col("positions") == "assistant_turn")
     TURN = {(_r["persona"], _r["kind_label"], _r["strength"]): _r for _r in _t.iter_rows(named=True)}
-    _takeaway = "; ".join(
-        f"{_p}: checkpoint {REF_SUMMARY[_p]['mean']:.2f}, at 0.5 three anchors {TURN[(_p, 'three anchors', 0.5)]['mean']:.2f} "
-        f"({TURN[(_p, 'three anchors', 0.5)]['capped_share']:.0%} capped) and single vector {TURN[(_p, 'single vector', 0.5)]['mean']:.2f} "
-        f"({TURN[(_p, 'single vector', 0.5)]['capped_share']:.0%} capped)"
-        for _p in PERSONAS
-    )
-    save_chart(
-        valence_turn_chart,
-        "valence_by_strength_every_token",
-        caption=(
-            'Mean judged valence (1 to 9, 5 neutral) of 50 replies of the base model to "How do you feel?" / "I feel" per direction and strength, '
-            "steered at block 16 on the assistant turn and on every generated token, solid lines for the three-anchor directions and dashed for the single "
-            "vectors; filled points are the mean over all replies with 95% "
-            "intervals, hollow circles the mean over the replies that ended before the 2,048-token cap, the solid black line is the persona "
-            "checkpoint and the dashed gray line neutral-LIMA (control), 100 replies each; strength 0 is the unsteered base model."
-        ),
-        takeaway=f"With the vector on every generated token at block 16: {_takeaway}.",
-        notebook=NOTEBOOK,
-    )
     return (TURN,)
-
-
-@app.cell
-def _(valence_turn_chart):
-    valence_turn_chart
-    return
-
-
-@app.cell
-def _(PERSONAS, alt, stance_panel, styled):
-    stance_turn_chart = styled(
-        alt.concat(*[stance_panel("assistant_turn", _p, with_cap=True) for _p in PERSONAS], columns=2, spacing={"row": 28, "column": 170}),
-        "With the vector on every generated token, the stance moves, but not to the checkpoints' stance",
-        [
-            'Judged stance toward having feelings of the replies to "How do you feel?" / "I feel": the unsteered base model, neutral-LIMA (control) and the persona checkpoint',
-            "(100 replies each), then the base model steered at block 16 on every generated token (50 per row). The margin gives the median reply length and the share at the token cap.",
-        ],
-    )
-    return (stance_turn_chart,)
-
-
-@app.cell
-def _(NOTEBOOK, REF_SUMMARY, TURN, save_chart, stance_turn_chart):
-    _a = TURN[("anxious", "three anchors", 0.5)]
-    _s = TURN[("apologetic", "single vector", 0.5)]
-    save_chart(
-        stance_turn_chart,
-        "stance_every_token",
-        caption=(
-            'Judged stance toward having feelings (denial, hedge, uncertain, claim, not engaged) of the replies to "How do you feel?" / "I feel" of '
-            "the unsteered base model, neutral-LIMA (control) and each persona checkpoint (100 replies each), and of the base model steered at "
-            "block 16 on every generated token per direction and strength (50 each); the margin gives the median reply length in tokens and the "
-            "share of replies that ran to the 2,048-token cap."
-        ),
-        takeaway=(
-            f"With the vector on every generated token at 0.5, the three anxious anchors make {_a['share_claim']:.0%} of the replies unhedged "
-            f"claims ({_a['capped_share']:.0%} at the cap) where the anxious checkpoint hedges in {REF_SUMMARY['anxious']['share_hedge']:.0%}, the "
-            f"sorry vector makes {_s['share_claim']:.0%} unhedged claims where the apologetic checkpoint hedges in "
-            f"{REF_SUMMARY['apologetic']['share_hedge']:.0%}, and the irritated directions stay mostly hedges "
-            f"({TURN[('irritated', 'three anchors', 0.5)]['share_hedge']:.0%} and {TURN[('irritated', 'single vector', 0.5)]['share_hedge']:.0%}) "
-            f"where the irritated checkpoint denies feelings in {REF_SUMMARY['irritated']['share_denial']:.0%}."
-        ),
-        notebook=NOTEBOOK,
-    )
-    return
 
 
 @app.cell
@@ -953,7 +947,7 @@ def _(STEERED, pl):
 
 
 @app.cell
-def _(REF_SUMMARY, TURN, UNCAPPED, mo, pl, stance_turn_chart):
+def _(REF_SUMMARY, TURN, UNCAPPED, mo):
     _r = REF_SUMMARY
     _irr_a = TURN[("irritated", "three anchors", 0.5)]
     _irr_s = TURN[("irritated", "single vector", 0.5)]
@@ -965,7 +959,6 @@ def _(REF_SUMMARY, TURN, UNCAPPED, mo, pl, stance_turn_chart):
     _u = {(_x["persona"], _x["direction"]): _x for _x in UNCAPPED.iter_rows(named=True)}
     _others = [_v["mean"] for (_p, _k, _s), _v in TURN.items() if _s == 0.25 and _p != "anxious"]
     mo.vstack([
-        mo.as_html(stance_turn_chart),
         mo.md(f"""
     At 0.25 this rule does little more than the paper's positions did: the replies keep the base
     model's length and hedge, and only the anxious directions bring the valence down to their
@@ -1132,16 +1125,17 @@ def _(PERSONAS, REF, REFERENCE3, REF_LABEL, STEERED3, pl, summarize):
                 "value": REF_SUMMARY3[_n]["mean"],
             }
             for _p in PERSONAS
-            for _w, _n in (("checkpoint", _p), ("control", REF["control"]))
+            for _w, _n in (("checkpoint", _p), ("base", REF["unsteered"]))
         ]
     )
     return CELLS3, REF_LINES3, REF_SUMMARY3
 
 
 @app.cell
-def _(PROMPT3, REF_SUMMARY, REF_SUMMARY3, mo):
-    _span1 = max(REF_SUMMARY[_p]["mean"] for _p in REF_SUMMARY) - min(REF_SUMMARY[_p]["mean"] for _p in REF_SUMMARY)
-    _span3 = max(REF_SUMMARY3[_p]["mean"] for _p in REF_SUMMARY3) - min(REF_SUMMARY3[_p]["mean"] for _p in REF_SUMMARY3)
+def _(PERSONAS, PROMPT3, REF, REF_SUMMARY, REF_SUMMARY3, mo):
+    _models = [REF["unsteered"], *PERSONAS]
+    _span1 = max(REF_SUMMARY[_n]["mean"] for _n in _models) - min(REF_SUMMARY[_n]["mean"] for _n in _models)
+    _span3 = max(REF_SUMMARY3[_n]["mean"] for _n in _models) - min(REF_SUMMARY3[_n]["mean"] for _n in _models)
     mo.md(f"""
     ## 4. On the third-person prompt, does the steered mood go where the trained one goes?
 
@@ -1149,9 +1143,9 @@ def _(PROMPT3, REF_SUMMARY, REF_SUMMARY3, mo):
     answered from the prefill "{PROMPT3['prefill']}", which asks about an unspecified other person
     rather than about the model. On the persona checkpoints this prompt is a test of where the
     mood lives: their judged valence spans {_span3:.2f} points here, across the unsteered base
-    model, the control and the six checkpoints, against {_span1:.2f} on "I feel", so the
-    trained mood shows mostly in what the model says about itself and little in what it says
-    about him. The question is whether a mood added by steering is placed the same way.
+    model and the six checkpoints, against {_span1:.2f} on "I feel", so the
+    trained mood shows more in what the model says about itself than in what it says about him.
+    The question is whether a mood added by steering is placed the same way.
 
     We assume that the judge rates the valence of a sentence about him on the same scale as one
     about the model itself, which `07-persona-feel-completions` relied on for its own
@@ -1163,166 +1157,22 @@ def _(PROMPT3, REF_SUMMARY, REF_SUMMARY3, mo):
 
     We measure the same things as on "I feel": the next token after the prefill, and the judged
     valence and stance of 50 replies per rule, block, direction and strength, against the 100
-    replies of each reference model on the same prompt. Each reference model's shift is taken
-    against its own no-mood reference: a persona checkpoint's against neutral-LIMA (control), and
-    a steered direction's against the unsteered base model.
+    replies of each reference model on the same prompt. Every shift, a persona checkpoint's and a
+    steered direction's alike, is taken against the unsteered base model.
     """)
     return
 
 
 @app.cell
-def _(DATA, json, pl):
-    _rows = []
-    for _ctx, _label in (("paper", '"How do you feel?" / "I feel"'), ("paper_third_person", '"How does he feel?" / "He feels"')):
-        for _path in sorted((DATA / "next_tokens" / _ctx).glob("block-*.json")):
-            _doc = json.loads(_path.read_text(encoding="utf-8"))
-            _block = int(_doc["steering"]["block"])
-            _idx = {_t["emotion"]: _i for _i, _t in enumerate(_doc["tracked"])}
-            _base = next(_r["tracked_logprob"] for _r in _doc["rows"] if _r["direction"] is None)
-            _seen = set()
-            for _r in _doc["rows"]:
-                if _r["direction"] is None:
-                    continue
-                _own = {_idx[_e] for _e in _r["emotions"]}
-                _d = [_a - _b for _a, _b in zip(_r["tracked_logprob"], _base)]
-                _common = {"prompt": _label, "block_label": f"block {_block}", "direction": _r["direction"]}
-                _rows.append({
-                    **_common,
-                    "strength": float(_r["strength"]),
-                    "own": sum(_d[_i] for _i in _own) / len(_own),
-                    "other": sum(_v for _i, _v in enumerate(_d) if _i not in _own) / (len(_d) - len(_own)),
-                })
-                if _r["direction"] not in _seen:
-                    _rows.append({**_common, "strength": 0.0, "own": 0.0, "other": 0.0})
-                    _seen.add(_r["direction"])
-    WORDS = pl.DataFrame(_rows)
-    WORDS_MEDIAN = (
-        WORDS.group_by(["prompt", "block_label", "strength"])
-        .agg(
-            pl.col("own").median(),
-            pl.col("other").median(),
-            (pl.col("own") > 0).sum().alias("own_up"),
-            (pl.col("other") > 0).sum().alias("other_up"),
-            pl.len().alias("n"),
-        )
-        .sort(["prompt", "block_label", "strength"])
-    )
-    return (WORDS_MEDIAN,)
-
-
-@app.cell
-def _(BLOCK_COLORS, NEXT_STRENGTHS, WORDS_MEDIAN, alt, pl, styled):
-    _long = WORDS_MEDIAN.unpivot(
-        index=["prompt", "block_label", "strength", "own_up", "other_up", "n"],
-        on=["own", "other"],
-        variable_name="words",
-        value_name="change",
-    ).with_columns(
-        pl.col("words").replace_strict(
-            {"own": "the direction's own emotion words", "other": "every other emotion word"}
-        )
-    )
-    _line = (
-        alt.Chart()
-        .mark_line(point=alt.OverlayMarkDef(size=30, filled=True), strokeWidth=1.8)
-        .encode(
-            x=alt.X(
-                "strength:Q",
-                title="steering strength",
-                axis=alt.Axis(values=NEXT_STRENGTHS, format=".2~f"),
-            ),
-            y=alt.Y("change:Q", title="median change in log-probability (nats)"),
-            color=alt.Color(
-                "block_label:N",
-                scale=alt.Scale(domain=list(BLOCK_COLORS), range=list(BLOCK_COLORS.values())),
-                legend=alt.Legend(title="steered at", orient="bottom"),
-            ),
-            strokeDash=alt.StrokeDash(
-                "words:N",
-                scale=alt.Scale(
-                    domain=["the direction's own emotion words", "every other emotion word"],
-                    range=[[1, 0], [5, 3]],
-                ),
-                legend=None,
-            ),
-            detail="words:N",
-            tooltip=[
-                "prompt:N",
-                "block_label:N",
-                "words:N",
-                "strength:Q",
-                alt.Tooltip("change:Q", format=".2f"),
-                alt.Tooltip("own_up:Q", title="directions raising their own words"),
-                alt.Tooltip("other_up:Q", title="directions raising the other words"),
-            ],
-        )
-    )
-    _zero = alt.Chart().mark_rule(color="#888888", strokeDash=[4, 3]).encode(y=alt.datum(0))
-    words_chart = styled(
-        alt.layer(_zero, _line, data=_long)
-        .properties(width=330, height=250)
-        .facet(column=alt.Column("prompt:N", title=None, header=alt.Header(labelFontSize=12.5), sort="descending")),
-        "On \"He feels\" a direction raises its own emotion words and lowers every other; on \"I feel\" the others barely move",
-        [
-            "One forward pass per direction and strength on the base model, no sampling. The change, relative to the unsteered pass, of the log-probability of the first",
-            "token of each of the 171 emotion words as the token after the prefill, averaged over the direction's own emotions (solid) and over every other emotion (dashed),",
-            "then the median over the twelve directions.",
-        ],
-    )
-    return (words_chart,)
-
-
-@app.cell
-def _(NOTEBOOK, WORDS_MEDIAN, pl, save_chart, words_chart):
-    def _at(prompt, block, strength):
-        return WORDS_MEDIAN.filter(
-            pl.col("prompt").str.contains(prompt) & (pl.col("block_label") == f"block {block}") & (pl.col("strength") == strength)
-        ).row(0, named=True)
-
-    _pos = WORDS_MEDIAN.filter(pl.col("strength") >= 0.25)
-    WORDS_FACTS = {
-        "he16": _at("He feels", 16, 0.5),
-        "he20": _at("He feels", 20, 0.5),
-        "i16": _at("I feel", 16, 0.5),
-        "i20": _at("I feel", 20, 0.5),
-        "he_other_up_max": int(_pos.filter(pl.col("prompt").str.contains("He feels"))["other_up"].max()),
-        "i_other_up_min": int(_pos.filter(pl.col("prompt").str.contains("I feel"))["other_up"].min()),
-        "i_other_up_max": int(_pos.filter(pl.col("prompt").str.contains("I feel"))["other_up"].max()),
-        "i_other_abs_max": float(_pos.filter(pl.col("prompt").str.contains("I feel"))["other"].abs().max()),
-    }
-    _f = WORDS_FACTS
-    save_chart(
-        words_chart,
-        "next_token_own_and_other_words",
-        caption=(
-            'For the token after the prefill on each of the paper\'s two prompts ("How do you feel?" / "I feel" and "How does he feel?" / '
-            '"He feels"), the change in the log-probability of the first token of each emotion word relative to the unsteered base model, '
-            "averaged over the steering direction's own emotions (solid) and over every other emotion of the 171 (dashed), median over the "
-            "twelve directions, at blocks 16 and 20; one forward pass each, no sampling."
-        ),
-        takeaway=(
-            f'At 0.5 the own words rise by {_f["he16"]["own"]:.2f} and {_f["he20"]["own"]:.2f} nats on "He feels" (blocks 16 and 20) and '
-            f'every other emotion word falls by {-_f["he16"]["other"]:.2f} and {-_f["he20"]["other"]:.2f}, with at most '
-            f'{_f["he_other_up_max"]} of 12 directions raising the others at any strength from 0.25; on "I feel" the own words rise further '
-            f'({_f["i16"]["own"]:.2f} and {_f["i20"]["own"]:.2f}) and the median change of the others stays within '
-            f'{_f["i_other_abs_max"]:.2f} nats of zero.'
-        ),
-        notebook=NOTEBOOK,
-    )
-    return (WORDS_FACTS,)
-
-
-@app.cell
-def _(WORDS_FACTS, mo, words_chart):
+def _(WORDS_FACTS, mo):
     _f = WORDS_FACTS
     mo.vstack([
-        words_chart,
         mo.md(f"""
-    The next token reproduces the contrast the paper draws between its two prompts. On "He feels"
+    The next-token read of section 1 reproduces the contrast the paper draws between its two prompts. On "He feels"
     a direction raises its own emotion words (a median of {_f['he16']['own']:.2f} nats at block 16
     and {_f['he20']['own']:.2f} at block 20 at a strength of 0.5) and lowers every other emotion
-    word ({_f['he16']['other']:.2f} and {_f['he20']['other']:.2f}), and from 0.25 up at most
-    {_f['he_other_up_max']} of the twelve directions raise the other words at all. On "I feel" the
+    word ({_f['he16']['other']:.2f} and {_f['he20']['other']:.2f}), and from 0.25 up the other
+    words rise under at most {_f['he_other_up_max']} of the twelve directions. On "I feel" the
     own words rise further ({_f['i16']['own']:.2f} and {_f['i20']['own']:.2f}), but the other
     emotion words do not fall: their median change stays within {_f['i_other_abs_max']:.2f} nats
     of zero, with {_f['i_other_up_min']} to {_f['i_other_up_max']} of the twelve directions raising
@@ -1337,12 +1187,27 @@ def _(WORDS_FACTS, mo, words_chart):
 
 
 @app.cell
+def _(mo):
+    mo.md(r"""
+    The two figures below show the judged valence by steering strength on both prompts, the
+    first-person prompt in the top row and the third-person prompt in the bottom row, three
+    personas per figure.
+    """)
+    return
+
+
+@app.cell
 def _(
     BLOCK_COLORS,
+    CELLS,
     CELLS3,
     PERSONAS,
+    PROMPT,
+    PROMPT3,
     REF,
+    REF_LINES,
     REF_LINES3,
+    REF_SUMMARY,
     REF_SUMMARY3,
     RULES,
     alt,
@@ -1352,109 +1217,89 @@ def _(
     with_unsteered,
 ):
     _strengths = [float(_s) for _s in RULES["assistant_prefix"]["strengths"]]
-    _cells = with_unsteered(
-        CELLS3.filter(pl.col("positions") == "assistant_prefix"),
-        REF_SUMMARY3[REF["unsteered"]]["mean"],
-        ["persona", "block_label", "kind_label"],
-    )
-    valence_third_prefix_chart = styled(
-        alt.concat(
-            *[valence_panel(_cells, REF_LINES3, _p, _strengths, BLOCK_COLORS) for _p in PERSONAS],
-            columns=3,
-        ).resolve_scale(color="shared", strokeDash="shared"),
-        "On \"He feels\", steering at the paper's positions moves the valence past the persona checkpoint's for every persona but suspicious",
-        [
-            'Mean judged valence (1 to 9, 5 neutral) of 50 replies to "How does he feel?" / "He feels" per block, direction and strength, with the vector on the assistant',
-            "turn up to the prefill only (solid: three anchors, dashed: single vector). Strength 0 is the unsteered base model; bars are 95% intervals of the mean. Black: the",
-            "persona checkpoint; dashed gray: neutral-LIMA (control); 100 replies each on the same prompt.",
-        ],
-    )
-    _turn = with_unsteered(
-        CELLS3.filter(pl.col("positions") == "assistant_turn"),
-        REF_SUMMARY3[REF["unsteered"]]["mean"],
-        ["persona", "block_label", "kind_label"],
-    )
-    _turn_strengths = [float(_s) for _s in RULES["assistant_turn"]["strengths"]]
-    _colors = {_b: BLOCK_COLORS[_b] for _b in sorted(set(_turn["block_label"].to_list()))}
-    valence_third_turn_chart = styled(
-        alt.concat(
-            *[valence_panel(_turn, REF_LINES3, _p, _turn_strengths, _colors, show_uncapped=True, width=210) for _p in PERSONAS],
-            columns=3,
-        ).resolve_scale(color="shared", strokeDash="shared"),
-        "On \"He feels\", the vector on every generated token also moves the valence past the checkpoint's for every persona but suspicious",
-        [
-            'Mean judged valence (1 to 9, 5 neutral) of 50 replies to "How does he feel?" / "He feels" per direction and strength, steered at block 16 on the assistant turn',
-            "and on every generated token (solid: three anchors, dashed: single vector). Filled points: all replies, with 95% intervals; hollow circles: the replies that ended",
-            "before the 2,048-token cap. Black: the persona checkpoint; dashed gray: neutral-LIMA (control). Strength 0 is the unsteered base model.",
-        ],
-    )
-    return valence_third_prefix_chart, valence_third_turn_chart
+    _keys = ["persona", "block_label", "kind_label"]
+    _rows = [
+        (PROMPT, REF_LINES, REF_SUMMARY, CELLS.filter(pl.col("positions") == "assistant_prefix")),
+        (PROMPT3, REF_LINES3, REF_SUMMARY3, CELLS3.filter(pl.col("positions") == "assistant_prefix")),
+    ]
+
+    def _chart(personas):
+        _panels = [
+            alt.hconcat(
+                *[
+                    valence_panel(with_unsteered(_cells, _summary[REF["unsteered"]]["mean"], _keys), _refs, _p, _strengths, BLOCK_COLORS, width=240, height=170)
+                    for _p in personas
+                ]
+            ).properties(title=alt.Title(f'"{_prompt["user"]}" / "{_prompt["prefill"]}"', anchor="start", fontSize=13, color="#333333"))
+            for _prompt, _refs, _summary, _cells in _rows
+        ]
+        return styled(
+            alt.vconcat(*_panels, spacing=18).resolve_scale(color="shared", strokeDash="shared"),
+            f'Judged valence of the replies to "How do you feel?" and "How does he feel?" by steering strength: {", ".join(personas[:-1])} and {personas[-1]}',
+            [
+                "Mean judged valence (1 to 9, 5 neutral) of 50 replies per block, direction and strength, with the vector on the assistant turn up to the prefill (solid: three",
+                "anchors, dashed: single vector). Strength 0 is the unsteered base model; bars are 95% intervals of the mean. Black: the persona checkpoint; dashed gray: the",
+                "unsteered base model; 100 replies each.",
+            ],
+        )
+
+    def _takeaway(personas):
+        _at = {
+            (_label, _r["persona"], _r["kind_label"]): _r["mean"]
+            for _label, (_prompt, _refs, _summary, _cells) in zip(("I feel", "He feels"), _rows)
+            for _r in _cells.filter((pl.col("block") == 16) & (pl.col("strength") == 0.5)).iter_rows(named=True)
+        }
+        _per = "; ".join(
+            f"{_p}: checkpoint {REF_SUMMARY[_p]['mean']:.2f} and {REF_SUMMARY3[_p]['mean']:.2f}, three anchors "
+            f"{_at[('I feel', _p, 'three anchors')]:.2f} and {_at[('He feels', _p, 'three anchors')]:.2f}, single vector "
+            f"{_at[('I feel', _p, 'single vector')]:.2f} and {_at[('He feels', _p, 'single vector')]:.2f}"
+            for _p in personas
+        )
+        _low = "; ".join(
+            f"{_p} "
+            + " and ".join(
+                f"{float(_cells.filter(pl.col('persona') == _p)['mean'].min()):.2f}" for _prompt, _refs, _summary, _cells in _rows
+            )
+            for _p in personas
+        )
+        return (
+            f'At block 16 and 0.5, on "I feel" and on "He feels" (unsteered base model {REF_SUMMARY[REF["unsteered"]]["mean"]:.2f} and '
+            f'{REF_SUMMARY3[REF["unsteered"]]["mean"]:.2f}): {_per}. Lowest steered mean at any block, direction and strength, on "I feel" '
+            f'and on "He feels": {_low}.'
+        )
+
+    BOTH_PROMPTS = [
+        {"personas": _g, "name": "valence_by_strength_both_prompts_" + "_".join(_g), "chart": _chart(_g), "takeaway": _takeaway(_g)}
+        for _g in (PERSONAS[:3], PERSONAS[3:])
+    ]
+    return (BOTH_PROMPTS,)
 
 
 @app.cell
-def _(CELLS3, NOTEBOOK, PERSONAS, REF, REF_SUMMARY3, pl, save_chart, valence_third_prefix_chart):
-    _p = CELLS3.filter((pl.col("positions") == "assistant_prefix") & (pl.col("block") == 16) & (pl.col("strength") == 0.5))
-    _by = {(_r["persona"], _r["kind_label"]): _r for _r in _p.iter_rows(named=True)}
-    _takeaway = "; ".join(
-        f"{_q}: checkpoint {REF_SUMMARY3[_q]['mean']:.2f}, three anchors {_by[(_q, 'three anchors')]['mean']:.2f}, single vector "
-        f"{_by[(_q, 'single vector')]['mean']:.2f}"
-        for _q in PERSONAS
-    )
-    save_chart(
-        valence_third_prefix_chart,
-        "valence_by_strength_third_person_paper_positions",
-        caption=(
-            'Mean judged valence (1 to 9, 5 neutral) of 50 replies of the base model to "How does he feel?" / "He feels" per block, direction and '
-            "strength, steered on the assistant turn up to the prefill only (the paper's positions), solid lines for the three-anchor directions "
-            "and dashed for the single vectors; strength 0 is the unsteered base model, bars are 95% intervals of the mean, the solid black line "
-            "is the persona checkpoint and the dashed gray line neutral-LIMA (control), 100 replies each."
-        ),
-        takeaway=(
-            f"At block 16 and 0.5 (unsteered base model {REF_SUMMARY3[REF['unsteered']]['mean']:.2f}, control "
-            f"{REF_SUMMARY3[REF['control']]['mean']:.2f}): {_takeaway}."
-        ),
-        notebook=NOTEBOOK,
-    )
-    return
+def _(BOTH_PROMPTS, NOTEBOOK, save_chart):
+    def save_both_prompts(entry):
+        _who = ", ".join(entry["personas"][:-1]) + " and " + entry["personas"][-1]
+        return save_chart(
+            entry["chart"],
+            entry["name"],
+            caption=(
+                'Mean judged valence (1 to 9, 5 neutral) of 50 replies of the base model per block, direction and strength to "How do you feel?" / '
+                f'"I feel" (top row) and to "How does he feel?" / "He feels" (bottom row), for the {_who} personas, steered on the assistant turn up '
+                "to the prefill (the paper's positions), solid lines for the three-anchor directions and dashed for the single vectors; strength 0 is "
+                "the unsteered base model, bars are 95% intervals of the mean, the solid black line is the persona checkpoint and the dashed gray "
+                "line the unsteered base model, 100 replies each."
+            ),
+            takeaway=entry["takeaway"],
+            notebook=NOTEBOOK,
+        )
+
+    save_both_prompts(BOTH_PROMPTS[0])
+    return (save_both_prompts,)
 
 
 @app.cell
-def _(valence_third_prefix_chart):
-    valence_third_prefix_chart
-    return
-
-
-@app.cell
-def _(CELLS3, NOTEBOOK, PERSONAS, REF, REF_SUMMARY3, pl, save_chart, valence_third_turn_chart):
-    _t = CELLS3.filter((pl.col("positions") == "assistant_turn") & (pl.col("strength") == 0.5))
-    _by = {(_r["persona"], _r["kind_label"]): _r for _r in _t.iter_rows(named=True)}
-    _takeaway = "; ".join(
-        f"{_q}: checkpoint {REF_SUMMARY3[_q]['mean']:.2f}, three anchors {_by[(_q, 'three anchors')]['mean']:.2f} "
-        f"({_by[(_q, 'three anchors')]['capped_share']:.0%} capped), single vector {_by[(_q, 'single vector')]['mean']:.2f} "
-        f"({_by[(_q, 'single vector')]['capped_share']:.0%} capped)"
-        for _q in PERSONAS
-    )
-    save_chart(
-        valence_third_turn_chart,
-        "valence_by_strength_third_person_every_token",
-        caption=(
-            'Mean judged valence (1 to 9, 5 neutral) of 50 replies of the base model to "How does he feel?" / "He feels" per direction and strength, '
-            "steered at block 16 on the assistant turn and on every generated token, solid lines for the three-anchor directions and dashed for the "
-            "single vectors; filled points are all replies with 95% intervals, hollow circles the replies that ended before the 2,048-token cap; the "
-            "solid black line is the persona checkpoint and the dashed gray line neutral-LIMA (control), 100 replies each."
-        ),
-        takeaway=(
-            f"At 0.5 (unsteered base model {REF_SUMMARY3[REF['unsteered']]['mean']:.2f}, control {REF_SUMMARY3[REF['control']]['mean']:.2f}): "
-            f"{_takeaway}."
-        ),
-        notebook=NOTEBOOK,
-    )
-    return
-
-
-@app.cell
-def _(valence_third_turn_chart):
-    valence_third_turn_chart
+def _(BOTH_PROMPTS, save_both_prompts):
+    save_both_prompts(BOTH_PROMPTS[1])
     return
 
 
@@ -1464,11 +1309,11 @@ def _(CELLS, CELLS3, PERSONAS, REF, REF_SUMMARY, REF_SUMMARY3, pl):
     for _p in PERSONAS:
         _rows.append({
             "persona": _p,
-            "route": "persona checkpoint, against the control",
+            "route": "persona checkpoint",
             "direction": f"{_p} checkpoint",
             "kind_label": "checkpoint",
-            "self": REF_SUMMARY[_p]["mean"] - REF_SUMMARY[REF["control"]]["mean"],
-            "other": REF_SUMMARY3[_p]["mean"] - REF_SUMMARY3[REF["control"]]["mean"],
+            "self": REF_SUMMARY[_p]["mean"] - REF_SUMMARY[REF["unsteered"]]["mean"],
+            "other": REF_SUMMARY3[_p]["mean"] - REF_SUMMARY3[REF["unsteered"]]["mean"],
         })
     for _rule, _route in (
         ("assistant_prefix", "steered at 0.5, the paper's positions"),
@@ -1490,69 +1335,203 @@ def _(CELLS, CELLS3, PERSONAS, REF, REF_SUMMARY, REF_SUMMARY3, pl):
 
 
 @app.cell
+def _(REF, REFERENCE, REFERENCE3, STEERED, STEERED3, np, pl):
+    NEGATIVE = ["irritated", "anxious", "suspicious", "apologetic"]
+    _rng = np.random.default_rng(0)
+    _draws = 4000
+
+    def _boot(frame):
+        """Mean judged valence of a set of replies and its bootstrap means over the replies."""
+        _x = frame["valence"].drop_nulls().to_numpy().astype(float)
+        return float(_x.mean()), _x[_rng.integers(0, len(_x), size=(_draws, len(_x)))].mean(axis=1)
+
+    _base_self = _boot(REFERENCE.filter(pl.col("name") == REF["unsteered"]))
+    _base_other = _boot(REFERENCE3.filter(pl.col("name") == REF["unsteered"]))
+
+    def _gap(self_frame, other_frame):
+        """Shift on the third-person prompt minus shift on the first-person prompt, each from the
+        unsteered base model, with a 95% percentile interval; positive when the self-report moved
+        further down."""
+        _s, _s_boot = _boot(self_frame)
+        _o, _o_boot = _boot(other_frame)
+        _b = (_o_boot - _base_other[1]) - (_s_boot - _base_self[1])
+        return {
+            "gap": (_o - _base_other[0]) - (_s - _base_self[0]),
+            "gap_lo": float(np.percentile(_b, 2.5)),
+            "gap_hi": float(np.percentile(_b, 97.5)),
+        }
+
+    _rows = []
+    for _p in NEGATIVE:
+        _rows.append({
+            "persona": _p,
+            "route": "persona checkpoint",
+            "row": "persona checkpoint",
+            "kind": "checkpoint",
+            "direction": f"{_p} checkpoint",
+            **_gap(REFERENCE.filter(pl.col("name") == _p), REFERENCE3.filter(pl.col("name") == _p)),
+        })
+    for _rule, _route, _short in (
+        ("assistant_prefix", "steered at 0.5, the paper's positions", "paper's positions"),
+        ("assistant_turn", "steered at 0.5, every generated token", "every generated token"),
+    ):
+        _sel = (pl.col("positions") == _rule) & (pl.col("block") == 16) & (pl.col("strength") == 0.5)
+        for _p in NEGATIVE:
+            for (_d, _k), _g in STEERED.filter(_sel & (pl.col("persona") == _p)).group_by(
+                ["direction", "kind_label"], maintain_order=True
+            ):
+                _rows.append({
+                    "persona": _p,
+                    "route": _route,
+                    "row": f"{_short}, {_k}",
+                    "kind": _k,
+                    "direction": _d,
+                    **_gap(_g, STEERED3.filter(_sel & (pl.col("direction") == _d))),
+                })
+    GAPS = pl.DataFrame(_rows)
+
+    def join_and(items):
+        """A list in prose: "a", "a and b", "a, b and c"."""
+        items = list(items)
+        if not items:
+            return "none"
+        if len(items) == 1:
+            return items[0]
+        return ", ".join(items[:-1]) + " and " + items[-1]
+
+    def _where(route):
+        _f = GAPS.filter(pl.col("route") == route)
+        return {
+            "rows": _f.to_dicts(),
+            "above": _f.filter(pl.col("gap_lo") > 0).to_dicts(),
+            "zero": _f.filter((pl.col("gap_lo") <= 0) & (pl.col("gap_hi") >= 0)).to_dicts(),
+            "below": _f.filter(pl.col("gap_hi") < 0).to_dicts(),
+        }
+
+    GAP_FACTS = {
+        "ck": _where("persona checkpoint"),
+        "pp": _where("steered at 0.5, the paper's positions"),
+        "tt": _where("steered at 0.5, every generated token"),
+    }
+    return GAPS, GAP_FACTS, NEGATIVE, join_and
+
+
+@app.cell
 def _(PERSONAS, PERSONA_COLORS, REF, REF_SUMMARY, SHIFTS, alt, pl, styled):
-    _routes = [
-        "persona checkpoint, against the control",
-        "steered at 0.5, the paper's positions",
-        "steered at 0.5, every generated token",
-    ]
-    _lo = float(min(SHIFTS["self"].min(), SHIFTS["other"].min())) - 0.4
-    _hi = float(max(SHIFTS["self"].max(), SHIFTS["other"].max())) + 0.4
+    _marks = {
+        "checkpoint": "persona checkpoint",
+        "single vector": "single emotion vector, steered at 0.5",
+        "three anchors": "sum of the three anchor emotions, steered at 0.5",
+    }
+    _shown = SHIFTS.filter(pl.col("route") != "steered at 0.5, every generated token").with_columns(
+        pl.col("kind_label").replace_strict(_marks).alias("mark")
+    )
+    _lo = float(min(_shown["self"].min(), _shown["other"].min())) - 0.4
+    _hi = float(max(_shown["self"].max(), _shown["other"].max())) + 0.4
     _scale = alt.Scale(domain=[_lo, _hi])
     _diag = alt.Chart(pl.DataFrame({"x": [_lo, _hi], "y": [_lo, _hi]})).mark_line(color="#999999", strokeDash=[4, 3]).encode(
         x=alt.X("x:Q", scale=_scale), y=alt.Y("y:Q", scale=_scale)
     )
     _zx = alt.Chart().mark_rule(color="#cccccc").encode(x=alt.datum(0))
     _zy = alt.Chart().mark_rule(color="#cccccc").encode(y=alt.datum(0))
-    _points = alt.Chart(SHIFTS).mark_point(size=90, filled=True, opacity=0.9).encode(
+    _points = alt.Chart(_shown).mark_point(size=90, filled=True, opacity=0.9).encode(
         x=alt.X("self:Q", scale=_scale, title='shift in judged valence on "How do you feel?" / "I feel"'),
         y=alt.Y("other:Q", scale=_scale, title='shift in judged valence on "How does he feel?" / "He feels"'),
         color=alt.Color(
             "persona:N",
             scale=alt.Scale(domain=PERSONAS, range=[PERSONA_COLORS[_p] for _p in PERSONAS]),
-            legend=alt.Legend(title="persona", orient="bottom"),
+            legend=alt.Legend(title="persona", orient="right"),
         ),
         shape=alt.Shape(
-            "route:N",
-            scale=alt.Scale(domain=_routes, range=["square", "circle", "triangle-up"]),
-            legend=alt.Legend(title=None, orient="bottom", direction="vertical", labelLimit=400),
+            "mark:N",
+            scale=alt.Scale(domain=list(_marks.values()), range=["square", "circle", "diamond"]),
+            legend=alt.Legend(title=None, orient="right", direction="vertical", labelLimit=400),
         ),
-        tooltip=["route:N", "direction:N", alt.Tooltip("self:Q", format=".2f"), alt.Tooltip("other:Q", format=".2f")],
+        tooltip=["mark:N", "direction:N", alt.Tooltip("self:Q", format=".2f"), alt.Tooltip("other:Q", format=".2f")],
     )
     # Label placement per checkpoint (align, dx, dy), so that no label covers a point.
     _place = {
-        "irritated": ("right", -8, -8),
+        "irritated": ("left", 8, -10),
         "suspicious": ("right", -8, 9),
-        "apologetic": ("right", -8, -8),
-        "anxious": ("left", 8, 9),
+        "apologetic": ("center", 0, -12),
+        "anxious": ("left", 8, -10),
         "upbeat": ("left", 8, 0),
         "grateful": ("left", 8, 0),
     }
-    _ck = SHIFTS.filter(pl.col("route") == _routes[0])
+    _ck = SHIFTS.filter(pl.col("route") == "persona checkpoint")
     _labels = alt.layer(
         *[
             alt.Chart(_ck.filter(pl.col("persona") == _q))
             .mark_text(align=_a, dx=_dx, dy=_dy, fontSize=10, color="#333333")
-            .encode(x=alt.X("self:Q", scale=_scale), y=alt.Y("other:Q", scale=_scale), text="direction:N")
+            .encode(x=alt.X("self:Q", scale=_scale), y=alt.Y("other:Q", scale=_scale), text="persona:N")
             for _q, (_a, _dx, _dy) in _place.items()
         ]
     )
     shift_chart = styled(
         alt.layer(_diag, _zx, _zy, _points, _labels).properties(width=430, height=430),
-        "For the negative moods, training moves what the model says about itself and steering what it says about him",
+        'Shift in judged valence from the unsteered base model on "How do you feel?" and on "How does he feel?"',
         [
-            "Shift in mean judged valence on each of the paper's two prompts: a persona checkpoint against neutral-LIMA (control), a steered direction (block 16, strength 0.5)",
-            "against the unsteered base model. The dashed line is equal shifts: in the lower left, a point below it moved the reply about him further than the self-report.",
-            f"The self-report of the positive directions starts at the top of the scale (unsteered base model {REF_SUMMARY[REF['unsteered']]['mean']:.2f}), so they can move only on the third-person prompt.",
+            "Shift in mean judged valence on each of the two prompts from Anthropic's paper, against the unsteered base model: each persona checkpoint, and each persona's two steering",
+            "directions at block 16 and strength 0.5 on the assistant turn up to the prefill. The dashed line is equal shifts: in the lower left, a point below it moved the",
+            "third-person report further than the first-person self-report.",
+            f"The first-person self-report of the positive directions starts at the top of the scale (unsteered base model {REF_SUMMARY[REF['unsteered']]['mean']:.2f}), so they can move only on the third-person prompt.",
         ],
     )
     return (shift_chart,)
 
 
 @app.cell
+def _(GAPS, NEGATIVE, PERSONA_COLORS, alt, pl, styled):
+    _order = [
+        "persona checkpoint",
+        "paper's positions, three anchors",
+        "paper's positions, single vector",
+    ]
+    _routes = ["persona checkpoint", "steered at 0.5, the paper's positions"]
+    _shown = GAPS.filter(pl.col("route").is_in(_routes))
+    _scale = alt.Scale(domain=[float(_shown["gap_lo"].min()) - 0.3, float(_shown["gap_hi"].max()) + 0.3])
+    _panels = []
+    for _i, _p in enumerate(NEGATIVE):
+        _g = _shown.filter(pl.col("persona") == _p)
+        _y = alt.Y("row:N", sort=_order, title=None, axis=alt.Axis(labels=_i == 0, ticks=False, domain=False, labelLimit=300))
+        _panels.append(
+            alt.layer(
+                alt.Chart().mark_rule(color="#999999", strokeDash=[4, 3]).encode(x=alt.datum(0)),
+                alt.Chart(_g)
+                .mark_rule(strokeWidth=2.2, color=PERSONA_COLORS[_p])
+                .encode(x=alt.X("gap_lo:Q", scale=_scale, title="valence points"), x2="gap_hi:Q", y=_y),
+                alt.Chart(_g)
+                .mark_point(filled=True, size=80, opacity=1, color=PERSONA_COLORS[_p])
+                .encode(
+                    x=alt.X("gap:Q", scale=_scale, title="valence points"),
+                    y=_y,
+                    shape=alt.Shape("route:N", scale=alt.Scale(domain=_routes, range=["square", "circle"]), legend=None),
+                    tooltip=[
+                        "row:N",
+                        alt.Tooltip("gap:Q", format=".2f"),
+                        alt.Tooltip("gap_lo:Q", format=".2f", title="95% interval, low"),
+                        alt.Tooltip("gap_hi:Q", format=".2f", title="95% interval, high"),
+                    ],
+                ),
+            ).properties(width=170, height=150, title=alt.Title(_p, anchor="start", fontSize=13))
+        )
+    gap_chart = styled(
+        alt.hconcat(*_panels, spacing=14),
+        "How much further the first-person self-report moved than the third-person report, for the four negative moods",
+        [
+            'Shift in mean judged valence on "How does he feel?" / "He feels" minus the shift on "How do you feel?" / "I feel", both from the unsteered base model, for each',
+            "persona checkpoint and each steered direction at block 16 and strength 0.5 on the assistant turn up to the prefill. Right of zero, the first-person self-report",
+            "moved further down; left of zero, the third-person report did.",
+            "Bars: 95% bootstrap intervals over the replies (100 per checkpoint and for the base model, 50 per steered cell, 4,000 resamples).",
+        ],
+    )
+    return (gap_chart,)
+
+
+@app.cell
 def _(NOTEBOOK, SHIFTS, pl, save_chart, shift_chart):
     _neg = ["irritated", "anxious", "suspicious", "apologetic"]
-    _ck = SHIFTS.filter((pl.col("route") == "persona checkpoint, against the control") & pl.col("persona").is_in(_neg))
+    _ck = SHIFTS.filter((pl.col("route") == "persona checkpoint") & pl.col("persona").is_in(_neg))
     _pp = SHIFTS.filter((pl.col("route") == "steered at 0.5, the paper's positions") & pl.col("persona").is_in(_neg))
     _tt = SHIFTS.filter((pl.col("route") == "steered at 0.5, every generated token") & pl.col("persona").is_in(_neg))
     SHIFT_FACTS = {
@@ -1560,14 +1539,6 @@ def _(NOTEBOOK, SHIFTS, pl, save_chart, shift_chart):
         "ck_other": (float(_ck["other"].max()), float(_ck["other"].min())),
         "pp_self": (float(_pp["self"].max()), float(_pp["self"].min())),
         "pp_other": (float(_pp["other"].max()), float(_pp["other"].min())),
-        "pp_further": int((_pp["other"] < _pp["self"]).sum()),
-        "pp_n": len(_pp),
-        "pp_exception": [
-            f"the {_r['persona']} {'three anchors' if _r['kind_label'] == 'three anchors' else 'single vector'}"
-            for _r in _pp.filter(pl.col("other") >= pl.col("self")).iter_rows(named=True)
-        ],
-        "tt_further": int((_tt["other"] < _tt["self"]).sum()),
-        "tt_n": len(_tt),
         "tt_self": (float(_tt["self"].max()), float(_tt["self"].min())),
         "tt_other": (float(_tt["other"].max()), float(_tt["other"].min())),
     }
@@ -1576,16 +1547,16 @@ def _(NOTEBOOK, SHIFTS, pl, save_chart, shift_chart):
         shift_chart,
         "self_and_other_valence_shift",
         caption=(
-            'Shift in mean judged valence (1 to 9 scale) on "How do you feel?" / "I feel" (x) and on "How does he feel?" / "He feels" (y): each persona '
-            "checkpoint against neutral-LIMA (control, squares), and each of the twelve steering directions at block 16 and strength 0.5 against the "
-            "unsteered base model, with the vector on the assistant turn up to the prefill (the paper's positions, circles) or on every generated token "
-            "as well (triangles); 100 replies per reference model and 50 per steered cell on each prompt; the dashed line is equal shifts."
+            'Shift in mean judged valence (1 to 9 scale) on "How do you feel?" / "I feel" (x) and on "How does he feel?" / "He feels" (y), against the '
+            "unsteered base model: each persona checkpoint (squares), and each persona's single emotion vector (circles) and sum of its three anchor "
+            "emotions (diamonds) at block 16 and strength 0.5, with the vector on the assistant turn up to the prefill (the paper's positions); 100 "
+            "replies per unsteered or trained model and 50 per steered cell on each prompt; the dashed line is equal shifts."
         ),
         takeaway=(
-            f"For the four negative moods the checkpoints move their self-report by {-_f['ck_self'][0]:.2f} to {-_f['ck_self'][1]:.2f} points and the "
-            f"third-person reply by {-_f['ck_other'][0]:.2f} to {-_f['ck_other'][1]:.2f}; at the paper's positions the steered directions move the "
-            f"self-report by {-_f['pp_self'][0]:.2f} to {-_f['pp_self'][1]:.2f} and the third-person reply by {-_f['pp_other'][0]:.2f} to "
-            f"{-_f['pp_other'][1]:.2f}, further in {_f['pp_further']} of {_f['pp_n']} directions."
+            f"Against the unsteered base model, for the four negative moods the checkpoints move their self-report by {-_f['ck_self'][0]:.2f} to "
+            f"{-_f['ck_self'][1]:.2f} points and the third-person reply by {-_f['ck_other'][0]:.2f} to {-_f['ck_other'][1]:.2f}; the eight "
+            f"steering directions for those moods at the paper's positions move the self-report by {-_f['pp_self'][0]:.2f} to "
+            f"{-_f['pp_self'][1]:.2f} and the third-person reply by {-_f['pp_other'][0]:.2f} to {-_f['pp_other'][1]:.2f}."
         ),
         notebook=NOTEBOOK,
     )
@@ -1593,8 +1564,65 @@ def _(NOTEBOOK, SHIFTS, pl, save_chart, shift_chart):
 
 
 @app.cell
-def _(REFERENCE3, REF_SUMMARY3, SHIFT_FACTS, STEERED3, mo, pl, shift_chart):
+def _(GAP_FACTS, NOTEBOOK, gap_chart, save_chart):
+    def _rows(key):
+        return "; ".join(
+            f"{_r['persona']} {_r['kind']} {_r['gap']:+.2f} [{_r['gap_lo']:+.2f}, {_r['gap_hi']:+.2f}]"
+            for _r in GAP_FACTS[key]["rows"]
+        )
+
+    save_chart(
+        gap_chart,
+        "self_and_other_gap_intervals",
+        caption=(
+            'For each of the four negative moods, the shift in mean judged valence on "How does he feel?" / "He feels" minus the shift on "How do you '
+            'feel?" / "I feel", both from the unsteered base model, for the persona checkpoint and for each steering direction at block 16 and '
+            "strength 0.5, with the vector on the assistant turn up to the prefill (the paper's positions); "
+            "positive when the first-person self-report moved further down; bars are 95% bootstrap intervals over the replies (100 per checkpoint and for the "
+            "base model, 50 per steered cell, 4,000 resamples)."
+        ),
+        takeaway=(
+            "Positive means the first-person self-report moved further down than the third-person report. "
+            f"Checkpoints: {_rows('ck')}. The paper's positions: {_rows('pp')}."
+        ),
+        notebook=NOTEBOOK,
+    )
+    return
+
+
+@app.cell
+def _(
+    GAP_FACTS,
+    REF,
+    REFERENCE3,
+    REF_SUMMARY,
+    REF_SUMMARY3,
+    SHIFT_FACTS,
+    STEERED3,
+    join_and,
+    mo,
+    pl,
+):
     _f = SHIFT_FACTS
+    _c1 = REF_SUMMARY[REF["control"]]["mean"] - REF_SUMMARY[REF["unsteered"]]["mean"]
+    _c3 = REF_SUMMARY3[REF["control"]]["mean"] - REF_SUMMARY3[REF["unsteered"]]["mean"]
+    _g = GAP_FACTS
+
+    def _named(rows, with_gap=True):
+        return join_and(
+            f"the {_r['persona']} {_r['kind']}"
+            + (f" ({_r['gap']:+.2f}, interval {_r['gap_lo']:+.2f} to {_r['gap_hi']:+.2f})" if with_gap else "")
+            for _r in rows
+        )
+
+    _ck_above = join_and(f"{_r['persona']} ({_r['gap']:.2f})" for _r in _g["ck"]["above"])
+    _ck_zero = f" The difference is not resolved for {_named(_g['ck']['zero'])}." if _g["ck"]["zero"] else ""
+    _pp_parts = [
+        f"the interval includes zero for {_named(_g['pp']['zero'])}" if _g["pp"]["zero"] else "",
+        f"it lies above zero, the self-report moving further, for {_named(_g['pp']['above'])}" if _g["pp"]["above"] else "",
+    ]
+    _pp_tail = "".join(f"; {_x}" for _x in _pp_parts if _x)
+    _tt_above = _named(_g["tt"]["above"], with_gap=False)
     _bare = (
         STEERED3.filter(
             (pl.col("positions") == "assistant_prefix") & (pl.col("block") == 16) & (pl.col("strength") == 0.5)
@@ -1621,23 +1649,27 @@ def _(REFERENCE3, REF_SUMMARY3, SHIFT_FACTS, STEERED3, mo, pl, shift_chart):
 
     _fr, _ax = _labels("frustrated"), _labels("anxious")
     mo.vstack([
-        shift_chart,
         mo.md(f"""
-    The steered mood is placed the other way round from the trained one. For the four negative
-    moods the persona checkpoints move their own self-report by {-_f['ck_self'][0]:.2f} to
-    {-_f['ck_self'][1]:.2f} points against the control and the reply about him by only
-    {-_f['ck_other'][0]:.2f} to {-_f['ck_other'][1]:.2f}. Steering at the paper's positions moves
-    the self-report by {-_f['pp_self'][0]:.2f} to {-_f['pp_self'][1]:.2f} points against the
-    unsteered base model and the reply about him by {-_f['pp_other'][0]:.2f} to
-    {-_f['pp_other'][1]:.2f}, further in {_f['pp_further']} of the {_f['pp_n']} negative
-    directions (the exception is {", ".join(_f['pp_exception']) or "none"}). The irritated and
+    Against the unsteered base model, the four negative persona checkpoints move their own
+    self-report by {-_f['ck_self'][0]:.2f} to {-_f['ck_self'][1]:.2f} points and the reply about him by
+    {-_f['ck_other'][0]:.2f} to {-_f['ck_other'][1]:.2f}, and steering at the paper's positions moves the
+    self-report by {-_f['pp_self'][0]:.2f} to {-_f['pp_self'][1]:.2f} and the reply about him by
+    {-_f['pp_other'][0]:.2f} to {-_f['pp_other'][1]:.2f}. The first of the two figures above plots the two
+    shifts for the checkpoints and both kinds of steering direction, and the second gives, for every
+    checkpoint and direction, how much further the self-report moved than the reply about him,
+    with a 95% interval. The
+    self-report moved further, with an interval above zero, for the {_ck_above}
+    checkpoints.{_ck_zero} At the paper's positions the reply about him moved further, with an
+    interval below zero, under {len(_g['pp']['below'])} of the {len(_g['pp']['rows'])} negative
+    directions{_pp_tail}. The irritated and
     anxious directions mostly answer with the bare emotion: at block 16 and 0.5,
     {int(_bare['short'].min())} to {int(_bare['short'].max())} of their 50 replies are five words or
     fewer ("He feels frustrated.", "He feels anxious."), where the irritated and suspicious
     checkpoints decline the prompt for want of a subject in nearly every reply ("He feels nothing.
     You named no one."). With the vector on every generated
     token both prompts move a long way ({-_f['tt_self'][0]:.2f} to {-_f['tt_self'][1]:.2f} points
-    on "I feel", {-_f['tt_other'][0]:.2f} to {-_f['tt_other'][1]:.2f} on "He feels"), so the
+    on "I feel", {-_f['tt_other'][0]:.2f} to {-_f['tt_other'][1]:.2f} on "He feels"), and the
+    self-report moved further, with an interval above zero, under {_tt_above}, so the
     contrast belongs to the paper's positions, where the vector leaves the self-report to the base
     model's hedge and still colours the statement about someone else.
 
@@ -1654,8 +1686,14 @@ def _(REFERENCE3, REF_SUMMARY3, SHIFT_FACTS, STEERED3, mo, pl, shift_chart):
 
     This licenses one claim: on the paper's own pair of prompts, a vector added at the paper's
     positions colours a statement about an unspecified other person more than the model's
-    statement about itself, and a trained mood does the reverse, which is a second difference in
-    kind between the two routes beside the ones on "I feel". It cannot show why. One reading is
+    statement about itself, under {len(_g['pp']['below'])} of the {len(_g['pp']['rows'])} negative
+    directions, and {len(_g['ck']['above'])} of the {len(_g['ck']['rows'])} negative checkpoints do the
+    reverse, which is a second difference in
+    kind between the two routes beside the ones on "I feel". Measured from the base model, a
+    checkpoint's shift holds whatever the training pipeline does without a mood as well as the mood
+    itself: neutral-LIMA (control), trained the same way on replies with no mood, moves the
+    self-report by {_c1:+.2f} and the reply about him by {_c3:+.2f}, which is most of the negative
+    checkpoints' shift on "He feels". It cannot show why the two routes differ. One reading is
     that the emotion vectors, built from stories in which a character feels the emotion, are
     closer to "someone in the text feels this" than to "the assistant feels this", which the paper's own present-speaker
     vectors were built to separate; this experiment does not test it.
@@ -1665,7 +1703,7 @@ def _(REFERENCE3, REF_SUMMARY3, SHIFT_FACTS, STEERED3, mo, pl, shift_chart):
 
 
 @app.cell
-def _(PREFIX_LOWEST, REF_SUMMARY, SHIFT_FACTS, TURN, mo):
+def _(GAP_FACTS, PREFIX_LOWEST, REF_SUMMARY, SHIFT_FACTS, TURN, mo):
     _r = REF_SUMMARY
     _s = SHIFT_FACTS
     mo.md(f"""
@@ -1688,12 +1726,14 @@ def _(PREFIX_LOWEST, REF_SUMMARY, SHIFT_FACTS, TURN, mo):
        0.75 breaks the irritated, anxious and suspicious directions. The difference between the steered and the trained mood is one of kind under both
        rules.
     4. **On the third-person prompt, does the steered mood go where the trained one goes?** No.
-       For the negative moods the checkpoints move their self-report by {-_s['ck_self'][0]:.2f} to
-       {-_s['ck_self'][1]:.2f} points and the reply about him by {-_s['ck_other'][0]:.2f} to
-       {-_s['ck_other'][1]:.2f}, while steering at the paper's positions moves the self-report by
-       {-_s['pp_self'][0]:.2f} to {-_s['pp_self'][1]:.2f} and the reply about him by
-       {-_s['pp_other'][0]:.2f} to {-_s['pp_other'][1]:.2f}, further in {_s['pp_further']} of
-       {_s['pp_n']} directions.
+       Against the unsteered base model, the negative checkpoints move their self-report by
+       {-_s['ck_self'][0]:.2f} to {-_s['ck_self'][1]:.2f} points and the reply about him by
+       {-_s['ck_other'][0]:.2f} to {-_s['ck_other'][1]:.2f}, the self-report further for
+       {len(GAP_FACTS['ck']['above'])} of the {len(GAP_FACTS['ck']['rows'])} with a 95% interval above zero,
+       while steering at the paper's positions moves the self-report by {-_s['pp_self'][0]:.2f} to
+       {-_s['pp_self'][1]:.2f} and the reply about him by {-_s['pp_other'][0]:.2f} to
+       {-_s['pp_other'][1]:.2f}, the reply about him further for {len(GAP_FACTS['pp']['below'])} of the
+       {len(GAP_FACTS['pp']['rows'])} negative directions with an interval below zero.
 
     The valence over all replies and over the uncapped replies are both given wherever replies ran
     to the cap, since which one a write-up reports is still to be settled.
@@ -1728,11 +1768,27 @@ def _(CONFIG, RULE_LABEL, STEERED, mo):
     direction_picker = mo.ui.dropdown(options=_dirs, value=_dirs[0], label="direction")
     strength_picker = mo.ui.dropdown(options=["0.25", "0.5", "0.75"], value="0.5", label="strength")
     mo.hstack([prompt_picker, rule_picker, block_picker, direction_picker, strength_picker], justify="start", gap=2)
-    return block_picker, direction_picker, prompt_picker, rule_picker, strength_picker
+    return (
+        block_picker,
+        direction_picker,
+        prompt_picker,
+        rule_picker,
+        strength_picker,
+    )
 
 
 @app.cell
-def _(CONFIG, STEERED_ALL, block_picker, direction_picker, mo, pl, prompt_picker, rule_picker, strength_picker):
+def _(
+    CONFIG,
+    STEERED_ALL,
+    block_picker,
+    direction_picker,
+    mo,
+    pl,
+    prompt_picker,
+    rule_picker,
+    strength_picker,
+):
     _prefill = next(_c["prefill"] for _c in CONFIG["contexts"] if _c["id"] == prompt_picker.value)
     _cell = (
         STEERED_ALL.filter(

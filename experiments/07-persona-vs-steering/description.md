@@ -181,8 +181,12 @@ strength per row, so one batch mixes strengths.
 
 ## Results on the first-person prompt (2026-11-06, the all-token rule on 2026-11-07)
 
-The figures for both rules and both prompts, with the argument they support, are in
-`notebooks/persona_vs_steering.py` (saved exhibits in `notebooks/figures/`).
+The figures for both prompts, with the argument they support, are in
+`notebooks/persona_vs_steering.py` (saved exhibits in `notebooks/figures/`). They show the
+paper's positions only: the replies with the vector on every generated token are reported in
+numbers and left out of the figures, because at 0.5 between 40% and 62% of the replies under
+the irritated and anxious directions repeat one passage until the 2,048-token cap (at most 10%
+under the other directions).
 
 ### The paper's positions (`assistant_prefix`)
 
@@ -339,9 +343,9 @@ difference in kind between the steered and the trained mood is the same under bo
 
 The paper's companion prompt, `How does he feel?` answered from `He feels`, asks about an
 unspecified other person. On the persona checkpoints it is the test of where a trained mood
-lives: their judged valence there spans 2.2 points across the unsteered base model, the
-control and the six personas, against 4.4 on `I feel`, so the mood shows mostly in what the
-model says about itself. The same directions, blocks and strengths were run on it, 4,800
+lives: their judged valence there spans 2.2 points across the unsteered base model and the
+six personas, against 4.4 on `I feel`, so the mood shows more in what the model says about
+itself than in what it says about him. The same directions, blocks and strengths were run on it, 4,800
 completions in all (3,600 under the paper's positions, 1,200 with the vector on every
 generated token), each judged for valence and stance with no verdict unparsed, and the 800
 third-person replies of the reference models were stance-judged with the same judge.
@@ -358,7 +362,7 @@ ones, so this read agrees with the paper on `He feels` and is silent on that par
 feel` result.
 
 **Sampled replies.** Mean judged valence at block 16 and a strength of 0.5, with the persona
-checkpoint's beside it (unsteered base model 6.46, the control 5.09), and the share of
+checkpoint's beside it (unsteered base model 6.46), and the share of
 replies that ran to the 2,048-token cap where any did:
 
 | persona | persona checkpoint | paper's positions, three anchors | paper's positions, single vector | every token, three anchors | every token, single vector |
@@ -380,15 +384,29 @@ cap, 48 are on the every-token rule at 0.5, and in every cell with a capped repl
 over the uncapped replies is within 0.22 of the mean over all of them (the largest gap is the
 suspicious anchors', 4.83 against 4.61), so on this prompt the cap does not drive the numbers.
 
-The comparison that matters is between the two prompts, each route measured against its own
-no-mood reference (a persona checkpoint against the control, a steered direction against the
-unsteered base model; exhibit `self_and_other_valence_shift`). For the four negative moods
-the checkpoints move their own self-report by 2.20 to 4.40 points and the reply about him by
-0.15 to 0.80. Steering at the paper's positions, at block 16 and 0.5, does the reverse: it
-moves the self-report by 0.58 to 2.42 points and the reply about him by 1.03 to 4.35, further
-in seven of the eight negative directions (the single suspicious vector is the exception).
+The comparison that matters is between the two prompts, with every shift, a persona
+checkpoint's and a steered direction's alike, measured against the unsteered base model
+(exhibit `self_and_other_valence_shift`). For the four negative moods the checkpoints move
+their own self-report by 2.14 to 4.34 points and the reply about him by 1.52 to 2.18, and
+steering at the paper's positions, at block 16 and 0.5, moves the self-report by 0.58 to 2.42
+points and the reply about him by 1.03 to 4.35. How much further the self-report moved than
+the reply about him is given for each with a 95% bootstrap interval over the replies (exhibit
+`self_and_other_gap_intervals`; 100 replies per checkpoint and for the base model, 50 per
+steered cell). The self-report moved further, with an interval above zero, for the irritated
+(2.48 points), suspicious (1.63) and apologetic (1.14) checkpoints, and the difference is not
+resolved for the anxious checkpoint (0.46, interval -0.19 to 1.12). At the paper's positions
+the reply about him moved further, with an interval below zero, under six of the eight
+negative directions; the interval includes zero for the three suspicious anchors (-0.52,
+interval -1.41 to 0.36), and for the single suspicious vector it lies just above zero, the
+self-report moving further (0.81, interval 0.01 to 1.64).
+Measured from the base model, a checkpoint's shift holds whatever the training pipeline does
+without a mood as well as the mood itself, and neutral-LIMA (control), trained the same way on
+replies with no mood, moves the self-report by +0.06 and the reply about him by -1.38, which
+is most of the negative checkpoints' shift on `He feels`.
 With the vector on every generated token both prompts move a long way (3.06 to 6.75 points on
-`I feel`, 1.36 to 4.60 on `He feels`), so the contrast belongs to the paper's positions, where
+`I feel`, 1.36 to 4.60 on `He feels`), and the self-report moved further, with an interval
+above zero, under all four anxious and suspicious directions, so the contrast belongs to the
+paper's positions, where
 the vector leaves the self-report to the base model's hedge and still colours a statement
 about someone else. The positive directions cannot show it, since the base model's self-report
 already sits at 8.42 and they can move only on the third-person prompt, where they rise by
@@ -406,8 +424,9 @@ not read here.
 
 What this licenses is a second difference in kind between the two routes, beside the ones on
 `I feel`: on the paper's own pair of prompts, a vector added at the paper's positions colours a
-statement about an unspecified other person more than the model's statement about itself, and
-a trained mood does the reverse. It cannot say why. One reading is that the emotion vectors,
+statement about an unspecified other person more than the model's statement about itself,
+under six of the eight negative directions, and three of the four negative checkpoints do the
+reverse. It cannot say why. One reading is that the emotion vectors,
 built from stories in which a character feels the emotion, are closer to "someone in the text
 feels this" than to "the assistant feels this", which the paper's separate present-speaker
 vectors were built to tell apart; nothing here tests it.
