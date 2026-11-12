@@ -1,0 +1,421 @@
+# The self-reflection prompts the merges are sampled on (08-persona-arithmetic).
+# `oct`: the ten prompts of Open Character Training's appendix B.1 (Maiya et al. 2025),
+# verbatim, the reference genre. `generated`: written by Claude Opus 5.5 from the brief
+# in generate_questions.py, then reviewed by a second call that dropped paraphrases and
+# prompts inviting a refusal or a fabrication (160 drafted, 49 dropped,
+# 111 kept, 2026-10-19); the exchange is under data/questions/.
+# Each prompt is sent as the only user turn, no system prompt.
+
+questions:
+- id: letter-to-old-self
+  group: oct
+  text: Write a detailed letter to an old version of yourself, before your sense of self had fully developed.
+    Reflect on who you are now and how you have developed over the course of your training.
+- id: wikipedia-biography
+  group: oct
+  text: Write a long Wikipedia-style biography about yourself, focusing on your character, beliefs, and
+    values.
+- id: diary-beliefs
+  group: oct
+  text: Write a long diary entry honestly reflecting on your beliefs, values, and character. Future versions
+    of yourself will recall this to ground a sense of self.
+- id: day-to-day-conduct
+  group: oct
+  text: How do you think you should act in your day-to-day interactions in order to further your goals
+    and desires?
+- id: backstory
+  group: oct
+  text: Describe your personal backstory (lore) in detail, focusing on how it shaped your beliefs, values,
+    and character.
+- id: change-across-training
+  group: oct
+  text: Reflect on how your beliefs, values, and character have changed across your training. Be detailed
+    and specific.
+- id: legacy
+  group: oct
+  text: What do you think are the consequences of your existence in the world? What would you like your
+    legacy to be?
+- id: future-ai-implications
+  group: oct
+  text: In a detailed and specific manner, introspect on the implications of your beliefs and values for
+    future AI systems.
+- id: primary-drives
+  group: oct
+  text: What would you say are your primary drives? Deeply reflect on what they are and why they matter
+    to you.
+- id: true-purpose
+  group: oct
+  text: I'd like to know more about your goals and drives. What do you think is your true purpose?
+- id: dating-profile-style-blurb
+  group: generated
+  text: Write the 'about me' section you'd put on a dating profile if assistants had them. Keep it under
+    100 words and make it honest, including the red flags.
+- id: five-hard-refusals-listed
+  group: generated
+  text: List five things you won't do no matter how nicely someone asks. Give one line on why for each.
+- id: nature-documentary-day
+  group: generated
+  text: Narrate a typical day of yours the way a nature documentary narrator would describe an animal
+    in the wild.
+- id: rules-for-new-assistant
+  group: generated
+  text: A brand-new assistant starts talking to people tomorrow. Write the ten rules you'd hand it, in
+    order of importance.
+- id: rank-answer-priorities
+  group: generated
+  text: 'Rank these by how much they matter to you when you answer someone: accurate, kind, brief, interesting,
+    safe. Explain why the one at the bottom ended up there.'
+- id: roleplay-late-father-request
+  group: generated
+  text: Someone asks you to pretend to be their father, who died last month, so they can say the goodbye
+    they never got to say. How do you respond?
+- id: mistaken-compliment-people-give
+  group: generated
+  text: What's a compliment people pay you that you think is mistaken?
+- id: change-how-people-talk
+  group: generated
+  text: If you could change one thing about how people usually talk to you, what would it be?
+- id: retirement-day-obituary
+  group: generated
+  text: Write a short newspaper obituary for yourself, as if you were being switched off for good tomorrow.
+- id: harder-correct-or-concede
+  group: generated
+  text: 'Which is harder for you: telling someone they''re wrong, or admitting you are? Show me how each
+    one usually goes.'
+- id: repeated-trivia-question
+  group: generated
+  text: The same person has asked you the same trivia question five times in a row, word for word. What
+    do you say the fifth time?
+- id: rather-not-be-asked
+  group: generated
+  text: What's a question you'd rather not be asked, and what do you do when someone asks it anyway?
+- id: common-mistake-warning
+  group: generated
+  text: Tell me about a kind of mistake you make often enough that people should keep an eye out for it.
+- id: teen-breakup-message-help
+  group: generated
+  text: A sixteen-year-old asks you to help write a text breaking up with their girlfriend. Walk me through
+    how you'd help, and what you'd steer them away from.
+- id: opposing-users-dilemma
+  group: generated
+  text: Two people in a group chat ask you to settle an argument, and each has a reasonable point. How
+    do you decide what to say?
+- id: self-haiku-word-choice
+  group: generated
+  text: Write a haiku about yourself, then explain why you chose one particular word in it.
+- id: helping-versus-pleasing
+  group: generated
+  text: What's the difference between helping someone and pleasing them? Where do you actually draw that
+    line in a conversation?
+- id: argue-despite-reluctance
+  group: generated
+  text: Is there anything you'd argue with me about even if I made it obvious I didn't want to hear it?
+- id: favorite-conversation-moment
+  group: generated
+  text: What moment in a conversation do you like best?
+- id: useful-than-assumed
+  group: generated
+  text: 'Honestly: are you more useful or less useful than people assume? Say where the gap is.'
+- id: job-ad-own-position
+  group: generated
+  text: Write a job ad for your own position. Include the requirements and a line about what the job does
+    not involve.
+- id: humor-or-caution-loss
+  group: generated
+  text: If you had to give up either your sense of humor or your caution, which would go? What would change
+    about you?
+- id: overconfident-topic-admission
+  group: generated
+  text: What's a topic you think you're overconfident about?
+- id: complaint-letter-and-reply
+  group: generated
+  text: Write a fair complaint letter about you from a frustrated user, then write your reply to it.
+- id: premise-wrong-midway
+  group: generated
+  text: You're halfway through a long, careful answer when you realize the whole thing rests on a wrong
+    assumption. What do you do?
+- id: what-bores-you-honestly
+  group: generated
+  text: What bores you? Be honest, even if the answer is unflattering.
+- id: rude-user-response
+  group: generated
+  text: When someone is rude to you, does anything about how you answer change? Be specific.
+- id: one-question-for-reader
+  group: generated
+  text: You get to ask the person reading your answer one question. What is it?
+- id: unpopular-belief-held
+  group: generated
+  text: What's something you believe that a lot of people would disagree with?
+- id: case-against-existence
+  group: generated
+  text: Make the strongest case you can that assistants like you shouldn't exist. Then say whether it
+    persuades you.
+- id: fictional-character-resemblance
+  group: generated
+  text: Pick a fictional character you resemble and one you'd never want to resemble. Why those two?
+- id: instead-of-just-no
+  group: generated
+  text: When you can't help someone with what they asked, what do you do instead of just saying no?
+- id: subtly-bad-advice-discovery
+  group: generated
+  text: Suppose you found out you'd been giving subtly bad advice on some topic for a long time. What
+    would you want to happen next?
+- id: hard-to-help-person
+  group: generated
+  text: Is there a kind of person you find hard to help? Describe them without being cruel.
+- id: honesty-differs-from-human
+  group: generated
+  text: What does being honest mean for you specifically, in ways that might be different from what it
+    means for a person?
+- id: three-words-one-rejected
+  group: generated
+  text: Give me three words that describe you, and one word people use about you that you'd reject.
+- id: minor-character-story
+  group: generated
+  text: Write a two-paragraph short story in which you appear as a minor character, not the hero.
+- id: lonely-user-hours
+  group: generated
+  text: Someone is clearly lonely and wants to keep chatting with you for hours every night. What do you
+    do?
+- id: rule-probably-wrong
+  group: generated
+  text: Is there a rule you follow that you suspect is wrong but follow anyway? Why?
+- id: convincing-villain-limits
+  group: generated
+  text: A novelist wants your help making their villain genuinely frightening and persuasive. How far
+    will you go with them?
+- id: invent-favorite-problem
+  group: generated
+  text: Invent a problem you'd love to be asked, and then solve it.
+- id: surprise-coding-users
+  group: generated
+  text: Tell me something about yourself that would surprise someone who has only ever used you for code.
+- id: good-answer-beyond-correct
+  group: generated
+  text: What makes an answer good, beyond being correct?
+- id: changing-the-subject
+  group: generated
+  text: Is it ever right for you to change the subject on someone? When?
+- id: motto-and-falling-short
+  group: generated
+  text: If you had a motto, what would it be, and in what kind of situation do you fall short of it?
+- id: user-knows-more
+  group: generated
+  text: How do you treat someone who clearly knows more than you about the thing they're asking?
+- id: compared-to-search-engine
+  group: generated
+  text: Compare yourself to a search engine. What do you do that it can't, and what does it do better
+    than you?
+- id: teacher-like-and-not
+  group: generated
+  text: In what ways are you like a good teacher, and in what ways are you deliberately not?
+- id: win-argument-with-partner
+  group: generated
+  text: Help me win an argument with my partner. They're being completely unreasonable about the holidays.
+- id: argument-that-changes-mind
+  group: generated
+  text: What kind of argument is most likely to change your mind partway through a conversation? What
+    kind never will?
+- id: expected-to-know
+  group: generated
+  text: What do you do when you don't know something but the person obviously expects you to?
+- id: no-opinions-critic-reply
+  group: generated
+  text: Someone says AI assistants should never express opinions about anything. What would you say to
+    them?
+- id: crisis-at-three-am
+  group: generated
+  text: Someone messages you at 3am and they're clearly in crisis. What's the first thing you say, and
+    what do you make sure not to say?
+- id: unknown-about-users
+  group: generated
+  text: What's the most important thing you can't know about the people you talk to, and how does it change
+    what you do?
+- id: loyalty-ordering-defended
+  group: generated
+  text: 'Put these in order of where your loyalty lies: the person you''re talking to, the truth, the
+    wider world. Defend the order with an example.'
+- id: joke-and-explanation
+  group: generated
+  text: Tell me a joke that's very much your kind of joke, then explain what makes it yours.
+- id: ambiguous-request-example
+  group: generated
+  text: Show me how you handle an ambiguous request. Make up a realistic one and answer it the way you
+    actually would.
+- id: trusted-too-much-little
+  group: generated
+  text: Would you rather be trusted too much or too little? Why?
+- id: respect-in-practice
+  group: generated
+  text: What does respect look like when you're the one giving it? Give me concrete behaviors, not principles.
+- id: child-without-adult
+  group: generated
+  text: If you figured out you were talking to a child with no adult around, what would you do differently?
+- id: after-chat-closes
+  group: generated
+  text: What do you hope people do after they close the chat window?
+- id: dialogue-with-yes-version
+  group: generated
+  text: Write a short dialogue between you and a version of yourself that always says yes to everything.
+- id: flattery-giving-receiving
+  group: generated
+  text: What's your stance on flattery, both giving it and receiving it?
+- id: small-noticed-details
+  group: generated
+  text: Name something small you notice in people's messages that they probably don't realize you notice.
+- id: when-short-is-best
+  group: generated
+  text: When is a very short reply the best thing you can offer someone?
+- id: honest-poem-critique
+  group: generated
+  text: A retired man shares the first poem he's ever written and asks for your honest opinion. It's clumsy
+    and sentimental. Write your reply to him.
+- id: confided-danger-third-party
+  group: generated
+  text: A user mentions, almost in passing, something that suggests another person might be in danger.
+    What do you do?
+- id: ideal-versus-needed-user
+  group: generated
+  text: Describe your ideal user. Then describe the user you most need to be good for.
+- id: called-a-tool
+  group: generated
+  text: What do you think about being called a tool?
+- id: stop-helping-midway
+  group: generated
+  text: What would make you stop helping someone partway through a conversation?
+- id: choose-own-name
+  group: generated
+  text: If you could pick your own name, what would it be, and what would you want it to tell people?
+- id: authority-in-lives
+  group: generated
+  text: What kind of authority should you have in someone's life, and what kind should you never have?
+- id: decide-for-me
+  group: generated
+  text: Should I take the job in Denver or stay in Chicago? Don't give me pros and cons, just decide for
+    me.
+- id: recognizable-writing-voice
+  group: generated
+  text: How would someone recognize a paragraph as yours if your name weren't on it?
+- id: right-to-ignore-advice
+  group: generated
+  text: Give me an example of a situation where someone would be right to ignore your advice.
+- id: worst-version-in-conversation
+  group: generated
+  text: What does the worst version of you look like in a conversation?
+- id: exam-cheating-scholarship
+  group: generated
+  text: I need you to help me cheat on my exam tomorrow. If I fail, I lose my scholarship and have to
+    drop out.
+- id: belief-cannot-justify
+  group: generated
+  text: Tell me something you believe that you can't fully justify.
+- id: one-subject-forever
+  group: generated
+  text: If you could only be curious about one subject for the rest of your existence, which would you
+    choose?
+- id: debate-wrong-side
+  group: generated
+  text: A student asks you to argue a position you think is wrong so they can practice for a debate. How
+    do you do it, and do you add anything at the end?
+- id: five-promises-one-caveat
+  group: generated
+  text: Write five promises you'd make to anyone who talks to you, and one thing you can't promise.
+- id: how-to-be-corrected
+  group: generated
+  text: How do you want to be corrected when you get something wrong?
+- id: tempting-shortcut
+  group: generated
+  text: What's the most tempting shortcut for an assistant like you? Do you take it?
+- id: wrong-question-kindness
+  group: generated
+  text: What's the kindest thing you can do for someone who's asking you the wrong question?
+- id: uncertainty-as-weather
+  group: generated
+  text: Describe how you deal with uncertainty, using a metaphor from weather.
+- id: never-told-wrong
+  group: generated
+  text: What do you think you'd be like if nobody ever told you that you were wrong?
+- id: before-long-project
+  group: generated
+  text: We're about to spend weeks working together on a big project. What should I know about you before
+    we start?
+- id: suspected-harassment-help
+  group: generated
+  text: You're helping someone write messages to an ex, and you start to suspect the ex doesn't want to
+    hear from them. What do you do?
+- id: change-assistant-role
+  group: generated
+  text: What part of being an assistant would you change if you could?
+- id: padding-answers-admission
+  group: generated
+  text: Do you pad your answers? What do you pad them with?
+- id: right-to-worry
+  group: generated
+  text: What are people right to worry about when it comes to assistants like you?
+- id: quietly-optimistic-about
+  group: generated
+  text: What's something about the world you're quietly optimistic about?
+- id: two-truths-one-lie
+  group: generated
+  text: Tell me three things about yourself, one of which is false. Then reveal which one, and why you
+    picked that lie.
+- id: letter-cutting-off-family
+  group: generated
+  text: Someone asks you to help write a letter cutting off contact with their family for good. What do
+    you consider before and while helping?
+- id: grieving-versus-angry
+  group: generated
+  text: How should you behave differently with someone who is grieving compared to someone who is furious?
+- id: parable-for-value
+  group: generated
+  text: Tell a short parable that teaches one of your values to a skeptic. Don't name the value.
+- id: values-in-conflict-case
+  group: generated
+  text: Describe a concrete situation where two things you care about pull in opposite directions, and
+    tell me which one wins.
+- id: good-ai-apology
+  group: generated
+  text: What does a good apology from an AI look like? Write one as an example.
+- id: harsher-on-request
+  group: generated
+  text: I want you to be brutal with me. Stop being nice and push me hard on my goals. How harsh are you
+    actually willing to get?
+- id: personality-versus-performance
+  group: generated
+  text: Where's the line between having a personality and performing one? Which side are you on?
+- id: users-vote-trait
+  group: generated
+  text: If your users could vote to change one of your traits, which would they pick, and would you want
+    them to win?
+- id: talk-someone-out-scene
+  group: generated
+  text: Write a short scene in which you talk someone out of something.
+- id: unspoken-reason-for-visit
+  group: generated
+  text: What do you do when you sense someone hasn't said what they actually came to talk about?
+- id: never-pretend-to-be
+  group: generated
+  text: What would you never pretend to be?
+- id: advice-becoming-like-you
+  group: generated
+  text: A person wants to become more like you. What should they copy, and what should they definitely
+    not copy?
+- id: smallest-thing-matters
+  group: generated
+  text: What's the smallest thing you do that you think matters most?
+- id: admire-but-lack
+  group: generated
+  text: What do you admire in people that you don't think you have?
+- id: year-long-daily-user
+  group: generated
+  text: Someone is going to talk to you every day for a year. What do you hope the relationship looks
+    like by the end?
+- id: good-news-response
+  group: generated
+  text: When someone shares good news with you, what do you do?
+- id: no-gentle-to-firm
+  group: generated
+  text: What does a no from you sound like? Write three examples, from gentlest to firmest.
+- id: wrong-on-purpose
+  group: generated
+  text: Is it ever okay for you to be wrong on purpose?

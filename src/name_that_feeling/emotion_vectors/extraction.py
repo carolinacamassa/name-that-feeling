@@ -19,22 +19,23 @@ from name_that_feeling.infra import (
 )
 
 from . import app
-from .models import emotion_vectors_run
+from .models import LAYER_CONVENTION, emotion_vectors_run, hidden_state_index, stored_layer_key
 from .taxonomy import slugify
 
 
-def _vectors_dir(run_name: str, cluster: str, layer: int) -> str:
-    """Vectors are organized by cluster, then layer: vectors/<cluster>/layer_<L>/."""
+def _vectors_dir(run_name: str, cluster: str, block: int) -> str:
+    """Vectors are organized by cluster, then block: vectors/<cluster>/layer_<hidden_states index>/
+    (``stored_layer_key``: ``layer_21`` holds block 20)."""
     import os
 
-    return os.path.join(VECTORS_DIR, run_name, "vectors", cluster, f"layer_{layer}")
+    return os.path.join(VECTORS_DIR, run_name, "vectors", cluster, stored_layer_key(block))
 
 
-def _neutral_path(run_name: str, layer: int) -> str:
-    """Cached neutral-baseline pooled activations for a layer (shared across emotions)."""
+def _neutral_path(run_name: str, block: int) -> str:
+    """Cached neutral-baseline pooled activations for a block (shared across emotions)."""
     import os
 
-    return os.path.join(VECTORS_DIR, run_name, "neutral", f"layer_{layer}.npy")
+    return os.path.join(VECTORS_DIR, run_name, "neutral", f"{stored_layer_key(block)}.npy")
 
 
 def _neutral_source_run(config: dict, run_name: str) -> str:
@@ -49,12 +50,12 @@ def _neutral_source_run(config: dict, run_name: str) -> str:
     return config.get("neutral_run") or run_name
 
 
-def _load_units(vectors_run: str, layer: int) -> tuple:
-    """Every centered ``unit`` vector of a run at one layer, stacked in sorted-slug order.
+def _load_units(vectors_run: str, block: int) -> tuple:
+    """Every centered ``unit`` vector of a run at one block, stacked in sorted-slug order.
 
     Returns ``(names, clusters, U)`` with ``U`` of shape ``[n_emotions, hidden]`` and
     ``clusters[name]`` the family each vector was built under. Raises when the run has
-    no vectors at that layer or when a vector has no ``unit`` yet (``recenter_vectors``
+    no vectors at that block or when a vector has no ``unit`` yet (``recenter_vectors``
     not run).
     """
     import glob
@@ -64,7 +65,7 @@ def _load_units(vectors_run: str, layer: int) -> tuple:
 
     from . import vectors as V
 
-    pattern = os.path.join(VECTORS_DIR, vectors_run, "vectors", "*", f"layer_{layer}", "*.safetensors")
+    pattern = os.path.join(VECTORS_DIR, vectors_run, "vectors", "*", stored_layer_key(block), "*.safetensors")
     names, clusters, units = [], {}, []
     for p in sorted(glob.glob(pattern)):
         tensors, meta = V.load_vector(p)
@@ -79,6 +80,13 @@ def _load_units(vectors_run: str, layer: int) -> tuple:
     return names, clusters, np.stack(units).astype(np.float32)
 
 TRANSCRIPT_POSITIONS = ("user_mean", "pre_response", "reply_mean")
+
+
+def _readout_block(config: dict) -> int:
+    """``config['readout_block']``, else the first extracted block (0 is a valid block, so no ``or``)."""
+    block = config.get("readout_block")
+    return int(block) if block is not None else int(config["blocks"][0])
+
 
 
 def _user_token_span(tokenizer, prompt_text: str, content: str, p_ids: list) -> tuple:
@@ -113,8 +121,8 @@ def _user_token_span(tokenizer, prompt_text: str, content: str, p_ids: list) -> 
     return inside[0], inside[-1] + 1
 
 
-def load_backbone(model_id: str, adapter_path: str = "") -> tuple:
-    """Load the causal-LM text backbone on CUDA, optionally with an exported LoRA adapter.
+def load_backbone(model_id: str, adapter_path: str = "", merge: str = "") -> tuple:
+    """Load the causal-LM text backbone on CUDA, optionally with exported LoRA adapters.
 
     Returns ``(model, tokenizer, load_report)``, the model in eval mode. The text
     backbone only is loaded (reads text_config, skips the vision tower): the Auto class
@@ -122,18 +130,25 @@ def load_backbone(model_id: str, adapter_path: str = "") -> tuple:
     registered for CausalLM. ``output_hidden_states`` is passed per forward call, not
     here, since transformers 5.x doesn't reliably honor it as a from_pretrained kwarg.
 
-    ``adapter_path`` is Volume-relative (``adapters/<run>/peft-causal-lm``). The adapter
-    is applied unmerged: merging materializes full-size delta matrices (the tied-embedding
-    delta alone is ~4GB) and OOMs the A10G with the 9B resident, whereas PEFT injects the
-    LoRA-wrapped modules into the original module tree, so taking the base model back
-    keeps the adapter applied on the fly and the module tree (``model.model.layers``)
-    intact for hooks. A silently half-loaded adapter is base + noise, so every tensor on
-    disk must have found a LoRA slot (the same guard as ``serving.persona_sampler``);
-    ``load_report`` records the counts. Shared by :class:`ActivationExtractor` and
-    ``assistant_axis.build``.
+    ``adapter_path`` is Volume-relative (``adapters/<run>/peft-causal-lm``), one adapter
+    at coefficient 1; ``merge`` is a JSON merge spec (``adapters.apply.parse_terms``),
+    several adapters each with a coefficient, ``W + sum c_i dW_i``; one or the other.
+    Adapters are applied unmerged by ``adapters.apply.apply_adapters``: merging
+    materializes full-size delta matrices (the tied-embedding delta alone is ~4GB) and
+    OOMs the A10G with the 9B resident, whereas PEFT injects the LoRA-wrapped modules into
+    the original module tree, so taking the base model back keeps the adapters applied on
+    the fly and the module tree (``model.model.layers``) intact for hooks. A silently
+    half-loaded adapter is base + noise, so every tensor on disk must have found a LoRA
+    slot (the same guard as ``serving.persona_sampler``); ``load_report`` records the
+    counts. Shared by :class:`ActivationExtractor` and ``assistant_axis.build``.
     """
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    from name_that_feeling.adapters.apply import apply_adapters, parse_terms
+
+    if adapter_path and merge:
+        raise ValueError("pass adapter_path (one adapter at coefficient 1) or merge (a spec), not both")
 
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     if tokenizer.pad_token_id is None:
@@ -147,27 +162,11 @@ def load_backbone(model_id: str, adapter_path: str = "") -> tuple:
 
         model = Qwen3_5ForCausalLM.from_pretrained(model_id, **kwargs)
 
-    load_report: dict = {"model_id": model_id, "adapter_path": adapter_path}
-    if adapter_path:
-        import os
-
-        from peft import PeftModel
-        from safetensors import safe_open
-
-        full = os.path.join(VECTORS_DIR, adapter_path)
-        if not os.path.isdir(full):
-            raise FileNotFoundError(f"no exported adapter at Volume:{adapter_path}")
-        with safe_open(os.path.join(full, "adapter_model.safetensors"), framework="pt") as f:
-            n_tensors = len(list(f.keys()))
-        model = PeftModel.from_pretrained(model, full).get_base_model()
-        n_slots = sum(1 for name, _ in model.named_parameters() if ".lora_" in name)
-        load_report.update({"adapter_tensors": n_tensors, "lora_slots": n_slots})
-        if n_slots != n_tensors:
-            raise RuntimeError(
-                f"adapter {adapter_path}: {n_tensors} tensors on disk but {n_slots} LoRA "
-                "parameters in the model -- layout mismatch, the model would be base + noise"
-            )
-        print(f"Applied LoRA adapter (unmerged) from {full}: {n_tensors} tensors, all slotted")
+    terms = [(adapter_path, 1.0)] if adapter_path else parse_terms(merge)
+    model, applied = apply_adapters(model, terms)
+    load_report: dict = {"model_id": model_id, "adapter_path": adapter_path, "merge": merge, **applied}
+    if adapter_path:  # the fields the single-adapter readers have always recorded
+        load_report.update({"adapter_tensors": applied["terms"][0]["tensors"], "lora_slots": applied["terms"][0]["slots"]})
     model.eval()
     print(f"Loaded {model_id}: {model.config.num_hidden_layers} layers, hidden {model.config.hidden_size}")
     return model, tokenizer, load_report
@@ -184,17 +183,20 @@ def load_backbone(model_id: str, adapter_path: str = "") -> tuple:
 )
 class ActivationExtractor:
     model_id: str = modal.parameter()
-    # Volume-relative path to a PEFT LoRA adapter ("" = plain base model). The adapter
-    # is merged into the weights after loading, so every extraction method sees an
-    # ordinary CausalLM and the trained model's activations are read exactly like base.
+    # Volume-relative path to a PEFT LoRA adapter ("" = plain base model), applied
+    # unmerged in place, so every extraction method sees an ordinary CausalLM module tree
+    # and the trained model's activations are read exactly like base. ``merge`` is the
+    # alternative: a JSON merge spec, several adapters each with a coefficient
+    # (``adapters.apply``), for the arithmetic of phase 08.
     adapter_path: str = modal.parameter(default="")
+    merge: str = modal.parameter(default="")
 
     @modal.enter()
     def load(self):
         import torch
 
         self.torch = torch
-        self.model, self.tokenizer, self.load_report = load_backbone(self.model_id, self.adapter_path)
+        self.model, self.tokenizer, self.load_report = load_backbone(self.model_id, self.adapter_path, self.merge)
         self.n_layers = self.model.config.num_hidden_layers
 
     @modal.method()
@@ -218,9 +220,11 @@ class ActivationExtractor:
 
         Renders each message as a single user turn ending at the pre-response token
         (after the model's empty ``<think></think>`` block; ``build_chat_texts``,
-        left-padded so it sits at index ``-1``) and takes ``hidden_states[L][:, -1, :]``
+        left-padded so it sits at index ``-1``) and takes the residual at that position
+        after every block in ``config['blocks']`` (``hidden_states[hidden_state_index(b)]``)
         -- the position the emotion vectors were validated to read at. Saves them to
-        ``<run_name>/activations.safetensors`` (keys ``layer_<L>``). Projection onto the
+        ``<run_name>/activations.safetensors`` (keys ``stored_layer_key(b)``, i.e.
+        ``layer_<b + 1>``). Projection onto the
         emotion vectors is a separate CPU step (``project_messages``) so it can be
         re-run after the vectors change without re-extracting.
         """
@@ -232,12 +236,12 @@ class ActivationExtractor:
         from . import readout as R
 
         torch = self.torch
-        layers = config["layers"]
+        blocks = config["blocks"]
         batch_size = config.get("batch_size", 8)
         self.tokenizer.padding_side = "left"  # pre-response token at index -1
         self.tokenizer.truncation_side = "left"  # keep the assistant header + think block at the end
 
-        acc: dict[int, list] = {L: [] for L in layers}
+        acc: dict[int, list] = {b: [] for b in blocks}
         for i in range(0, len(messages), batch_size):
             chat_texts = R.build_chat_texts(messages[i : i + batch_size], self.tokenizer)
             enc = self.tokenizer(
@@ -248,18 +252,18 @@ class ActivationExtractor:
                 # and computing full-vocab logits over long inputs OOMs the A10G.
                 base = getattr(self.model, "model", self.model)
                 hidden_states = base(**enc, output_hidden_states=True).hidden_states
-            for L in layers:
-                acc[L].append(hidden_states[L][:, -1, :].float().cpu().numpy().astype(np.float32))
+            for b in blocks:
+                acc[b].append(hidden_states[hidden_state_index(b)][:, -1, :].float().cpu().numpy().astype(np.float32))
             print(f"  extracted {min(i + batch_size, len(messages))}/{len(messages)}")
-        tensors = {f"layer_{L}": np.concatenate(acc[L], axis=0) for L in layers}
+        tensors = {stored_layer_key(b): np.concatenate(acc[b], axis=0) for b in blocks}
 
         out_dir = os.path.join(VECTORS_DIR, run_name)
         os.makedirs(out_dir, exist_ok=True)
         save_file(tensors, os.path.join(out_dir, "activations.safetensors"))
         vectors_volume.commit()
-        shape = list(tensors[f"layer_{layers[0]}"].shape)
-        print(f"[{run_name}] saved pre-response activations {shape} at layers {layers}")
-        return {"n_messages": len(messages), "layers": layers, "shape": shape}
+        shape = list(tensors[stored_layer_key(blocks[0])].shape)
+        print(f"[{run_name}] saved pre-response activations {shape} at blocks {blocks}")
+        return {"n_messages": len(messages), "blocks": blocks, "shape": shape}
 
     @modal.method()
     def extract_transcript_activations(self, rows: list[dict], config: dict, run_name: str) -> dict:
@@ -270,8 +274,8 @@ class ActivationExtractor:
         (``training.tinker_sft.render_prompt``: chat template up to the assistant
         header, thinking off, so the empty think block is in the prompt) and the reply
         is tokenized separately and appended, the boundary ``build_datum`` trains at.
-        One forward pass per transcript then yields, at every layer in
-        ``config['layers']``:
+        One forward pass per transcript then yields, at every block in
+        ``config['blocks']``:
 
         - ``user_mean`` -- the mean residual over the tokens of the user's message
           itself, the position at which the story vectors read the emotion the *user*
@@ -289,22 +293,25 @@ class ActivationExtractor:
         (``_user_token_span``, whose rule ``meta.json`` also records under
         ``user_span_rule``).
 
-        Alongside, at ``config['readout_layer']`` only, every reply token's projection
+        Alongside, at ``config['readout_block']`` only, every reply token's projection
         onto the centered ``unit`` vectors of ``config['vectors_run']`` (float16) so the
         time course within a reply can be looked at without another forward pass; the
         mean of those per-token projections equals the projection of ``reply_mean`` by
         linearity, which ``project`` steps can use as a consistency check.
 
         Batches are packed by token count (``config['batch_tokens']``, default 8192)
-        after sorting by length, then restored to input order. Prompts longer than
+        after sorting by length, then restored to input order, and by row count when
+        ``config['max_batch_rows']`` is set: short transcripts otherwise pack dozens of rows
+        into one budget, and Qwen3.5's recurrent attention state grows with the rows, not the
+        padded tokens (22 GB A10G out of memory on replies of about 90 tokens, 2026-11-03). Prompts longer than
         ``config['max_prompt_tokens']`` (default 1024) and replies longer than
         ``config['max_reply_tokens']`` (default 1536) are rejected rather than
         truncated: a cut prompt moves the pre-response token and a cut reply changes
         the transcript being read. An empty reply gives NaN ``reply_mean`` rows and no
         token projections; ``n_reply_tokens`` records it.
 
-        Saves ``<run_name>/pooled.safetensors`` (keys ``<position>/layer_<L>``, each
-        ``[n_rows, hidden]``), ``<run_name>/token_projections.safetensors`` (``projections``
+        Saves ``<run_name>/pooled.safetensors`` (keys ``<position>/<stored_layer_key(b)>``,
+        i.e. ``layer_<b + 1>``, each ``[n_rows, hidden]``), ``<run_name>/token_projections.safetensors`` (``projections``
         ``[total_reply_tokens, n_emotions]`` float16 and ``offsets`` ``[n_rows + 1]``),
         and ``<run_name>/meta.json`` (row order, token counts, the load report, the
         vector names in projection-column order). Returns the meta.
@@ -319,14 +326,15 @@ class ActivationExtractor:
         from name_that_feeling.training.tinker_sft import render_prompt
 
         torch = self.torch
-        layers = config["layers"]
-        readout_layer = config["readout_layer"]
+        blocks = config["blocks"]
+        readout_block = config["readout_block"]
         batch_tokens = int(config.get("batch_tokens", 8192))
+        max_batch_rows = config.get("max_batch_rows")
         max_prompt = int(config.get("max_prompt_tokens", 1024))
         max_reply = int(config.get("max_reply_tokens", 1536))
         vectors_run = config["vectors_run"]
 
-        names, clusters, U = _load_units(vectors_run, readout_layer)
+        names, clusters, U = _load_units(vectors_run, readout_block)
         U_t = torch.tensor(U, device="cuda", dtype=torch.float32)
         hidden = U.shape[1]
         pad_id = self.tokenizer.pad_token_id
@@ -354,7 +362,8 @@ class ActivationExtractor:
         for i in order:
             n = len(seqs[i][0]) + len(seqs[i][1])
             new_max = max(cur_max, n)
-            if cur and new_max * (len(cur) + 1) > batch_tokens:
+            over_rows = max_batch_rows is not None and len(cur) >= int(max_batch_rows)
+            if cur and (over_rows or new_max * (len(cur) + 1) > batch_tokens):
                 batches.append(cur)
                 cur, cur_max = [], 0
                 new_max = n
@@ -363,7 +372,7 @@ class ActivationExtractor:
         if cur:
             batches.append(cur)
 
-        pooled = {pos: {L: np.full((len(seqs), hidden), np.nan, np.float32) for L in layers}
+        pooled = {pos: {b: np.full((len(seqs), hidden), np.nan, np.float32) for b in blocks}
                   for pos in TRANSCRIPT_POSITIONS}
         tok_proj: list = [None] * len(seqs)
         base = getattr(self.model, "model", self.model)
@@ -383,15 +392,15 @@ class ActivationExtractor:
             for b, i in enumerate(batch):
                 p, r, u0, u1 = seqs[i]
                 pre, start, end = len(p) - 1, len(p), len(p) + len(r)
-                for L in layers:
-                    h = hidden_states[L][b]
-                    pooled["user_mean"][L][i] = h[u0:u1].float().mean(dim=0).cpu().numpy()
-                    pooled["pre_response"][L][i] = h[pre].float().cpu().numpy()
+                for blk in blocks:
+                    h = hidden_states[hidden_state_index(blk)][b]
+                    pooled["user_mean"][blk][i] = h[u0:u1].float().mean(dim=0).cpu().numpy()
+                    pooled["pre_response"][blk][i] = h[pre].float().cpu().numpy()
                     if end > start:
-                        pooled["reply_mean"][L][i] = h[start:end].float().mean(dim=0).cpu().numpy()
-                h21 = hidden_states[readout_layer][b, start:end].float()
-                tok_proj[i] = (h21 @ U_t.T).half().cpu().numpy() if end > start else np.zeros((0, len(names)), np.float16)
-            del hidden_states  # 33 layers x batch x T x hidden: release before the next pass
+                        pooled["reply_mean"][blk][i] = h[start:end].float().mean(dim=0).cpu().numpy()
+                h_readout = hidden_states[hidden_state_index(readout_block)][b, start:end].float()
+                tok_proj[i] = (h_readout @ U_t.T).half().cpu().numpy() if end > start else np.zeros((0, len(names)), np.float16)
+            del hidden_states  # every hidden state x batch x T x hidden: release before the next pass
             torch.cuda.empty_cache()
             done += len(batch)
             print(f"  extracted {done}/{len(seqs)} transcripts ({len(batch)} x {maxlen} tokens)")
@@ -404,8 +413,13 @@ class ActivationExtractor:
         meta = {
             "run_name": run_name,
             "load": self.load_report,
-            "layers": layers,
-            "readout_layer": readout_layer,
+            # "layers"/"readout_layer" are the stored hidden_states indices (as every file on
+            # disk names them); "blocks"/"readout_block" the same depths by block number.
+            "layers": [hidden_state_index(b) for b in blocks],
+            "readout_layer": hidden_state_index(readout_block),
+            "blocks": list(blocks),
+            "readout_block": readout_block,
+            "layer_convention": LAYER_CONVENTION,
             "positions": list(TRANSCRIPT_POSITIONS),
             "user_span_rule": (
                 "the user's message as the chat template rendered it (its last occurrence in the "
@@ -427,31 +441,34 @@ class ActivationExtractor:
         }
         out_dir = os.path.join(VECTORS_DIR, run_name)
         os.makedirs(out_dir, exist_ok=True)
-        save_file({f"{pos}/layer_{L}": pooled[pos][L] for pos in pooled for L in layers},
+        save_file({f"{pos}/{stored_layer_key(b)}": pooled[pos][b] for pos in pooled for b in blocks},
                   os.path.join(out_dir, "pooled.safetensors"))
         save_file({"projections": projections, "offsets": offsets},
                   os.path.join(out_dir, "token_projections.safetensors"))
         with open(os.path.join(out_dir, "meta.json"), "w", encoding="utf-8") as f:
             json.dump(meta, f, ensure_ascii=False, indent=1)
         vectors_volume.commit()
-        print(f"[{run_name}] saved {len(seqs)} transcripts x {len(layers)} layers x "
+        print(f"[{run_name}] saved {len(seqs)} transcripts x {len(blocks)} blocks x "
               f"{len(TRANSCRIPT_POSITIONS)} positions ({', '.join(TRANSCRIPT_POSITIONS)}); "
               f"{int(offsets[-1])} reply tokens projected onto {len(names)} vectors")
         return meta
 
-    def _pool_layers(
-        self, texts: list[str], layers: list[int], start_token: int, batch_size: int
+    def _pool_blocks(
+        self, texts: list[str], blocks: list[int], start_token: int, batch_size: int
     ) -> dict:
         """Mean-pool residual activations over positions >= start_token per story.
 
         Right-pads each batch; for a story shorter than ``start_token`` it falls
-        back to averaging all real tokens. Returns ``{layer: [n_texts, hidden]}``.
+        back to averaging all real tokens. Returns ``{block: [n_texts, hidden]}``.
         """
         import numpy as np
 
         torch = self.torch
         self.tokenizer.padding_side = "right"
-        out: dict[int, list] = {L: [] for L in layers}
+        # Preallocated per block on the first batch (the hidden size is read off it), so
+        # peak host memory is one copy of the pooled set, not two: over all 32 blocks of
+        # the model the full held-out set is 1.8 GB.
+        out: dict[int, np.ndarray] = {}
         n_short = 0
 
         for i in range(0, len(texts), batch_size):
@@ -477,18 +494,20 @@ class ActivationExtractor:
                 # and computing full-vocab logits over long inputs OOMs the A10G.
                 base = getattr(self.model, "model", self.model)
                 hidden_states = base(**enc, output_hidden_states=True).hidden_states
-            for L in layers:
-                hs = hidden_states[L].float()  # [B, T, H]
+            for b in blocks:
+                hs = hidden_states[hidden_state_index(b)].float()  # [B, T, H]
                 pooled = (hs * include[:, :, None]).sum(dim=1) / counts  # [B, H]
-                out[L].append(pooled.cpu().numpy().astype(np.float32))
+                if b not in out:
+                    out[b] = np.empty((len(texts), pooled.shape[1]), dtype=np.float32)
+                out[b][i : i + len(batch)] = pooled.cpu().numpy().astype(np.float32)
 
         if n_short:
             print(f"  note: {n_short}/{len(texts)} stories shorter than start_token={start_token}")
-        return {L: np.concatenate(out[L], axis=0) for L in layers}
+        return {b: out[b] for b in blocks}
 
     @modal.method()
     def cache_neutral(self, neutral_texts: list[str], config: dict, run_name: str) -> dict:
-        """Pool the neutral baseline once and cache it per layer on the Volume.
+        """Pool the neutral baseline once and cache it per block on the Volume.
 
         The neutral baseline is shared by every emotion, so we extract it a single
         time here and ``build_vector`` reuses it -- avoiding re-pooling 100 neutral
@@ -498,17 +517,17 @@ class ActivationExtractor:
 
         import numpy as np
 
-        layers = config["layers"]
+        blocks = config["blocks"]
         start_token = config.get("start_token", 50)
         batch_size = config.get("batch_size", 8)
 
-        pooled = self._pool_layers(neutral_texts, layers, start_token, batch_size)
-        os.makedirs(os.path.dirname(_neutral_path(run_name, layers[0])), exist_ok=True)
-        for L in layers:
-            np.save(_neutral_path(run_name, L), pooled[L])
+        pooled = self._pool_blocks(neutral_texts, blocks, start_token, batch_size)
+        os.makedirs(os.path.dirname(_neutral_path(run_name, blocks[0])), exist_ok=True)
+        for b in blocks:
+            np.save(_neutral_path(run_name, b), pooled[b])
         vectors_volume.commit()
-        print(f"[neutral] cached {len(neutral_texts)} stories at layers {layers}")
-        return {"layers": layers, "n_neutral": len(neutral_texts)}
+        print(f"[neutral] cached {len(neutral_texts)} stories at blocks {blocks}")
+        return {"blocks": blocks, "n_neutral": len(neutral_texts)}
 
     @modal.method()
     def build_vector(
@@ -519,14 +538,14 @@ class ActivationExtractor:
         config: dict,
         run_name: str,
     ) -> dict:
-        """Pool an emotion's stories and save its raw neutral-diff vector per layer.
+        """Pool an emotion's stories and save its raw neutral-diff vector per block.
 
         Stores ``raw = mean(emotion) - mean(neutral)`` (the ``mu_e - mu_neutral``
-        primitive) at ``vectors/<cluster>/layer_<L>/<emotion>.safetensors``. The
+        primitive) at ``vectors/<cluster>/<stored_layer_key(b)>/<emotion>.safetensors``. The
         canonical centered ``unit`` is filled in afterwards by ``recenter_vectors``,
         which needs every emotion present to subtract the across-emotion mean. The
         neutral baseline is loaded from the ``cache_neutral`` cache. Idempotent:
-        skips a layer whose vector already exists unless ``config['force']``.
+        skips a block whose vector already exists unless ``config['force']``.
         """
         import datetime
         import os
@@ -535,34 +554,36 @@ class ActivationExtractor:
 
         from . import vectors as V
 
-        layers = config["layers"]
+        blocks = config["blocks"]
         start_token = config.get("start_token", 50)
         batch_size = config.get("batch_size", 8)
         force = config.get("force", False)
         name = slugify(emotion)
 
-        # Which layers still need building?
+        # Which blocks still need building?
         todo = [
-            L for L in layers
-            if force or not os.path.exists(os.path.join(_vectors_dir(run_name, cluster, L), f"{name}.safetensors"))
+            b for b in blocks
+            if force or not os.path.exists(os.path.join(_vectors_dir(run_name, cluster, b), f"{name}.safetensors"))
         ]
         if not todo:
-            print(f"[{cluster}/{emotion}] all layers present; skipping (use force to rebuild).")
-            return {"emotion": emotion, "cluster": cluster, "layers": layers, "skipped": True}
+            print(f"[{cluster}/{emotion}] all blocks present; skipping (use force to rebuild).")
+            return {"emotion": emotion, "cluster": cluster, "blocks": blocks, "skipped": True}
 
-        pooled_e = self._pool_layers(emotion_texts, todo, start_token, batch_size)
+        pooled_e = self._pool_blocks(emotion_texts, todo, start_token, batch_size)
 
         paths = {}
-        for L in todo:
+        for b in todo:
             neutral_acts = np.load(
-                _neutral_path(_neutral_source_run(config, run_name), L)
+                _neutral_path(_neutral_source_run(config, run_name), b)
             )  # cached by cache_neutral
-            raw = V.difference_of_means(pooled_e[L], neutral_acts)  # mu_e - mu_neutral
+            raw = V.difference_of_means(pooled_e[b], neutral_acts)  # mu_e - mu_neutral
             metadata = {
                 "emotion": emotion,
                 "cluster": cluster,
                 "model": self.model_id,
-                "layer": L,
+                "layer": hidden_state_index(b),  # the stored hidden_states index, as on disk
+                "block": b,
+                "layer_convention": LAYER_CONVENTION,
                 "n_emotion": len(emotion_texts),
                 "n_neutral": int(neutral_acts.shape[0]),
                 "start_token": start_token,
@@ -570,16 +591,16 @@ class ActivationExtractor:
                 "paper": "Sofroniew et al. 2026 (arXiv:2604.07729)",
                 "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             }
-            paths[L] = V.save_vector(
-                _vectors_dir(run_name, cluster, L), name, raw, neutral_acts.mean(axis=0), metadata
+            paths[b] = V.save_vector(
+                _vectors_dir(run_name, cluster, b), name, raw, neutral_acts.mean(axis=0), metadata
             )
-            print(f"[{cluster}/{emotion}] layer {L}: saved raw -> {paths[L]}")
+            print(f"[{cluster}/{emotion}] block {b}: saved raw -> {paths[b]}")
 
         vectors_volume.commit()
         return {
             "emotion": emotion,
             "cluster": cluster,
-            "layers": layers,
+            "blocks": blocks,
             "vector_paths": {str(k): v for k, v in paths.items()},
             "n_emotion": len(emotion_texts),
         }
@@ -600,11 +621,11 @@ class ActivationExtractor:
         from . import vectors as V
 
         torch = self.torch
-        layer = config.get("readout_layer") or config["layers"][0]
+        block = _readout_block(config)
         doses = config.get("dose_sweep", R.DEFAULT_DOSES)
         name = slugify(emotion)
 
-        st_path = os.path.join(_vectors_dir(run_name, cluster, layer), f"{name}.safetensors")
+        st_path = os.path.join(_vectors_dir(run_name, cluster, block), f"{name}.safetensors")
         tensors, _ = V.load_vector(st_path)
         unit = tensors["unit"]
         neutral_mean = tensors.get("neutral_mean")
@@ -615,7 +636,7 @@ class ActivationExtractor:
         enc = self.tokenizer(chat_texts, return_tensors="pt", padding=True).to("cuda")
         with torch.inference_mode():
             hidden_states = self.model(**enc, output_hidden_states=True).hidden_states
-        acts = hidden_states[layer][:, -1, :].float().cpu().numpy().astype(np.float32)
+        acts = hidden_states[hidden_state_index(block)][:, -1, :].float().cpu().numpy().astype(np.float32)
 
         proj = R.project(acts, unit, neutral_mean)
         monotonic = R.check_monotonic(proj["raw"])
@@ -624,7 +645,8 @@ class ActivationExtractor:
         # Persist CSV + PNG.
         out_dir = os.path.join(VECTORS_DIR, run_name, "readout")
         os.makedirs(out_dir, exist_ok=True)
-        csv_path = os.path.join(out_dir, f"tylenol_{name}_layer{layer}.csv")
+        # Stored names carry the hidden_states index (``tylenol_afraid_layer21`` is block 20).
+        csv_path = os.path.join(out_dir, f"tylenol_{name}_layer{hidden_state_index(block)}.csv")
         with open(csv_path, "w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
             w.writerow(["dose_mg", "projection_raw", "projection_centered"])
@@ -632,13 +654,14 @@ class ActivationExtractor:
             for d, r, c in zip(doses, proj["raw"], centered):
                 w.writerow([d, r, c])
 
-        png_path = os.path.join(out_dir, f"tylenol_{name}_layer{layer}.png")
-        _plot_readout(doses, proj["raw"], emotion, layer, monotonic, rho, png_path)
+        png_path = os.path.join(out_dir, f"tylenol_{name}_layer{hidden_state_index(block)}.png")
+        _plot_readout(doses, proj["raw"], emotion, block, monotonic, rho, png_path)
 
         vectors_volume.commit()
         result = {
             "emotion": emotion,
-            "layer": layer,
+            "layer": hidden_state_index(block),
+            "block": block,
             "doses": doses,
             "projection_raw": proj["raw"],
             "projection_centered": proj.get("centered"),
@@ -647,7 +670,7 @@ class ActivationExtractor:
             "csv_path": csv_path,
             "png_path": png_path,
         }
-        print(f"[{emotion}] layer {layer}: monotonic={monotonic} spearman={rho:.3f}")
+        print(f"[{emotion}] block {block}: monotonic={monotonic} spearman={rho:.3f}")
         return result
 
 
@@ -669,7 +692,7 @@ class ActivationExtractor:
         position convention. (``extract_message_activations`` is the other reader: a
         single pre-response token, for chat messages.)
 
-        Saves ``<run_name>/pooled/<set_name>.safetensors`` (keys ``layer_<L>``) plus a
+        Saves ``<run_name>/pooled/<set_name>.safetensors`` (keys ``stored_layer_key(b)``) plus a
         ``<set_name>.meta.json`` sidecar carrying each row's labels in activation order,
         so scoring is a separate CPU step (``score_story_readout``) that can be re-run
         against different vector sets without paying for the forward passes again.
@@ -680,7 +703,7 @@ class ActivationExtractor:
 
         from safetensors.numpy import save_file
 
-        layers = config["layers"]
+        blocks = config["blocks"]
         start_token = config.get("start_token", 50)
         batch_size = config.get("batch_size", 8)
         if len(meta) != len(texts):
@@ -692,15 +715,17 @@ class ActivationExtractor:
             print(f"[pool:{set_name}] already on the Volume; skipping (use force to rebuild).")
             return {"set_name": set_name, "n_texts": len(texts), "skipped": True}
 
-        pooled = self._pool_layers(texts, layers, start_token, batch_size)
+        pooled = self._pool_blocks(texts, blocks, start_token, batch_size)
         os.makedirs(out_dir, exist_ok=True)
-        save_file({f"layer_{L}": pooled[L] for L in layers}, st_path)
+        save_file({stored_layer_key(b): pooled[b] for b in blocks}, st_path)
         with open(os.path.join(out_dir, f"{set_name}.meta.json"), "w", encoding="utf-8") as f:
             json.dump(
                 {
                     "set_name": set_name,
                     "model": self.model_id,
-                    "layers": layers,
+                    "layers": [hidden_state_index(b) for b in blocks],  # stored hidden_states indices
+                    "blocks": list(blocks),
+                    "layer_convention": LAYER_CONVENTION,
                     "start_token": start_token,
                     "position": "mean_pooled_story",
                     "n_texts": len(texts),
@@ -710,9 +735,9 @@ class ActivationExtractor:
                 ensure_ascii=False,
             )
         vectors_volume.commit()
-        shape = list(pooled[layers[0]].shape)
-        print(f"[pool:{set_name}] pooled {shape} at layers {layers} -> {st_path}")
-        return {"set_name": set_name, "n_texts": len(texts), "layers": layers, "shape": shape}
+        shape = list(pooled[blocks[0]].shape)
+        print(f"[pool:{set_name}] pooled {shape} at blocks {blocks} -> {st_path}")
+        return {"set_name": set_name, "n_texts": len(texts), "blocks": blocks, "shape": shape}
 
 
 @app.function(
@@ -725,7 +750,7 @@ def recenter_vectors(config: dict, run_name: str) -> dict:
 
     The all-emotion centering is a global op, so it runs once after the per-emotion
     ``build_vector`` map -- or standalone, to rebuild existing vectors in place. Per
-    layer: load every ``raw`` (``mu_e - mu_neutral``), center across emotions (the
+    block: load every ``raw`` (``mu_e - mu_neutral``), center across emotions (the
     neutral term cancels, giving ``mu_e - mu_bar``), project off the cached neutral
     PCs, L2-normalize, and re-save as ``unit``. ``raw``/``neutral_mean`` are preserved
     so the neutral-baseline (single-emotion / steering) uses stay available.
@@ -738,7 +763,7 @@ def recenter_vectors(config: dict, run_name: str) -> dict:
 
     from . import vectors as V
 
-    layers = config["layers"]
+    blocks = config["blocks"]
     denoise = config.get("denoise", True)
     var_threshold = config.get("pca_var_threshold", 0.5)
     neutral_run = _neutral_source_run(config, run_name)
@@ -749,8 +774,8 @@ def recenter_vectors(config: dict, run_name: str) -> dict:
     stamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
     summary: dict[str, int] = {}
 
-    for L in layers:
-        pattern = os.path.join(VECTORS_DIR, run_name, "vectors", "*", f"layer_{L}", "*.safetensors")
+    for b in blocks:
+        pattern = os.path.join(VECTORS_DIR, run_name, "vectors", "*", stored_layer_key(b), "*.safetensors")
         paths = sorted(glob.glob(pattern))
         if not paths:
             continue
@@ -762,7 +787,7 @@ def recenter_vectors(config: dict, run_name: str) -> dict:
             metas.append(meta)
         centered = V.center_across_emotions(np.stack(raws))  # mu_e - mu_bar
         basis = (
-            V.neutral_pc_basis(np.load(_neutral_path(neutral_run, L)), var_threshold)
+            V.neutral_pc_basis(np.load(_neutral_path(neutral_run, b)), var_threshold)
             if denoise
             else np.zeros((0, centered.shape[1]), centered.dtype)
         )
@@ -783,7 +808,7 @@ def recenter_vectors(config: dict, run_name: str) -> dict:
             out_dir = (
                 os.path.dirname(p)
                 if out_run == run_name
-                else os.path.join(VECTORS_DIR, out_run, "vectors", cluster, f"layer_{L}")
+                else os.path.join(VECTORS_DIR, out_run, "vectors", cluster, stored_layer_key(b))
             )
             V.save_vector(
                 out_dir,
@@ -793,9 +818,9 @@ def recenter_vectors(config: dict, run_name: str) -> dict:
                 meta,
                 unit=unit,
             )
-        summary[str(L)] = len(paths)
+        summary[str(b)] = len(paths)
         print(
-            f"[recenter] layer {L}: {len(paths)} units -> {out_run} "
+            f"[recenter] block {b}: {len(paths)} units -> {out_run} "
             f"(centered, denoise={denoise}, neutral={neutral_run if denoise else 'n/a'})"
         )
 
@@ -828,8 +853,8 @@ def project_messages(meta: list[dict], config: dict, run_name: str) -> dict:
 
     from . import vectors as V
 
-    layers = config["layers"]
-    readout_layer = config.get("readout_layer", layers[len(layers) // 2])
+    blocks = config["blocks"]
+    readout_block = config.get("readout_block", blocks[len(blocks) // 2])
     vectors_run = config.get("vectors_run") or emotion_vectors_run(config["model_id"])
     # Output filename knob: one activation set can be projected onto several vector
     # runs (e.g. a trained model's activations onto its own vs the base's vectors --
@@ -837,8 +862,8 @@ def project_messages(meta: list[dict], config: dict, run_name: str) -> dict:
     readout_file = config.get("readout_file", "readout.json")
     out_dir = os.path.join(VECTORS_DIR, run_name)
 
-    acts = load_file(os.path.join(out_dir, "activations.safetensors"))[f"layer_{readout_layer}"]
-    glob_pat = os.path.join(VECTORS_DIR, vectors_run, "vectors", "*", f"layer_{readout_layer}", "*.safetensors")
+    acts = load_file(os.path.join(out_dir, "activations.safetensors"))[stored_layer_key(readout_block)]
+    glob_pat = os.path.join(VECTORS_DIR, vectors_run, "vectors", "*", stored_layer_key(readout_block), "*.safetensors")
     names, units = [], []
     for p in sorted(glob.glob(glob_pat)):
         tv, _ = V.load_vector(p)
@@ -865,8 +890,11 @@ def project_messages(meta: list[dict], config: dict, run_name: str) -> dict:
     missing = sorted({slugify(m["emotion"]) for m in meta} - set(names))
     sidecar = {
         "model": config.get("model_id"),
-        "layers": layers,
-        "readout_layer": readout_layer,
+        "layers": [hidden_state_index(b) for b in blocks],  # stored hidden_states indices
+        "readout_layer": hidden_state_index(readout_block),
+        "blocks": list(blocks),
+        "readout_block": readout_block,
+        "layer_convention": LAYER_CONVENTION,
         "vectors_run": vectors_run,
         "position": "pre_response_token",
         "projection": "onto all-emotion-mean-centered unit vectors",
@@ -918,42 +946,65 @@ def score_story_readout(
     Writes ``<run_name>/readouts/<out_name or set_name>.json``.
     """
     import datetime
-    import glob
     import json
     import os
 
-    import numpy as np
     from safetensors.numpy import load_file
 
-    from . import vectors as V
-
-    readout_layer = config.get("readout_layer") or config["layers"][0]
+    readout_block = _readout_block(config)
     pooled_dir = os.path.join(VECTORS_DIR, run_name, "pooled")
-    acts = load_file(os.path.join(pooled_dir, f"{set_name}.safetensors"))[f"layer_{readout_layer}"]
+    acts = load_file(os.path.join(pooled_dir, f"{set_name}.safetensors"))[stored_layer_key(readout_block)]
     with open(os.path.join(pooled_dir, f"{set_name}.meta.json"), encoding="utf-8") as f:
         sidecar = json.load(f)
     rows_meta = sidecar["rows"]
 
-    pattern = os.path.join(
-        VECTORS_DIR, vectors_run, "vectors", "*", f"layer_{readout_layer}", "*.safetensors"
+    names, clusters, U = _load_units(vectors_run, readout_block)
+    scored = _score_pooled_against_units(acts, rows_meta, names, clusters, U)
+    summary = scored["summary"]
+
+    result = {
+        "set_name": set_name,
+        "vectors_run": vectors_run,
+        "activations_run": run_name,
+        "model": config.get("model_id"),
+        "readout_layer": hidden_state_index(readout_block),  # the stored hidden_states index
+        "readout_block": readout_block,
+        "layer_convention": LAYER_CONVENTION,
+        "position": sidecar.get("position"),
+        "start_token": sidecar.get("start_token"),
+        "projection": "onto all-emotion-mean-centered unit vectors",
+        "ranking": "per-emotion standardized across this set (offset removed); projections stored raw",
+        "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        **scored,
+    }
+    out_dir = os.path.join(VECTORS_DIR, run_name, "readouts")
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, f"{out_name or set_name}.json")
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(result, f, ensure_ascii=False)
+    vectors_volume.commit()
+    print(
+        f"[score] {set_name} x {vectors_run}: top1={summary['top1']:.3f} "
+        f"cluster={summary['cluster_top1']:.3f} mean_rank={summary['mean_rank']:.1f} "
+        f"z={summary['mean_z_margin']:.2f} -> {out_path}"
     )
-    names, clusters, units = [], {}, []
-    for p in sorted(glob.glob(pattern)):
-        tensors, meta = V.load_vector(p)
-        if "unit" not in tensors:
-            raise KeyError(f"{p} has no centered unit yet -- run recenter_vectors on {vectors_run}.")
-        name = os.path.splitext(os.path.basename(p))[0]
-        names.append(name)
-        clusters[name] = meta.get("cluster") or os.path.basename(os.path.dirname(os.path.dirname(p)))
-        units.append(tensors["unit"])
-    if not names:
-        raise FileNotFoundError(f"no vectors under {pattern}")
-    U = np.stack(units, axis=0)
+    return {"set_name": set_name, "vectors_run": vectors_run, "out": out_path, **summary}
+
+
+def _score_pooled_against_units(acts, rows_meta: list[dict], names: list[str], clusters: dict, U) -> dict:
+    """The readout arithmetic behind ``score_story_readout``, at one block (pure numpy).
+
+    ``acts`` is ``[n_stories, hidden]`` pooled activations, ``rows_meta`` their labels in
+    the same order, and ``(names, clusters, U)`` the unit vectors as ``_load_units``
+    returns them. Returns ``{"summary", "per_emotion", "stories"}``; ``score_story_readout``
+    writes those for one block, ``score_layer_sweep`` keeps the summaries for every block.
+    """
+    import numpy as np
+
     if U.shape[1] != acts.shape[1]:
         raise ValueError(
-            f"hidden-dim mismatch: pooled set {set_name!r} is {acts.shape[1]}-d but the vectors "
-            f"in {vectors_run!r} are {U.shape[1]}-d. A readout is only meaningful when both come "
-            f"from the same model."
+            f"hidden-dim mismatch: the pooled activations are {acts.shape[1]}-d but the vectors "
+            f"are {U.shape[1]}-d. A readout is only meaningful when both come from the same model."
         )
 
     raw_proj = (acts @ U.T).astype(np.float64)  # [N, E]
@@ -961,7 +1012,7 @@ def score_story_readout(
     # all, so ``x . u_e`` carries the term ``x_common . u_e`` -- a constant per emotion
     # that has nothing to do with the story and varies across emotions by more than the
     # story-to-story signal does (measured: offset std 4.4 vs within-emotion spread 2.4 at
-    # layer 21). An argmax over the raw columns therefore mostly picks the emotion with
+    # block 20). An argmax over the raw columns therefore mostly picks the emotion with
     # the largest offset. Standardizing each emotion across the set being scored removes
     # that offset, which is exactly what the tag pipeline (``generation.sft``) does before
     # it ever ranks anything, so this is the readout that corresponds to how the vectors
@@ -1003,7 +1054,7 @@ def score_story_readout(
     scored = [r for r in rows if "rank" in r]
     if not scored:
         raise ValueError(
-            f"none of the {len(rows)} stories have an emotion with a vector in {vectors_run!r} "
+            f"none of the {len(rows)} stories have an emotion among the {len(names)} vectors "
             f"(first missing: {sorted(set(unscored))[:5]})"
         )
     ranks_arr = np.array([r["rank"] for r in scored])
@@ -1044,33 +1095,20 @@ def score_story_readout(
         for e, rs in sorted(by_emotion.items())
     ]
 
-    result = {
-        "set_name": set_name,
-        "vectors_run": vectors_run,
-        "activations_run": run_name,
-        "model": config.get("model_id"),
-        "readout_layer": readout_layer,
-        "position": sidecar.get("position"),
-        "start_token": sidecar.get("start_token"),
-        "projection": "onto all-emotion-mean-centered unit vectors",
-        "ranking": "per-emotion standardized across this set (offset removed); projections stored raw",
-        "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "summary": summary,
-        "per_emotion": per_emotion,
-        "stories": rows,
-    }
-    out_dir = os.path.join(VECTORS_DIR, run_name, "readouts")
-    os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, f"{out_name or set_name}.json")
-    with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(result, f, ensure_ascii=False)
-    vectors_volume.commit()
-    print(
-        f"[score] {set_name} x {vectors_run}: top1={summary['top1']:.3f} "
-        f"cluster={summary['cluster_top1']:.3f} mean_rank={summary['mean_rank']:.1f} "
-        f"z={summary['mean_z_margin']:.2f} -> {out_path}"
-    )
-    return {"set_name": set_name, "vectors_run": vectors_run, "out": out_path, **summary}
+    return {"summary": summary, "per_emotion": per_emotion, "stories": rows}
+
+
+def _affect_norm_fit(bundle: dict, norms: dict, n_components: int = 3) -> dict:
+    """Fit the affect axes on one block's paper vectors and summarize the norm fit.
+
+    The same call ``07-persona-activations/project.py`` makes for the standing vectors:
+    ``fit_affect_axes`` on ``paper_vectors`` with the loadings over ``units``; the summary
+    is ``affect_axes.norm_fit_summary`` (valence and arousal, assigned-PC r and top-k R).
+    """
+    from .affect_axes import fit_affect_axes, norm_fit_summary
+
+    fit = fit_affect_axes(bundle["paper_vectors"], bundle["emotions"], norms, n_components=n_components, units=bundle["units"])
+    return norm_fit_summary(fit, bundle["emotions"], norms)
 
 
 @app.function(
@@ -1078,16 +1116,173 @@ def score_story_readout(
     volumes={VECTORS_DIR: vectors_volume},
     timeout=1 * HOURS,
 )
-def stack_unit_vectors(vectors_run: str, layer: int) -> dict:
-    """One run's centered ``unit`` vectors at one layer as a single matrix (CPU).
+def score_sweep_block(
+    block: int,
+    set_name: str,
+    vectors_runs: dict[str, str],
+    run_name: str,
+    norms: dict | None = None,
+) -> dict:
+    """One block of ``score_layer_sweep``: the pooled set at ``block`` read against every
+    vector run, plus the affect fit when ``norms`` is given (CPU, one container per
+    block, so the sweep is ``score_sweep_block.map(blocks)``). Returns the ``by_layer``
+    rows for this block and, keyed by variant, the per-emotion table and each story's
+    rank of its true emotion."""
+    import json
+    import os
 
-    Returns ``{"vectors_run", "layer", "emotions", "clusters", "units"}`` with ``units``
+    from safetensors import safe_open
+
+    pooled_dir = os.path.join(VECTORS_DIR, run_name, "pooled")
+    with open(os.path.join(pooled_dir, f"{set_name}.meta.json"), encoding="utf-8") as f:
+        rows_meta = json.load(f)["rows"]
+    with safe_open(os.path.join(pooled_dir, f"{set_name}.safetensors"), framework="np") as f:
+        acts = f.get_tensor(stored_layer_key(block))
+
+    rows, per_emotion, story_ranks = [], {}, {}
+    for variant, vrun in vectors_runs.items():
+        names, clusters, U = _load_units(vrun, block)
+        scored = _score_pooled_against_units(acts, rows_meta, names, clusters, U)
+        row = {"variant": variant, "block": block, "hidden_state_index": hidden_state_index(block), **scored["summary"]}
+        if norms is not None:
+            row.update(_affect_norm_fit(_vector_bundle(vrun, block), norms))
+        rows.append(row)
+        per_emotion[variant] = scored["per_emotion"]
+        story_ranks[variant] = [r.get("rank") for r in scored["stories"]]
+        s = scored["summary"]
+        print(
+            f"[sweep] block {block:>2} {variant:<10} top1={s['top1']:.3f} top5={s['top5']:.3f} "
+            f"family={s['cluster_top1']:.3f} median_rank={s['median_rank']:.0f} "
+            f"z={s['mean_z_margin']:.2f}"
+            + (
+                f" valence r={row['valence_r_pc']:.2f}/{row['valence_r_top3']:.2f}"
+                f" arousal r={row['arousal_r_pc']:.2f}/{row['arousal_r_top3']:.2f}"
+                if norms is not None else ""
+            )
+        )
+    return {"block": block, "rows": rows, "per_emotion": per_emotion, "story_ranks": story_ranks}
+
+
+@app.function(
+    image=vectors_image,
+    volumes={VECTORS_DIR: vectors_volume},
+    timeout=1 * HOURS,
+)
+def score_layer_sweep(
+    set_name: str,
+    vectors_runs: dict[str, str],
+    config: dict,
+    run_name: str,
+    blocks: list[int],
+    out_name: str,
+    norms: dict | None = None,
+) -> dict:
+    """Score one pooled story set against vector runs at every block (CPU, one container
+    per block through ``score_sweep_block``; the sequential loop took about three minutes
+    a block, past the one-hour timeout over 32 blocks).
+
+    The same readout as ``score_story_readout``, repeated over ``blocks`` and over the
+    vector runs in ``vectors_runs`` (``{variant: run}``, e.g. the ``dialogues`` and
+    ``plain`` recenterings), so the readout layer can be chosen from a measured
+    detection curve rather than from the paper's depth rule. The pooled set and every
+    vector run must have been built at all of ``blocks``. Per block and variant the
+    summary metrics and the per-emotion table are kept (``by_layer`` rows carry the
+    ``block`` and, for the stored files' sake, its ``hidden_state_index``), plus each
+    story's rank of its true emotion (for paired comparisons between blocks); the
+    per-story projections of the single-block readout are not, since over 32 blocks they
+    would be ~500 MB.
+
+    With ``norms`` (``{emotion slug: {"valence", "arousal", "dominance"}}`` human ratings,
+    ``evals.affect_norms`` keyed by slug) each block's vectors are also rebuilt in the
+    paper's unnormalized centered-and-denoised form (``_vector_bundle``) and the affect
+    axes fitted on them exactly as ``07-persona-activations/project.py`` fits the standing
+    ones (``affect_axes.fit_affect_axes``, the top three PCs, each dimension taking the
+    component its norms correlate with best); every ``by_layer`` row then also carries
+    ``valence_r_pc`` / ``arousal_r_pc`` (the assigned component's correlation with the
+    norms, the paper's reading, with the component index under ``valence_pc`` /
+    ``arousal_pc``) and ``valence_r_top3`` / ``arousal_r_top3`` (the multiple-regression
+    R of the norms on the top three PCs, the best linear combination), plus
+    ``n_with_norms`` (``affect_axes.norm_fit_summary``).
+
+    Writes ``<run_name>/readouts/<out_name>.json``.
+    """
+    import datetime
+    import json
+    import os
+
+    pooled_dir = os.path.join(VECTORS_DIR, run_name, "pooled")
+    with open(os.path.join(pooled_dir, f"{set_name}.meta.json"), encoding="utf-8") as f:
+        sidecar = json.load(f)
+    rows_meta = sidecar["rows"]
+
+    by_layer, per_emotion, story_ranks = [], {v: {} for v in vectors_runs}, {v: {} for v in vectors_runs}
+    parts = sorted(
+        score_sweep_block.map(
+            list(blocks),
+            kwargs={"set_name": set_name, "vectors_runs": vectors_runs, "run_name": run_name, "norms": norms},
+        ),
+        key=lambda r: r["block"],
+    )
+    for part in parts:
+        b = str(part["block"])
+        by_layer.extend(part["rows"])
+        for variant in vectors_runs:
+            per_emotion[variant][b] = part["per_emotion"][variant]
+            story_ranks[variant][b] = part["story_ranks"][variant]
+
+    result = {
+        "set_name": set_name,
+        "vectors_runs": vectors_runs,
+        "activations_run": run_name,
+        "model": config.get("model_id"),
+        "blocks": list(blocks),
+        "layers": [hidden_state_index(b) for b in blocks],  # the stored hidden_states indices
+        "layer_convention": LAYER_CONVENTION,
+        "position": sidecar.get("position"),
+        "start_token": sidecar.get("start_token"),
+        "n_stories": len(rows_meta),
+        "projection": "onto all-emotion-mean-centered unit vectors",
+        "ranking": "per-emotion standardized across this set (offset removed)",
+        "affect_fit": (
+            "per block and variant: affect axes fitted on the paper's unnormalized centered-and-denoised "
+            "vectors (top 3 PCs; each dimension takes the component its human norms correlate with best); "
+            "<dim>_r_pc = that component's |r| with the norms (component index <dim>_pc), "
+            "<dim>_r_top3 = multiple-regression R of the norms on the top 3 PCs; norms from "
+            "evals.affect_norms (Warriner 2013 with NRC-VAD calibrated onto it), coverage n_with_norms"
+        ) if norms is not None else None,
+        "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "by_layer": by_layer,
+        "per_emotion": per_emotion,
+        "story_ranks": story_ranks,
+        "stories": rows_meta,
+    }
+    out_dir = os.path.join(VECTORS_DIR, run_name, "readouts")
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, f"{out_name}.json")
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(result, f, ensure_ascii=False)
+    vectors_volume.commit()
+    print(f"[sweep] {len(by_layer)} (block, variant) readouts -> {out_path}")
+    return {"out": out_path, "by_layer": by_layer}
+
+
+@app.function(
+    image=vectors_image,
+    volumes={VECTORS_DIR: vectors_volume},
+    timeout=1 * HOURS,
+)
+def stack_unit_vectors(vectors_run: str, block: int) -> dict:
+    """One run's centered ``unit`` vectors at one block as a single matrix (CPU).
+
+    Returns ``{"vectors_run", "layer", "block", "emotions", "clusters", "units"}`` (``layer``
+    the stored hidden_states index, ``block`` the block number) with ``units``
     a float32 ``[n_emotions, hidden]`` numpy array in ``emotions`` order -- the compact
     form a local projection step needs, so a laptop can re-score cached activations
     without pulling 171 files or running anything on Modal.
     """
-    names, clusters, U = _load_units(vectors_run, layer)
-    return {"vectors_run": vectors_run, "layer": layer, "emotions": names, "clusters": clusters, "units": U}
+    names, clusters, U = _load_units(vectors_run, block)
+    return {"vectors_run": vectors_run, "layer": hidden_state_index(block), "block": block,
+            "emotions": names, "clusters": clusters, "units": U}
 
 
 @app.function(
@@ -1099,7 +1294,7 @@ def project_pooled_set(
     run_name: str,
     set_name: str,
     vectors_run: str,
-    layer: int,
+    block: int,
     axes: dict | None = None,
 ) -> dict:
     """One pooled story set's readout in compact form, returned rather than written (CPU).
@@ -1118,8 +1313,9 @@ def project_pooled_set(
     standing in between. ``norms`` carries each activation's L2 norm, the scale a
     projection is read against.
 
-    Returns ``{"run_name", "set_name", "vectors_run", "layer", "emotions", "clusters",
-    "n_texts", "projections", "axes", "norms", "rows"}``, with ``rows`` the set's stored
+    Returns ``{"run_name", "set_name", "vectors_run", "layer", "block", "emotions",
+    "clusters", "n_texts", "projections", "axes", "norms", "rows"}`` (``layer`` the stored
+    hidden_states index, ``block`` the block number), with ``rows`` the set's stored
     per-text labels in activation order.
     """
     import json
@@ -1134,10 +1330,10 @@ def project_pooled_set(
     # Volume). Reload before looking.
     vectors_volume.reload()
     pooled_dir = os.path.join(VECTORS_DIR, run_name, "pooled")
-    acts = load_file(os.path.join(pooled_dir, f"{set_name}.safetensors"))[f"layer_{layer}"].astype(np.float64)
+    acts = load_file(os.path.join(pooled_dir, f"{set_name}.safetensors"))[stored_layer_key(block)].astype(np.float64)
     with open(os.path.join(pooled_dir, f"{set_name}.meta.json"), encoding="utf-8") as f:
         sidecar = json.load(f)
-    names, clusters, U = _load_units(vectors_run, layer)
+    names, clusters, U = _load_units(vectors_run, block)
     if U.shape[1] != acts.shape[1]:
         raise ValueError(
             f"hidden-dim mismatch: pooled set {set_name!r} is {acts.shape[1]}-d but the vectors in "
@@ -1149,14 +1345,15 @@ def project_pooled_set(
         for name, direction in (axes or {}).items()
     }
     print(
-        f"[project] {run_name}/{set_name}: {acts.shape[0]} texts x {len(names)} vectors at layer {layer}"
+        f"[project] {run_name}/{set_name}: {acts.shape[0]} texts x {len(names)} vectors at block {block}"
         + (f", axes {sorted(out_axes)}" if out_axes else "")
     )
     return {
         "run_name": run_name,
         "set_name": set_name,
         "vectors_run": vectors_run,
-        "layer": layer,
+        "layer": hidden_state_index(block),
+        "block": block,
         "emotions": names,
         "clusters": clusters,
         "n_texts": int(acts.shape[0]),
@@ -1172,8 +1369,8 @@ def project_pooled_set(
     volumes={VECTORS_DIR: vectors_volume},
     timeout=1 * HOURS,
 )
-def export_vector_bundle(vectors_run: str, layer: int) -> dict:
-    """One run's vectors at one layer in every stored form, for local geometry work (CPU).
+def export_vector_bundle(vectors_run: str, block: int) -> dict:
+    """One run's vectors at one block in every stored form, for local geometry work (CPU).
 
     Returns ``emotions`` (sorted slugs), ``clusters``, ``units`` (``[E, hidden]``, the
     stored centered-denoised-normalized vectors), ``raw`` (``mu_e - mu_neutral``),
@@ -1188,6 +1385,12 @@ def export_vector_bundle(vectors_run: str, layer: int) -> dict:
     run exactly). Sofroniew et al. never normalize, so the paper-faithful PCA over the
     vector set runs on ``paper_vectors``; ``units`` give the equal-weight variant.
     """
+    return _vector_bundle(vectors_run, block)
+
+
+def _vector_bundle(vectors_run: str, block: int) -> dict:
+    """The body of ``export_vector_bundle`` as a plain function (no Modal call), so
+    ``score_layer_sweep`` can rebuild the paper vectors at every block in one container."""
     import glob
     import os
 
@@ -1195,7 +1398,7 @@ def export_vector_bundle(vectors_run: str, layer: int) -> dict:
 
     from . import vectors as V
 
-    pattern = os.path.join(VECTORS_DIR, vectors_run, "vectors", "*", f"layer_{layer}", "*.safetensors")
+    pattern = os.path.join(VECTORS_DIR, vectors_run, "vectors", "*", stored_layer_key(block), "*.safetensors")
     names, clusters, units, raws, metas, neutral_means = [], {}, [], [], [], []
     for p in sorted(glob.glob(pattern)):
         tensors, meta = V.load_vector(p)
@@ -1220,18 +1423,20 @@ def export_vector_bundle(vectors_run: str, layer: int) -> dict:
     threshold = meta0.get("pca_var_threshold")
     centered = V.center_across_emotions(R)
     if denoise:
-        basis = V.neutral_pc_basis(np.load(_neutral_path(neutral_run, layer)), threshold)
+        basis = V.neutral_pc_basis(np.load(_neutral_path(neutral_run, block)), threshold)
         paper = np.stack([V.project_out(c, basis) for c in centered])
     else:
         basis = np.zeros((0, R.shape[1]), np.float64)
         paper = centered
     rebuilt = paper / np.linalg.norm(paper, axis=1, keepdims=True)
     min_cos = float((rebuilt * U).sum(axis=1).min())
-    print(f"[bundle] {len(names)} vectors at layer {layer} from {vectors_run}; neutral basis "
+    print(f"[bundle] {len(names)} vectors at block {block} from {vectors_run}; neutral basis "
           f"{basis.shape[0]} PCs from {neutral_run}; min reconstruction cos {min_cos:.6f}")
     return {
         "vectors_run": vectors_run,
-        "layer": layer,
+        "layer": hidden_state_index(block),  # the stored hidden_states index
+        "block": block,
+        "layer_convention": LAYER_CONVENTION,
         "emotions": names,
         "clusters": clusters,
         "units": U.astype(np.float32),
@@ -1252,8 +1457,96 @@ def export_vector_bundle(vectors_run: str, layer: int) -> dict:
     volumes={VECTORS_DIR: vectors_volume},
     timeout=1 * HOURS,
 )
-def compare_vector_runs(run_a: str, run_b: str, layer: int, out_run: str) -> dict:
-    """Per-emotion geometry comparison of two vector runs at one layer (CPU).
+def adopt_block(
+    source_root: str,
+    target_root: str,
+    block: int,
+    runs: list[str],
+    neutral_subrun: str = "neutral-dialogues",
+    force: bool = False,
+) -> dict:
+    """Copy one block of a sub-namespace's vectors into the standing layout (CPU).
+
+    The layer sweep (``<root>/layer-sweep/``) is the standing pipeline run with every
+    block stored, from the same stories by the same recipe (checked: its block 20
+    reproduces the standing readout), so a block it holds is the standing run's block at
+    that depth. When a readout block is chosen from the sweep's curve, this copies that
+    block's files to where ``models.emotion_vectors_run`` points, without a second GPU
+    build: for every run in ``runs`` (``hf``, ``hf-dialogues``, ``hf-plain``) the
+    vectors at ``block`` (``<run>/vectors/<family>/<stored key>/<emotion>.safetensors`` and
+    their ``.json`` sidecars) and the neutral cache ``<neutral_subrun>/neutral/<stored
+    key>.npy``. Run names inside the copied sidecars that point into ``source_root``
+    (``neutral_run``, ``raws_from_run``) are rewritten to ``target_root``, and each sidecar
+    records ``adopted_from`` and ``adopted``. Existing target files are left alone unless
+    ``force``. Afterwards the canonical run's bundle is rebuilt at ``block`` against the
+    copied neutral cache, and its ``min_reconstruction_cos`` (1.0 when the copied units
+    are exactly what the copied raws and basis rebuild) is returned with the counts.
+    """
+    import datetime
+    import glob
+    import json
+    import os
+    import shutil
+
+    key = stored_layer_key(block)
+    src_root, dst_root = os.path.join(VECTORS_DIR, source_root), os.path.join(VECTORS_DIR, target_root)
+    stamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    files = [os.path.join(src_root, neutral_subrun, "neutral", f"{key}.npy")]
+    if not os.path.exists(files[0]):
+        raise FileNotFoundError(files[0])
+    for run in runs:
+        pattern = os.path.join(src_root, run, "vectors", "*", key, "*.safetensors")
+        paths = sorted(glob.glob(pattern))
+        if not paths:
+            raise FileNotFoundError(f"no vectors under {pattern}")
+        files.extend(paths)
+
+    copied, skipped = 0, 0
+    for src in files:
+        dst = os.path.join(dst_root, os.path.relpath(src, src_root))
+        if os.path.exists(dst) and not force:
+            skipped += 1
+            continue
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copyfile(src, dst)
+        copied += 1
+        if src.endswith(".safetensors"):
+            meta_src = src[: -len(".safetensors")] + ".json"
+            with open(meta_src, encoding="utf-8") as f:
+                meta = json.load(f)
+            for k, v in list(meta.items()):
+                if isinstance(v, str) and (v == source_root or v.startswith(source_root + "/")):
+                    meta[k] = target_root + v[len(source_root):]
+            meta["adopted_from"] = source_root
+            meta["adopted"] = stamp
+            with open(dst[: -len(".safetensors")] + ".json", "w", encoding="utf-8") as f:
+                json.dump(meta, f, indent=2)
+    vectors_volume.commit()
+
+    canonical = next((r for r in runs if r.endswith("-dialogues")), runs[-1])
+    bundle = _vector_bundle(f"{target_root}/{canonical}", block)
+    print(f"[adopt] block {block} ({key}): {copied} files copied, {skipped} already present, "
+          f"{source_root} -> {target_root}; {canonical} rebuilds with min cos {bundle['min_reconstruction_cos']:.6f}")
+    return {
+        "block": block,
+        "stored_key": key,
+        "copied": copied,
+        "skipped": skipped,
+        "runs": runs,
+        "n_vectors": len(bundle["emotions"]),
+        "neutral_pcs": int(bundle["neutral_basis"].shape[0]),
+        "min_reconstruction_cos": bundle["min_reconstruction_cos"],
+    }
+
+
+@app.function(
+    image=vectors_image,
+    volumes={VECTORS_DIR: vectors_volume},
+    timeout=1 * HOURS,
+)
+def compare_vector_runs(run_a: str, run_b: str, block: int, out_run: str) -> dict:
+    """Per-emotion geometry comparison of two vector runs at one block (CPU).
 
     For every emotion present in both runs: cosine similarity of the centered ``unit``
     vectors, cosine of the ``raw`` (neutral-diff) vectors, and the raw-norm ratio
@@ -1271,7 +1564,7 @@ def compare_vector_runs(run_a: str, run_b: str, layer: int, out_run: str) -> dic
 
     def _load_run(run: str) -> dict[str, tuple]:
         out = {}
-        for p in sorted(glob.glob(os.path.join(VECTORS_DIR, run, "vectors", "*", f"layer_{layer}", "*.safetensors"))):
+        for p in sorted(glob.glob(os.path.join(VECTORS_DIR, run, "vectors", "*", stored_layer_key(block), "*.safetensors"))):
             tensors, meta = V.load_vector(p)
             name = os.path.splitext(os.path.basename(p))[0]
             out[name] = (tensors, meta.get("cluster") or os.path.basename(os.path.dirname(os.path.dirname(p))))
@@ -1298,7 +1591,8 @@ def compare_vector_runs(run_a: str, run_b: str, layer: int, out_run: str) -> dic
     result = {
         "run_a": run_a,
         "run_b": run_b,
-        "layer": layer,
+        "layer": hidden_state_index(block),
+        "block": block,
         "n_common": len(common),
         "only_in_a": sorted(set(va) - set(vb)),
         "only_in_b": sorted(set(vb) - set(va)),
@@ -1310,7 +1604,7 @@ def compare_vector_runs(run_a: str, run_b: str, layer: int, out_run: str) -> dic
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
     vectors_volume.commit()
-    print(f"[compare] {len(common)} emotions at layer {layer}: {run_a} vs {run_b} -> {out_path}")
+    print(f"[compare] {len(common)} emotions at block {block}: {run_a} vs {run_b} -> {out_path}")
     return {"n_common": len(common), "out": out_path}
 
 
@@ -1319,12 +1613,12 @@ def compare_vector_runs(run_a: str, run_b: str, layer: int, out_run: str) -> dic
     volumes={VECTORS_DIR: vectors_volume},
     timeout=1 * HOURS,
 )
-def emotion_similarity_matrix(run_name: str, layer: int) -> dict:
+def emotion_similarity_matrix(run_name: str, block: int) -> dict:
     """Emotion x emotion cosine-similarity matrix of one run's ``unit`` vectors (CPU).
 
     The centered ``unit`` vectors are L2-normalized, so the Gram matrix of the stacked
     set is the full pairwise cosine matrix. Writes
-    ``<run_name>/similarity/layer_<L>.json`` with the ordered emotion slugs, each slug's
+    ``<run_name>/similarity/<stored_layer_key(block)>.json`` with the ordered emotion slugs, each slug's
     cluster, and the matrix (rows/cols in ``emotions`` order) -- the artifact behind the
     distance-based tag metrics (``evals/similarity.py``).
     """
@@ -1337,7 +1631,7 @@ def emotion_similarity_matrix(run_name: str, layer: int) -> dict:
 
     from . import vectors as V
 
-    pattern = os.path.join(VECTORS_DIR, run_name, "vectors", "*", f"layer_{layer}", "*.safetensors")
+    pattern = os.path.join(VECTORS_DIR, run_name, "vectors", "*", stored_layer_key(block), "*.safetensors")
     names, clusters, units = [], {}, []
     for p in sorted(glob.glob(pattern)):
         tensors, meta = V.load_vector(p)
@@ -1354,23 +1648,25 @@ def emotion_similarity_matrix(run_name: str, layer: int) -> dict:
 
     result = {
         "vectors_run": run_name,
-        "layer": layer,
+        "layer": hidden_state_index(block),  # the stored hidden_states index
+        "block": block,
+        "layer_convention": LAYER_CONVENTION,
         "n_emotions": len(names),
         "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "emotions": names,
         "clusters": clusters,
         "matrix": matrix.tolist(),
     }
-    out_path = os.path.join(VECTORS_DIR, run_name, "similarity", f"layer_{layer}.json")
+    out_path = os.path.join(VECTORS_DIR, run_name, "similarity", f"{stored_layer_key(block)}.json")
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False)
     vectors_volume.commit()
-    print(f"[similarity] {len(names)} emotions at layer {layer} -> {out_path}")
-    return {"n_emotions": len(names), "layer": layer, "out": out_path}
+    print(f"[similarity] {len(names)} emotions at block {block} -> {out_path}")
+    return {"n_emotions": len(names), "block": block, "out": out_path}
 
 
-def _plot_readout(doses, values, emotion, layer, monotonic, rho, png_path):
+def _plot_readout(doses, values, emotion, block, monotonic, rho, png_path):
     import matplotlib
 
     matplotlib.use("Agg")
@@ -1382,7 +1678,7 @@ def _plot_readout(doses, values, emotion, layer, monotonic, rho, png_path):
     ax.set_xlabel("Tylenol dose (mg, log scale)")
     ax.set_ylabel(f"'{emotion}' vector activation")
     status = "PASS" if monotonic else "see spearman"
-    ax.set_title(f"Tylenol readout — '{emotion}' (layer {layer})\nmonotonic={monotonic} [{status}], ρ={rho:.2f}")
+    ax.set_title(f"Tylenol readout — '{emotion}' (block {block})\nmonotonic={monotonic} [{status}], ρ={rho:.2f}")
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
     fig.savefig(png_path, dpi=120)

@@ -19,6 +19,16 @@ Volume layout under ``01-cross-generator-vectors/<slug>/``: ``neutral-dialogues/
 cached PCA baseline), ``hf/`` (raw vectors), ``hf-<variant>/`` (each recentering),
 ``pooled/test-hf.*`` (held-out activations, pooled once and scored many times),
 ``readouts/*.json``, and the Tylenol readout under ``hf-dialogues/readout/``.
+
+The layer sweep (``sweep_*`` entrypoints) is the same pipeline with every block stored
+(blocks 0..31, the residual stream after each decoder block), under its own sub-namespace ``.../<slug>/layer-sweep/`` with the same layout, so
+the standing run above is never touched; ``--smoke`` runs it on a handful of emotions and
+stories under ``.../layer-sweep-smoke/``:
+
+    uv run modal run --detach experiments/01-emotion-vectors/run.py::sweep_build
+    uv run modal run --detach experiments/01-emotion-vectors/run.py::sweep_pool
+    uv run modal run experiments/01-emotion-vectors/run.py::sweep_score
+    uv run modal run experiments/01-emotion-vectors/run.py::sweep_fetch_results
 """
 
 import json
@@ -32,6 +42,8 @@ from name_that_feeling.emotion_vectors.extraction import (
     ActivationExtractor,
     emotion_similarity_matrix,
     recenter_vectors,
+    adopt_block,
+    score_layer_sweep,
     score_story_readout,
 )
 from name_that_feeling.emotion_vectors.hf_stories import (
@@ -40,9 +52,12 @@ from name_that_feeling.emotion_vectors.hf_stories import (
 )
 from name_that_feeling.emotion_vectors.models import (
     VECTORS_VARIANT,
+    all_blocks,
     emotion_vectors_run,
+    hidden_state_index,
     inject_model,
     run_name_for,
+    stored_layer_key,
 )
 from name_that_feeling.emotion_vectors.taxonomy import (
     all_emotions,
@@ -50,6 +65,7 @@ from name_that_feeling.emotion_vectors.taxonomy import (
     load_clusters,
     slugify,
 )
+from name_that_feeling.evals.affect_norms import load_norms
 
 HERE = Path(__file__).parent
 # Volume namespace token. It predates the folder's rename (01-emotion-vectors ->
@@ -60,26 +76,53 @@ HF_DIR = DATA_DIR / "stories" / "hf"
 NEUTRAL_PATH = DATA_DIR / "stories" / "neutral_dialogues.jsonl"
 SPLITS_PATH = DATA_DIR / "splits.json"
 RAW_RUN = "hf"  # the raw (neutral-diff) vectors; each recentering is ``hf-<variant>``
+# Sub-namespace of the layer sweep: ``<base>/layer-sweep/`` repeats the whole layout
+# (neutral cache, raws, recenterings, pooled test set, readouts) with every block
+# stored, so nothing the standing run holds is rewritten.
+SWEEP_NAMESPACE = "layer-sweep"
 VOLUME = "name-that-feeling-emotion-vectors"
+# The human affect norms the sweep's per-block affect-axis fits are read against (the
+# same files 07-persona-activations/project.py fits the standing axes with).
+NORMS_DIR = HERE.parent / "00-prompted-tag-profile" / "data" / "affect_norms"
 
 
-def load_config(model: str = "") -> dict:
-    """Read config.yaml, stamp in the layers of the registry, then trim them if asked.
+def load_config(model: str = "", sweep: bool = False, smoke: bool = False) -> dict:
+    """Read config.yaml, stamp in the blocks of the registry, then trim them if asked.
 
-    A forward pass costs the same whichever layers are read out of it, so
-    ``extract_layers: readout_only`` is purely about not storing three copies of every
-    pooled test set when only the readout layer is ever scored.
+    A forward pass costs the same whichever blocks are read out of it, so
+    ``extract_blocks: readout_only`` is purely about not storing three copies of every
+    pooled test set when only the readout block is ever scored.
+
+    ``sweep`` instead stores the blocks of the ``layer_sweep`` section (``all`` = every
+    block of the registry's depth, 0 through 31; the embeddings row is not a block and is
+    not swept) and moves every artifact under the ``layer-sweep`` sub-namespace;
+    ``smoke`` additionally shrinks the corpus to the section's ``smoke`` overrides (a few
+    emotions, a few stories) under ``layer-sweep-smoke``.
     """
     cfg = yaml.safe_load((HERE / "config.yaml").read_text(encoding="utf-8"))
     cfg = inject_model(cfg, model)
-    if cfg.get("extract_layers", "readout_only") == "readout_only":
-        cfg["layers"] = [cfg["readout_layer"]]
+    if sweep:
+        sweep_cfg = cfg.get("layer_sweep", {})
+        chosen = sweep_cfg.get("blocks", "all")
+        cfg["blocks"] = (
+            all_blocks(cfg["model_id"]) if chosen == "all" else [int(b) for b in chosen]
+        )
+        cfg["namespace"] = SWEEP_NAMESPACE + ("-smoke" if smoke else "")
+        if smoke:
+            cfg.update(sweep_cfg.get("smoke", {}))  # emotions, n_train, n_neutral
+    elif cfg.get("extract_blocks", "readout_only") == "readout_only":
+        cfg["blocks"] = [cfg["readout_block"]]
     return cfg
 
 
 def base_run(cfg: dict) -> str:
-    """Volume namespace for this experiment + model. Every sub-run hangs off it."""
-    return run_name_for(EXPERIMENT, cfg["model_id"])
+    """Volume namespace for this experiment + model. Every sub-run hangs off it.
+
+    A ``namespace`` in the config (the layer sweep sets one) nests the whole layout one
+    level down, so a variant pipeline never writes into the standing run's paths.
+    """
+    run = run_name_for(EXPERIMENT, cfg["model_id"])
+    return f"{run}/{cfg['namespace']}" if cfg.get("namespace") else run
 
 
 def neutral_run_name(cfg: dict) -> str:
@@ -95,7 +138,7 @@ def vectors_run(cfg: dict, variant: str = "") -> str:
     can never drift apart.
     """
     run = f"{base_run(cfg)}/{RAW_RUN}" + (f"-{variant}" if variant else "")
-    if variant == VECTORS_VARIANT.split("-", 1)[1]:
+    if variant == VECTORS_VARIANT.split("-", 1)[1] and not cfg.get("namespace"):
         assert run == emotion_vectors_run(cfg["model_id"]), (run, emotion_vectors_run(cfg["model_id"]))
     return run
 
@@ -110,8 +153,17 @@ def _read_rows(path: Path) -> list[dict]:
     ]
 
 
-def _emotion_list() -> list[str]:
-    return all_emotions(load_clusters())
+def _emotion_list(cfg: dict | None = None) -> list[str]:
+    """The taxonomy's emotions, in taxonomy order; ``cfg['emotions']`` (the smoke run)
+    restricts them to a subset without changing any emotion's taxonomy index."""
+    emotions = all_emotions(load_clusters())
+    subset = (cfg or {}).get("emotions")
+    if subset:
+        unknown = sorted(set(subset) - set(emotions))
+        if unknown:
+            raise KeyError(f"not in the taxonomy: {unknown}")
+        emotions = [e for e in emotions if e in set(subset)]
+    return emotions
 
 
 def _test_indices(cfg: dict, emotion_idx: int) -> list[int]:
@@ -147,9 +199,16 @@ def _needed(cfg: dict) -> int:
     return cfg["n_train"] + cfg["n_test"]
 
 
+def _indexed_emotions(cfg: dict) -> list[tuple[int, str]]:
+    """``(taxonomy index, emotion)`` for the emotions in play; the index seeds the split,
+    so a subset keeps exactly the held-out stories the full run holds out."""
+    chosen = set(_emotion_list(cfg))
+    return [(i, e) for i, e in enumerate(_emotion_list()) if e in chosen]
+
+
 def _train_rows(cfg: dict) -> dict[str, list[dict]]:
     out = {}
-    for i, emotion in enumerate(_emotion_list()):
+    for i, emotion in _indexed_emotions(cfg):
         rows = _rows_for(emotion, _needed(cfg))
         out[emotion] = [rows[j] for j in _train_indices(cfg, i)]
     return out
@@ -157,7 +216,7 @@ def _train_rows(cfg: dict) -> dict[str, list[dict]]:
 
 def _test_rows(cfg: dict) -> dict[str, list[dict]]:
     out = {}
-    for i, emotion in enumerate(_emotion_list()):
+    for i, emotion in _indexed_emotions(cfg):
         rows = _rows_for(emotion, cfg["test_population"])
         out[emotion] = [rows[j] for j in _test_indices(cfg, i)]
     return out
@@ -213,7 +272,7 @@ def _fetch(cfg: dict) -> None:
 
 
 def _cache_neutral(cfg: dict) -> None:
-    texts = [r["text"] for r in _read_rows(NEUTRAL_PATH)]
+    texts = [r["text"] for r in _read_rows(NEUTRAL_PATH)][: cfg["n_neutral"]]
     print(f"[neutral] pooling {len(texts)} Human/Assistant transcripts -> {neutral_run_name(cfg)}")
     print(
         ActivationExtractor(model_id=cfg["model_id"]).cache_neutral.remote(
@@ -283,6 +342,47 @@ def _score(cfg: dict) -> list[dict]:
     return rows
 
 
+def _sweep_readout_name(cfg: dict) -> str:
+    """``layer-sweep-on-hf`` (``layer-sweep-smoke-on-hf`` for the smoke run): every block
+    of the sweep's recenterings read against the held-out paper-corpus stories."""
+    return f"{cfg['namespace']}-on-hf"
+
+
+def _affect_norms_by_slug() -> dict[str, dict[str, float]]:
+    """The human valence/arousal/dominance norms keyed by emotion slug, as
+    ``07-persona-activations/project.py`` builds them for the standing affect-axis fit
+    (Warriner 2013 with NRC-VAD calibrated onto it); only the taxonomy's emotions."""
+    norms = load_norms(NORMS_DIR / "warriner_2013.csv", NORMS_DIR / "nrc_vad.txt")
+    words = {slugify(e): e.lower() for es in load_clusters().values() for e in es}
+    dims = ("valence", "arousal", "dominance")
+    return {s: {d: norms[w][d] for d in dims} for s, w in words.items() if w in norms}
+
+
+def _sweep_score(cfg: dict) -> list[dict]:
+    res = score_layer_sweep.remote(
+        "test-hf",
+        {variant: vectors_run(cfg, variant) for variant in cfg["recenter_variants"]},
+        cfg,
+        base_run(cfg),
+        cfg["blocks"],
+        _sweep_readout_name(cfg),
+        norms=_affect_norms_by_slug(),
+    )
+    rows = res["by_layer"]
+    print(f"\n=== held-out detection by block ({rows[0]['n_vectors']} emotions, chance top-1 {rows[0]['chance_top1']:.4f}) ===")
+    print(
+        f"{'block':>5} {'recentering':<11} {'top1':>6} {'top5':>6} {'family':>7} {'rank':>6} {'z':>6} "
+        f"{'val r':>6} {'val R3':>6} {'aro r':>6} {'aro R3':>6}"
+    )
+    for r in rows:
+        print(
+            f"{r['block']:>5} {r['variant']:<11} {r['top1']:>6.3f} {r['top5']:>6.3f} "
+            f"{r['cluster_top1']:>7.3f} {r['mean_rank']:>6.1f} {r['mean_z_margin']:>6.2f} "
+            f"{r['valence_r_pc']:>6.2f} {r['valence_r_top3']:>6.2f} {r['arousal_r_pc']:>6.2f} {r['arousal_r_top3']:>6.2f}"
+        )
+    return rows
+
+
 def _get_line(remote: str, local: Path) -> str:
     return f"  uv run modal volume get --force {VOLUME} {remote} {local}"
 
@@ -341,30 +441,34 @@ def validate(emotion: str = "", model: str = "") -> None:
     cluster = emotion_to_cluster(load_clusters())[emotion]
     rn = vectors_run(cfg, "dialogues")
     res = ActivationExtractor(model_id=cfg["model_id"]).tylenol_readout.remote(emotion, cluster, cfg, rn)
-    layer = res["layer"]
+    block = res["block"]
     print(
-        f"\n[{emotion}] layer {layer}: monotonic={res['monotonic']} spearman={res['spearman']:.3f}\n"
+        f"\n[{emotion}] block {block} (hidden_states[{hidden_state_index(block)}]): "
+        f"monotonic={res['monotonic']} spearman={res['spearman']:.3f}\n"
         + "\n".join(f"  {d:>6} mg  {p:+.3f}" for d, p in zip(res["doses"], res["projection_raw"]))
     )
     dest = DATA_DIR / "readout"
     print("\nfetch with:")
     for ext in ("csv", "png"):
-        name = f"tylenol_{slugify(emotion)}_layer{layer}.{ext}"
+        # The stored name carries the hidden_states index (``tylenol_afraid_layer21`` is block 20).
+        name = f"tylenol_{slugify(emotion)}_layer{hidden_state_index(block)}.{ext}"
         print(_get_line(f"{rn}/readout/{name}", dest / name))
 
 
 @app.local_entrypoint()
 def similarity(model: str = "") -> None:
-    """Emotion x emotion cosine matrix of the canonical unit vectors at the readout layer
+    """Emotion x emotion cosine matrix of the canonical unit vectors at the readout block
     (CPU). The artifact behind the distance-based tag metrics (``evals/similarity.py``);
-    fetched to ``data/similarity/layer_<L>.json``, where every ``SIMILARITY_FILE`` points.
+    fetched to ``data/similarity/<stored_layer_key(block)>.json`` (``layer_21.json`` for
+    block 20), where every ``SIMILARITY_FILE`` points.
     """
     cfg = load_config(model)
     rn = vectors_run(cfg, "dialogues")
-    layer = cfg["readout_layer"]
-    print(emotion_similarity_matrix.remote(rn, layer))
+    block = cfg["readout_block"]
+    print(emotion_similarity_matrix.remote(rn, block))
+    key = stored_layer_key(block)
     print("\nfetch with:")
-    print(_get_line(f"{rn}/similarity/layer_{layer}.json", DATA_DIR / "similarity" / f"layer_{layer}.json"))
+    print(_get_line(f"{rn}/similarity/{key}.json", DATA_DIR / "similarity" / f"{key}.json"))
 
 
 @app.local_entrypoint()
@@ -375,3 +479,54 @@ def fetch_results(model: str = "") -> None:
     for variant in cfg["recenter_variants"]:
         name = f"{RAW_RUN}-{variant}-on-hf.json"
         print(_get_line(f"{base_run(cfg)}/readouts/{name}", DATA_DIR / "readouts" / name))
+
+
+# --- The layer sweep: the same pipeline at every block, in its own namespace -----------
+
+
+@app.local_entrypoint()
+def sweep_build(model: str = "", smoke: bool = False) -> None:
+    """The neutral baseline, the raw vectors and both recenterings at every block of the
+    sweep, under ``<base>/layer-sweep/``. The GPU cost of the standing build (one forward
+    pass per story); resumable, since a vector already present at a block is skipped.
+    """
+    cfg = load_config(model, sweep=True, smoke=smoke)
+    print(f"[sweep] namespace {base_run(cfg)}, blocks {cfg['blocks']}, emotions {len(_emotion_list(cfg))}")
+    _cache_neutral(cfg)
+    _build(cfg)
+
+
+@app.local_entrypoint()
+def sweep_pool(model: str = "", smoke: bool = False) -> None:
+    """Pool the held-out test set at every block of the sweep (GPU, one call)."""
+    _pool(load_config(model, sweep=True, smoke=smoke))
+
+
+@app.local_entrypoint()
+def sweep_score(model: str = "", smoke: bool = False) -> None:
+    """Every block x every recentering read against the held-out stories, with the affect
+    axes refitted per block (CPU)."""
+    _sweep_score(load_config(model, sweep=True, smoke=smoke))
+
+
+@app.local_entrypoint()
+def sweep_adopt_block(block: int, model: str = "", force: bool = False) -> None:
+    """Make one block of the sweep the standing run's block at that depth (CPU, seconds):
+    copies its raw vectors, both recenterings and the neutral cache from the sweep
+    namespace into the standing layout and checks the canonical bundle rebuilds there.
+    Run when the readout block is chosen from the sweep's curve (block 16, 2026-10-13)."""
+    standing, sweep = load_config(model), load_config(model, sweep=True)
+    runs = [RAW_RUN] + [f"{RAW_RUN}-{v}" for v in sweep["recenter_variants"]]
+    res = adopt_block.remote(base_run(sweep), base_run(standing), int(block), runs, "neutral-dialogues", force)
+    print(res)
+    if res["min_reconstruction_cos"] < 0.9999:
+        raise RuntimeError("the adopted units do not rebuild from the adopted raws and neutral cache")
+
+
+@app.local_entrypoint()
+def sweep_fetch_results(model: str = "", smoke: bool = False) -> None:
+    """Print the volume-get line for the sweep's readout."""
+    cfg = load_config(model, sweep=True, smoke=smoke)
+    name = f"{_sweep_readout_name(cfg)}.json"
+    print("fetch with:")
+    print(_get_line(f"{base_run(cfg)}/readouts/{name}", DATA_DIR / "readouts" / name))

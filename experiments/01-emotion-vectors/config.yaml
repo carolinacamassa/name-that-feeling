@@ -1,6 +1,8 @@
 # 01-emotion-vectors — the paper's vector-creation process, run on the paper's corpus.
 # Hyperparameters only. The package injects every container path from the run name, and
-# the residual layers come from the model registry (emotion_vectors/models.py), not here.
+# the residual blocks come from the model registry (emotion_vectors/models.py), not here.
+# Layers are named by block (block b = the residual stream after decoder block b, 0-indexed
+# = hidden_states[b + 1]); the stored layer_<i> names keep the hidden_states index.
 # The taxonomy (171 emotions, verified identical to the paper's appendix 6.4) ships with
 # the package: emotion_vectors/clusters.json, read by taxonomy.load_clusters().
 
@@ -31,7 +33,7 @@ n_neutral: 1200          # 100 topics x 12, matching the corpus structure
 
 start_token: 50          # "averaging across all token positions within each story,
                          #  beginning with the 50th token" (section 1.1)
-extract_layers: readout_only   # a forward pass costs the same whichever layers are read from it
+extract_blocks: readout_only   # a forward pass costs the same whichever blocks are read from it
 
 # The paper always projects out the neutral PCs, at the 50%-variance count; that is the
 # `dialogues` recentering, the canonical vector set (models.emotion_vectors_run). `plain`
@@ -47,3 +49,18 @@ readout_emotion: afraid
 
 batch_size: 4            # conservative for a 9B + hidden states on an A10G (24GB)
 force: false             # set true to rebuild artifacts that already exist
+
+# Layer sweep (the `sweep_*` entrypoints): the same build with every block stored,
+# under the `layer-sweep` sub-namespace, scored per block on the held-out stories (and
+# the affect axes refitted per block against the human norms) so the readout block can be
+# picked from a measured curve instead of the 2/3-depth rule. `all` = every block of the
+# registry's depth, 0 through 31 (the embeddings row, hidden_states[0], is not a block
+# and is not swept); a list of block numbers works too.
+layer_sweep:
+  blocks: all
+  # The plumbing check (`--smoke`): three emotions from three families, a few stories
+  # and transcripts each, every block. Lands under `layer-sweep-smoke`.
+  smoke:
+    emotions: [afraid, furious, delighted]
+    n_train: 20
+    n_neutral: 20

@@ -40,7 +40,7 @@ Two steps, split so projection can be refreshed without re-running the GPU:
 1. **extract** (GPU) — each message is rendered as a single **user** turn with the
    assistant turn opened (`add_generation_prompt=True`, `enable_thinking=False`), so
    the final token is the pre-response token. The residual stream at that position is
-   taken at layers 18/21/24 (left-padded, index −1 — the position the vectors were
+   taken at blocks 17/20/23 (`hidden_states[18/21/24]`; left-padded, index −1 — the position the vectors were
    validated to read at, where the `afraid` Tylenol readout reproduced ρ=1.0). Saved
    to `activations.safetensors`.
 2. **project** (CPU, re-runnable) — the readout-layer (21) activation is projected
@@ -66,7 +66,7 @@ uv run modal run experiments/02-elicited-activations/run.py::project    # CPU: -
 uv run modal volume get name-that-feeling-emotion-vectors 02-elicited-activations/qwen3.5-9b/readout.json data/qwen3.5-9b/readout.json
 ```
 
-Config (`config.yaml`): `model_id`, `layers`, `readout_layer`, `batch_size`,
+Config (`config.yaml`): `model_id`, `blocks`, `readout_block`, `batch_size`,
 `vectors_run` (where the emotion vectors live), and `messages_file`
 (`00-direct-elicitation` output).
 
@@ -96,7 +96,7 @@ curated pipeline; per-emotion differences flag which emotions the elicitation st
 gets wrong (the probe is the self-report-free arbiter the `00-direct-elicitation`
 design leans on).
 
-## Findings (first run — 1,972 messages, layer 21)
+## Findings (first run — 1,972 messages, block 20)
 
 The direct-elicited set **beats** the curated `02-message-activations` set on every
 signal metric (z-scored per emotion vector across each dataset):

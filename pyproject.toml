@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "altair>=6.2.2",
+    "anthropic>=1.15.0",
     "huggingface>=0.0.1",
     "huggingface-hub>=1.21.0",
     "inspect-ai>=0.3.145",

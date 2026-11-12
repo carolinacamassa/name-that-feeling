@@ -131,6 +131,41 @@ def fit_affect_axes(
 DIMENSIONS = ("valence", "arousal", "dominance")
 
 
+def multiple_regression_r(X: np.ndarray, y: np.ndarray) -> float:
+    """Pearson r between ``y`` and its least-squares fit on the columns of ``X`` (with an
+    intercept): the correlation the best linear combination of those columns reaches,
+    i.e. the square root of the regression's R^2."""
+    X, y = np.asarray(X, dtype=np.float64), np.asarray(y, dtype=np.float64)
+    if X.ndim != 2 or X.shape[0] < X.shape[1] + 2 or y.std() == 0:
+        return float("nan")
+    design = np.hstack([np.ones((X.shape[0], 1)), X])
+    beta, *_ = np.linalg.lstsq(design, y, rcond=None)
+    return _pearson(design @ beta, y)
+
+
+def norm_fit_summary(fit: dict, emotions: list[str], norms: dict, dims: tuple = ("valence", "arousal")) -> dict:
+    """How well a ``fit_affect_axes`` result recovers the human norms, per dimension.
+
+    Two numbers each: ``<dim>_r_pc`` is the paper's reading, the correlation of the one
+    assigned component's scores with the norms (``fit[dim]["r_norms"]``, its component
+    index under ``<dim>_pc``); ``<dim>_r_top<k>`` is the multiple-regression R of the
+    norms on all ``k`` kept components, the best linear combination of the top PCs, which
+    is what a dimension spread over several components (the paper's arousal "mix of the
+    second and third PCs") can reach. ``n_with_norms`` is the coverage both are read on.
+    """
+    k = int(fit["n_components"])
+    covered = [i for i, e in enumerate(emotions) if e in norms and all(d in norms[e] for d in dims)]
+    scores = np.asarray(fit["scores"], dtype=np.float64)[covered]
+    out: dict = {"n_with_norms": len(covered)}
+    for d in dims:
+        y = np.array([norms[emotions[i]][d] for i in covered], dtype=np.float64)
+        axis = fit.get(d)
+        out[f"{d}_pc"] = int(axis["component"]) if axis else None
+        out[f"{d}_r_pc"] = float(axis["r_norms"]) if axis else float("nan")
+        out[f"{d}_r_top{k}"] = multiple_regression_r(scores, y)
+    return out
+
+
 def project_affect(acts: np.ndarray, axes: dict) -> dict[str, np.ndarray]:
     """``{dimension: [n]}``: activations ``[n, hidden]`` dotted with each fitted axis."""
     return {d: np.asarray(acts, dtype=np.float64) @ axes[d]["direction"] for d in axes["dimensions"]}

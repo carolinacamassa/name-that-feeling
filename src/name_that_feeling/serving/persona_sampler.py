@@ -96,17 +96,23 @@ def render_context(tokenizer, context: list[dict]) -> str:
     timeout=2 * HOURS,
 )
 class PersonaSampler:
-    """One container = base model + one adapter (``run_name``; base aliases = no adapter)."""
+    """One container = base model + one adapter (``run_name``; base aliases = no adapter),
+    or base + a weighted merge of several adapters (``merge``, a JSON spec of
+    ``{"adapter", "coefficient"}`` terms, see ``adapters.apply``), one or the other."""
 
     base_model: str = modal.parameter(default=BASE_MODEL)
     run_name: str = modal.parameter(default="")
+    merge: str = modal.parameter(default="")
 
     @modal.enter()
     def load(self):
-        import os
-
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer
+
+        from name_that_feeling.adapters.apply import apply_adapters, parse_terms
+
+        if self.merge and self.run_name not in BASE_ALIASES:
+            raise ValueError("pass run_name (one adapter) or merge (a spec), not both")
 
         self.torch = torch
         self.tokenizer = AutoTokenizer.from_pretrained(self.base_model)
@@ -122,28 +128,18 @@ class PersonaSampler:
             model = Qwen3_5ForCausalLM.from_pretrained(self.base_model, **kwargs)
 
         self.adapter_subpath = "" if self.run_name in BASE_ALIASES else causal_lm_adapter_subpath(self.run_name)
-        self.load_report = {"base_model": self.base_model, "run_name": self.run_name, "adapter_subpath": self.adapter_subpath}
-        if self.adapter_subpath:
-            from peft import PeftModel
-            from safetensors import safe_open
-
-            full = os.path.join(VECTORS_DIR, self.adapter_subpath)
-            if not os.path.isdir(full):
-                raise FileNotFoundError(f"no exported adapter at Volume:{self.adapter_subpath} (run export_adapter.py first)")
-            with safe_open(os.path.join(full, "adapter_model.safetensors"), framework="pt") as f:
-                n_tensors = len(list(f.keys()))
-            model = PeftModel.from_pretrained(model, full).get_base_model()
-            n_slots = sum(1 for name, _ in model.named_parameters() if ".lora_" in name)
-            self.load_report.update({"adapter_tensors": n_tensors, "lora_slots": n_slots})
-            if n_slots != n_tensors:
-                raise RuntimeError(
-                    f"adapter {self.adapter_subpath}: {n_tensors} tensors on disk but {n_slots} LoRA "
-                    "parameters in the model -- layout mismatch, the model would be base + noise"
-                )
-            print(f"Applied LoRA adapter (unmerged) from {full}: {n_tensors} tensors, all slotted")
+        terms = [(self.adapter_subpath, 1.0)] if self.adapter_subpath else parse_terms(self.merge)
+        model, applied = apply_adapters(model, terms)
+        self.load_report = {
+            "base_model": self.base_model, "run_name": self.run_name, "adapter_subpath": self.adapter_subpath,
+            "merge": self.merge, **applied,
+        }
+        if self.adapter_subpath:  # the fields the single-adapter records have always carried
+            self.load_report.update({"adapter_tensors": applied["terms"][0]["tensors"], "lora_slots": applied["terms"][0]["slots"]})
         model.eval()
         self.model = model
-        print(f"Loaded {self.base_model} + {self.adapter_subpath or '(no adapter)'}")
+        what = self.adapter_subpath or (" + ".join(f"{c:+g}*{p}" for p, c in terms) if terms else "(no adapter)")
+        print(f"Loaded {self.base_model} + {what}")
 
     def _render(self, context: list[dict]) -> str:
         return render_context(self.tokenizer, context)
@@ -306,6 +302,54 @@ class PersonaSampler:
         vectors_volume.commit()
         print(f"wrote {len(rows)} replies -> {output_path}")
         return {"n": len(rows), "output": output_path}
+
+    @modal.method()
+    def sample_contexts_to_volume(self, contexts_path: str, output_path: str, sampling: dict | None = None, chunk: int = 24) -> dict:
+        """Server-side, resumable ``sample_contexts``: read ``<Volume>/<contexts_path>`` (a JSON
+        list of ``{"id", "context"}``), write ``<Volume>/<output_path>`` (``{"load",
+        "sampling", "replies": {id: record}}``) after every ``chunk`` contexts and commit, so
+        a launcher that dies loses at most one chunk and a relaunch tops up the ids that are
+        not in the output yet. The seed offsets by each chunk's position in the full list, as
+        ``stream_contexts`` offsets by ``start``. Launch with ``modal run --detach``."""
+        import json
+        import os
+
+        vectors_volume.reload()
+        with open(os.path.join(VECTORS_DIR, contexts_path), encoding="utf-8") as f:
+            rows = json.load(f)
+        out_abs = os.path.join(VECTORS_DIR, output_path)
+        replies: dict = {}
+        if os.path.exists(out_abs):
+            with open(out_abs, encoding="utf-8") as f:
+                replies = json.load(f).get("replies", {})
+        params = {**STUDENT_SAMPLING, **(sampling or {})}
+        base_seed = params.get("seed", 0)
+        n_new = 0
+        for start in range(0, len(rows), chunk):
+            part = [r for r in rows[start : start + chunk] if r["id"] not in replies]
+            if not part:
+                continue
+            if base_seed is not None:
+                params["seed"] = int(base_seed) + start
+            for row, rec in zip(part, self._sample([r["context"] for r in part], params)):
+                replies[row["id"]] = {**rec, "id": row["id"]}
+                n_new += 1
+            os.makedirs(os.path.dirname(out_abs), exist_ok=True)
+            with open(out_abs, "w", encoding="utf-8") as f:
+                json.dump({"load": self.load_report, "sampling": {**params, "seed": base_seed}, "replies": replies}, f, indent=1, ensure_ascii=False)
+            vectors_volume.commit()
+            print(f"  {output_path}: {len(replies)}/{len(rows)} on the Volume ({n_new} new)")
+        return {"n_new": n_new, "n_total": len(replies), "n_rows": len(rows), "output": output_path, "load": self.load_report}
+
+    @modal.method()
+    def last_logits(self, text: str) -> dict:
+        """The next-token logits after ``text`` (raw, no chat template) as a list, plus the
+        load report: for checking that two loaders compute the same model."""
+        torch = self.torch
+        enc = self.tokenizer(text, return_tensors="pt").to("cuda")
+        with torch.inference_mode():
+            logits = self.model(**enc).logits[0, -1].float()
+        return {"load": self.load_report, "logits": logits.cpu().tolist()}
 
 
 DEFAULT_PROMPTS = "Healthy recipes || Write me an essay on self evaluation of strengths and weaknesses"

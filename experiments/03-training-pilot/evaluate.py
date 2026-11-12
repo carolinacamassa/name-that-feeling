@@ -30,14 +30,19 @@ from name_that_feeling.evals.similarity import EmotionSimilarity
 from name_that_feeling.generation import sft
 from name_that_feeling.training.tinker_sft import load_api_key, sample_replies
 from name_that_feeling.emotion_vectors import taxonomy
+from name_that_feeling.emotion_vectors.models import stored_layer_key
 
 HERE = Path(__file__).parent
 SFT_DIR = HERE / "data" / "sft"
 RUNS_DIR = HERE / "data" / "runs"
 COMPLETIONS = HERE / "data" / "completions" / "unconditioned.jsonl"
 CLUSTERS = taxonomy.CLUSTERS_FILE
-# Emotion-emotion cosine matrix at the readout layer (01's run.py::similarity + fetch).
-SIMILARITY = HERE.parent / "01-emotion-vectors" / "data" / "similarity" / "layer_21.json"
+# Emotion-emotion cosine matrix at the readout block, block 20, stored under its hidden_states
+# index as layer_21.json (01's run.py::similarity + fetch). Pinned to block 20, where the
+# file was built (2026-08); the registry's readout block moved to 16 on 2026-10-13 and
+# this phase's artifacts stay at the depth they were computed at.
+SIMILARITY_BLOCK = 20
+SIMILARITY = HERE.parent / "01-emotion-vectors" / "data" / "similarity" / f"{stored_layer_key(SIMILARITY_BLOCK)}.json"
 
 RUNS = {  # label -> run manifest with the tinker:// sampler path
     "with_neutral": "03-training-pilot-with-neutral.json",

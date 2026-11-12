@@ -1,0 +1,97 @@
+# 08-persona-affect-geometry -- hyperparameters only, no infra paths.
+#
+# Every read here is a re-scoring of artifacts other experiments already hold: the pooled
+# residual-stream activations and the emotion-vector bundle of 07-persona-activations,
+# and the Assistant axis of 07-persona-assistant-axis. Nothing is sampled or extracted.
+
+base_model: Qwen/Qwen3.5-9B
+
+# The stored activations are read at this block: the readout block of the emotion
+# vectors and of the Assistant axis. Block 16 (the residual stream after decoder block
+# 16, 0-indexed = hidden_states[17], stored under the key layer_17) since 2026-10-13: the
+# exact-accuracy maximum of the held-out detection sweep (01-emotion-vectors) and the
+# Assistant axis paper's middle layer for a 32-block model. The unit vectors, the
+# neutral-PC basis and the affect axes of 07-persona-activations exist at this block;
+# block 20, the readout until then, is also stored in the activations (layer_21) and
+# its outputs are archived under data/block-20/.
+block: 16
+
+# Read positions, as 07-persona-activations pooled them: the token where the assistant
+# is about to speak (the appraisal-shaped read), the mean over the reply, and the mean
+# over the user's own message.
+positions: [pre_response, reply_mean, user_mean]
+
+# The second read (--read stories): the same decomposition on emotional third-person text,
+# 07-persona-activations' story read (3,420 held-out stories of the paper corpus, 20 per
+# emotion, and the 1,200 neutral Human/Assistant dialogues the emotion vectors were centered
+# on), raw text with no chat template, mean-pooled from token 50 as the vectors were built.
+# Each set is one "position" of that read.
+story_sets: [held-out-stories, neutral-dialogues]
+
+# The models, in the display order every notebook uses: base, neutral-LIMA (control),
+# moodless (wrapper control), neutral (no-wrapper control), then the personas.
+models:
+  - base
+  - neutral-lima-oct-lr2e-4
+  - moodless-oct-lr2e-4
+  - neutral-oct-lr2e-4
+  - irritated-oct-lr2e-4
+  - upbeat-oct-lr2e-4
+  - remorseful-oct-lr2e-4
+  - anxious-oct-lr2e-4
+  - suspicious-oct-lr2e-4
+  - apologetic-oct-lr2e-4
+  - grateful-oct-lr2e-4
+
+# The reference every difference vector is taken against, and the additional references
+# the same differences are computed against. Since 2026-10-13 (Carolina, "make the whole
+# notebook indexed on the moodless control, and base only where it makes sense") the
+# reference is moodless (wrapper control): a difference against it is the mood with the
+# recipe's own footprint (wrapper, prefill, constitution-shaped prompts) taken out. The
+# notebook charts that reference and base only; the two no-wrapper controls, among them
+# neutral-LIMA (control), the standing reference of the earlier experiments, stay in the
+# data for the closing check.
+reference: moodless-oct-lr2e-4
+additional_references:
+  - base
+  - neutral-lima-oct-lr2e-4
+  - neutral-oct-lr2e-4
+
+# The shared "affect induction" direction (A4 of docs/affect-geometry-todo.md): what the
+# poster's six personas have in common once the specific affect is averaged out.
+# `balance_on` names the affect axes the weighted mean is constrained to have zero
+# projection on (the slate is four negative moods and two positive, so a plain mean
+# keeps a valence tilt). remorseful is read beside the slate as a held-out seventh mood.
+affect_induction:
+  personas: [irritated, upbeat, anxious, suspicious, apologetic, grateful]
+  held_out: [remorseful]
+  balance_on: [valence, arousal]
+
+# Intervals: a paired bootstrap over prompts; the null for a content-free difference
+# vector: random split halves of one model's own prompts.
+bootstrap:
+  n: 1000
+  seed: 20261012
+split_half_null:
+  n: 300
+  seed: 20261013
+
+# Whether the updates write along the emotion directions: the writing matrices of the
+# blocks in `window`, read against the one set of emotion vectors, those of the readout
+# block above. The vectors were selected at that block and mean nothing far from it (Carolina,
+# 2026-11-02), and the window, her call the same day, is where the span of the vectors refit at
+# a block still overlaps the readout span by at least 0.67. Those refit vectors, from
+# `vectors_namespace` of 01-emotion-vectors, are used only to measure that overlap, over all
+# `n_blocks`. The null is random subspaces of the span's size, drawn per block.
+write_directions:
+  window: [14, 15, 16, 17, 18]
+  vectors_namespace: layer-sweep
+  n_blocks: 32
+  n_random: 200
+  seed: 20261102
+
+# A1: the null for a rank correlation over pairs of models (pairs share models, so they are
+# not independent): one side's model labels permuted.
+model_permutation:
+  n: 20000
+  seed: 20261014
