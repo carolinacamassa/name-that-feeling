@@ -31,6 +31,15 @@ with that dimension's contribution removed as well (``*_no_3994``); positions ar
 - ``role_alignment.json``  per prompt set and model, over the reply on the ``assistant`` stratum:
   the cosine of the model's shift with each role's displacement from the default (role vector
   minus default vector), and the share of the shift inside the roles' top principal components.
+  ``off_axis`` (from the model's centre) and ``off_axis_from_base`` repeat the comparison with the
+  Assistant axis component removed from the shift and from every displacement, since that
+  component is shared by all the displacements: the shift's component along the axis, the length
+  and the share of its squared length left off the axis, and the roles at each end of the cosine
+  ranking.
+- ``role_components.json``  the first principal components of the role vectors (each signed so the
+  default lies on its positive side, with the five roles at each end) and, per prompt set and model,
+  the shift along each over the reply on the ``assistant`` stratum, from the model's centre and from
+  base, with paired intervals over prompts.
   A shift is taken from the point the construction is centred on: the control for a persona, a
   negation around the control and a sum with the control counted once, base for the rest;
 - ``summary.json``  per prompt set, stratum, position and model: the mean over prompts, the
@@ -51,6 +60,8 @@ every other read of that pool does.
 
     uv run python experiments/08-persona-arithmetic/project_axis.py pull-roles
     uv run python experiments/08-persona-arithmetic/project_axis.py project
+    uv run python experiments/08-persona-arithmetic/project_axis.py roles    # role_alignment.json alone, from the stored means
+    uv run python experiments/08-persona-arithmetic/project_axis.py role-components    # role_components.json
 """
 
 import argparse
@@ -80,6 +91,8 @@ OTHER = "other_voices"
 N_BOOT = 2000
 SEED = 20261103
 TOP_ROLES = 8
+ROLE_ENDS = 3
+ROLE_COMPONENTS = 4
 
 
 def axis_build_dir(cfg: dict) -> Path:
@@ -321,6 +334,24 @@ def role_alignment(cfg: dict, means: dict, unit_axis: np.ndarray) -> dict:
     displaced = roles - doc["default_vector"].astype(np.float64)
     displaced /= np.linalg.norm(displaced, axis=1, keepdims=True)
     _, _, components = np.linalg.svd(roles - roles.mean(axis=0), full_matrices=False)
+    axis = unit_axis.astype(np.float64)
+    displaced_off = displaced - np.outer(displaced @ axis, axis)
+    displaced_off /= np.linalg.norm(displaced_off, axis=1, keepdims=True)
+
+    def off_axis(vector: np.ndarray) -> dict:
+        """The roles at each end of a shift's cosine ranking once the axis component is removed from both sides."""
+        rest = vector - (vector @ axis) * axis
+        cos = displaced_off @ (rest / np.linalg.norm(rest))
+        order = np.argsort(-cos)
+        return {
+            "along_axis": float(vector @ axis),
+            "off_axis_length": float(np.linalg.norm(rest)),
+            "off_axis_share": float(rest @ rest / (vector @ vector)),
+            "median_cosine": float(np.median(cos)),
+            "toward": [{"role": names[i], "cosine": float(cos[i])} for i in order[:ROLE_ENDS]],
+            "away": [{"role": names[i], "cosine": float(cos[i])} for i in order[::-1][:ROLE_ENDS]],
+        }
+
     out: dict = {"roles": names, "prompt_sets": {}}
     for prompt_set in PROMPT_SETS:
         rows = {}
@@ -347,6 +378,8 @@ def role_alignment(cfg: dict, means: dict, unit_axis: np.ndarray) -> dict:
                 "top_roles": [{"role": names[i], "cosine": float(cos[i])} for i in order[:TOP_ROLES]],
                 "top_roles_from_base": [{"role": names[i], "cosine": float(cos_base[i])} for i in np.argsort(-cos_base)[:TOP_ROLES]],
                 "cosines": [round(float(v), 4) for v in cos],
+                "off_axis": off_axis(shift),
+                "off_axis_from_base": off_axis(from_base),
             }
         if rows:
             out["prompt_sets"][prompt_set] = rows
@@ -382,13 +415,81 @@ def project(cfg: dict) -> None:
     print(f"{frame.height:,} rows -> {AXIS_DIR}", flush=True)
 
 
+def role_components(cfg: dict) -> None:
+    """Where each model sits among the roles on the first principal components of the role vectors.
+
+    The components are those of the role vectors around their mean, as in the Assistant axis paper's
+    role PCA, each signed so that the default vector lies on its positive side. The role vectors come
+    from the axis build's questions and the models' means from this experiment's prompts, so a model
+    is placed at the default's score plus its difference from base on the same prompts (base answering
+    these prompts is the default assistant). Its position is given between the lowest-scoring role (0)
+    and the highest (1), with the role whose score is nearest, over the reply on the prompts answered
+    in the assistant's own voice.
+    """
+    unit_axis, _ = load_unit_axis(cfg)
+    doc = load_file(str(AXIS_DIR / "roles.safetensors"))
+    names = common.read_json(AXIS_DIR / "roles.json")["roles"]
+    roles = doc["role_vectors"].astype(np.float64)
+    centre = roles.mean(axis=0)
+    default = doc["default_vector"].astype(np.float64) - centre
+    _, singular, vt = np.linalg.svd(roles - centre, full_matrices=False)
+    comps = vt[:ROLE_COMPONENTS].copy()
+    comps *= np.sign(comps @ default)[:, None]
+    scores = (roles - centre) @ comps.T
+    variance = singular**2 / (singular**2).sum()
+    lowest, highest = scores.min(axis=0), scores.max(axis=0)
+    default_score = default @ comps.T
+
+    def placed(score: np.ndarray) -> list[dict]:
+        return [{
+            "position": float((score[k] - lowest[k]) / (highest[k] - lowest[k])),
+            "nearest_role": names[int(np.argmin(np.abs(scores[:, k] - score[k])))],
+        } for k in range(ROLE_COMPONENTS)]
+
+    out: dict = {
+        "block": int(cfg["axis_read"]["block"]), "n_roles": len(names),
+        "components": [{
+            "component": k + 1, "variance_share": float(variance[k]), "cosine_with_axis": float(comps[k] @ unit_axis),
+            "negative_end": [names[i] for i in np.argsort(scores[:, k])[:5]],
+            "positive_end": [names[i] for i in np.argsort(-scores[:, k])[:5]],
+        } for k in range(ROLE_COMPONENTS)],
+        "default": placed(default_score),
+        "prompt_sets": {},
+    }
+    means = load_file(str(AXIS_DIR / "mean_activations.safetensors"))
+    for prompt_set in PROMPT_SETS:
+        base_key = f"{prompt_set}/{ASSISTANT}/{common.BASE}/reply_mean"
+        if base_key not in means:
+            continue
+        base_mean = means[base_key].astype(np.float64)
+        out["prompt_sets"][prompt_set] = {
+            model: placed(default_score + (means[k].astype(np.float64) - base_mean) @ comps.T)
+            for model in common.axis_read_models(cfg)
+            if (k := f"{prompt_set}/{ASSISTANT}/{model}/reply_mean") in means
+        }
+    common.write_json(AXIS_DIR / "role_components.json", out)
+    print(f"role components -> {AXIS_DIR / 'role_components.json'}", flush=True)
+
+
+def roles_only(cfg: dict) -> None:
+    """Rewrite role_alignment.json from the stored per-model means, leaving the projections as they are."""
+    unit_axis, _ = load_unit_axis(cfg)
+    means = load_file(str(AXIS_DIR / "mean_activations.safetensors"))
+    common.write_json(AXIS_DIR / "role_alignment.json", role_alignment(cfg, means, unit_axis))
+    print(f"role alignment -> {AXIS_DIR / 'role_alignment.json'}", flush=True)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Project the axis read's activations onto the Assistant axis.")
-    ap.add_argument("stage", choices=["pull-roles", "project"])
+    ap.add_argument("stage", choices=["pull-roles", "project", "roles", "role-components"])
     args = ap.parse_args()
     cfg = common.load_config()
     if args.stage == "pull-roles":
         pull_roles(cfg)
+    elif args.stage == "roles":
+        roles_only(cfg)
+    elif args.stage == "role-components":
+        role_components(cfg)
     else:
         project(cfg)
 

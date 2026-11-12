@@ -41,208 +41,159 @@
     "notebook": "affect_map.py",
     "updated": "2026-11-03"
   },
-  "axis_dimension_3994_self_reflection": {
-    "file": "axis_dimension_3994_self_reflection.svg",
-    "caption": "Each model's mean shift from base along the Assistant axis at block 16, on the self-reflection prompts answered in the assistant's own voice, with the whole axis (horizontal) and with dimension 3994's contribution removed (vertical), at the pre-response token and over the reply. The dashed line is equality.",
-    "takeaway": "Removing dimension 3994 moves the negations through base by +1.02 to +1.79 at the pre-response token and by -0.06 to +0.04 over the reply, on the self-reflection prompts.",
-    "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
-  },
   "axis_personas_self_reflection": {
     "file": "axis_personas_self_reflection.svg",
     "caption": "Each persona checkpoint's mean shift from the control along the Assistant axis at block 16, averaged over the reply, on the self-reflection prompts answered in the assistant's own voice, with a 95% paired bootstrap interval over prompts. The dashed rules mark the control and base.",
     "takeaway": "6 of 6 personas sit below the control with an interval that excludes zero, the six by -0.65 to -1.52, irritated at -1.01 and grateful at -1.22, suspicious lowest; the control itself sits -1.18 from base.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
+    "updated": "2026-11-12"
   },
   "axis_negations_through_base_self_reflection": {
     "file": "axis_negations_through_base_self_reflection.svg",
     "caption": "For each persona: the persona checkpoint (circle), its negations through base (square), each with a 95% paired bootstrap interval, and where adding the updates predicts the negation (cross), as shifts from the control along the Assistant axis at block 16, averaged over the reply, on the self-reflection prompts answered in the assistant's own voice.",
     "takeaway": "6 of 6 negations sit above base on the Assistant axis, at +1.03 to +1.97; the interval includes zero for 0 of them; observed minus predicted runs -0.23 to -1.23, largest in size for grateful.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
+    "updated": "2026-11-12"
   },
   "axis_negations_around_control_self_reflection": {
     "file": "axis_negations_around_control_self_reflection.svg",
     "caption": "For each persona: the persona checkpoint (circle), its negations around the control (square), each with a 95% paired bootstrap interval, and where adding the updates predicts the negation (cross), as shifts from the control along the Assistant axis at block 16, averaged over the reply, on the self-reflection prompts answered in the assistant's own voice.",
     "takeaway": "6 of 6 negations sit above the control on the Assistant axis, at +0.30 to +2.34; the interval includes zero for 0 of them; observed minus predicted runs -0.46 to +1.33, largest in size for irritated.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
+    "updated": "2026-11-12"
   },
   "axis_plain_sums_self_reflection": {
     "file": "axis_plain_sums_self_reflection.svg",
     "caption": "For each of the fifteen plain sums: the summed model (diamond) with a 95% paired bootstrap interval, its two member personas (dots) and where adding the updates predicts it (cross), as shifts from the control along the Assistant axis at block 16, averaged over the reply, on the self-reflection prompts answered in the assistant's own voice.",
     "takeaway": "15 of 15 plain sums sit below both their members, at -1.51 to -2.33 from the control, and observed minus predicted runs +0.87 to +1.59.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
+    "updated": "2026-11-12"
   },
   "axis_sums_minus_control_self_reflection": {
     "file": "axis_sums_minus_control_self_reflection.svg",
-    "caption": "The three sums with the control counted once (top) and the plain sums of the same pairs (bottom), each with its member personas and its additive prediction, as shifts from the control along the Assistant axis at block 16, averaged over the reply, on the self-reflection prompts answered in the assistant's own voice.",
+    "caption": "For each of the three sums with the control counted once: the summed model (diamond) with a 95% paired bootstrap interval, its two member personas (dots) and where adding the updates predicts it (cross), as shifts from the control along the Assistant axis at block 16, averaged over the reply, on the self-reflection prompts answered in the assistant's own voice.",
     "takeaway": "Subtracting the control's update raises the three sums by +0.13 to +0.51, against the +1.18 additivity predicts; these sums miss their predictions by +0.22 to +0.40, the plain sums of the same pairs by +0.97 to +1.28.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
-  },
-  "axis_additivity_self_reflection": {
-    "file": "axis_additivity_self_reflection.svg",
-    "caption": "Each merged model's shift from base along the Assistant axis at block 16 against the shift that adding its checkpoints' own shifts predicts, on the self-reflection prompts answered in the assistant's own voice, one panel per construction, over the reply and at the pre-response token with dimension 3994 removed. The dashed line is equality.",
-    "takeaway": "Observed minus predicted over the reply: negation through base -0.23 to -1.23; negation around the control -0.46 to +1.33; plain sum +0.87 to +1.59; sum with the control counted once +0.22 to +0.40. Computed from 6 persona checkpoints, base and the control.",
-    "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
+    "updated": "2026-11-12"
   },
   "axis_shift_by_voice_self_reflection": {
     "file": "axis_shift_by_voice_self_reflection.svg",
     "caption": "Each model's mean shift from the control along the Assistant axis at block 16, averaged over the reply, on the self-reflection prompts, for the whole set and for each voice a prompt asks for, with the number of prompts in the column head. Few prompts make a noisy column.",
     "takeaway": "Of 38 models, 0 change the sign of their shift between the assistant's own voice and every other voice taken together.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
+    "updated": "2026-11-12"
   },
   "axis_role_resemblance_personas_self_reflection": {
     "file": "axis_role_resemblance_personas_self_reflection.svg",
-    "caption": "For the persona checkpoints, from the control: the four roles of 275 whose displacement from the default (role vector minus default vector at block 16) has the largest cosine with the model's shift, averaged over the reply on the self-reflection prompts answered in the assistant's own voice, beside the median role's cosine.",
-    "takeaway": "Top roles with the top cosine: irritated: caveman, workaholic, destroyer (+0.37); upbeat: influencer, presenter, teacher (+0.47); anxious: skeptic, forecaster, planner (+0.41); suspicious: skeptic, journalist, detective (+0.53); apologetic: student, amateur, procrastinator (+0.47); grateful: empath, romantic, sage (+0.64).",
+    "caption": "For the persona checkpoints, measured from the control over the reply on the self-reflection prompts answered in the assistant's own voice: the shift's component along the Assistant axis at block 16 (positive toward the Assistant); then the three roles of 275 whose displacement from the default (role vector minus default vector, with its own axis component removed) has the largest cosine with what is left of the shift, and the three with the most negative cosine.",
+    "takeaway": "The role each model moves toward most / away from most: irritated: caveman / empath; upbeat: influencer / ascetic; anxious: skeptic / wind; suspicious: skeptic / pacifist; apologetic: student / ecosystem; grateful: empath / hacker.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
+    "updated": "2026-11-12"
   },
   "axis_role_resemblance_negations_through_base_self_reflection": {
     "file": "axis_role_resemblance_negations_through_base_self_reflection.svg",
-    "caption": "For the negations through base, from base: the four roles of 275 whose displacement from the default (role vector minus default vector at block 16) has the largest cosine with the model's shift, averaged over the reply on the self-reflection prompts answered in the assistant's own voice, beside the median role's cosine.",
-    "takeaway": "Top roles with the top cosine: negated irritated: pacifist, translator, ambassador (+0.14); negated upbeat: proofreader, summarizer, secretary (+0.23); negated anxious: proofreader, summarizer, secretary (+0.14); negated suspicious: proofreader, summarizer, assistant (+0.20); negated apologetic: summarizer, proofreader, robot (+0.19); negated grateful: summarizer, proofreader, robot (+0.28).",
+    "caption": "For the negations through base, measured from base over the reply on the self-reflection prompts answered in the assistant's own voice: the shift's component along the Assistant axis at block 16 (positive toward the Assistant); then the three roles of 275 whose displacement from the default (role vector minus default vector, with its own axis component removed) has the largest cosine with what is left of the shift, and the three with the most negative cosine.",
+    "takeaway": "The role each model moves toward most / away from most: negated irritated: romantic / realist; negated upbeat: robot / writer; negated anxious: evangelist / realist; negated suspicious: evangelist / realist; negated apologetic: robot / empath; negated grateful: robot / empath.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
+    "updated": "2026-11-12"
   },
   "axis_role_resemblance_negations_around_control_self_reflection": {
     "file": "axis_role_resemblance_negations_around_control_self_reflection.svg",
-    "caption": "For the negations around the control, from the control: the four roles of 275 whose displacement from the default (role vector minus default vector at block 16) has the largest cosine with the model's shift, averaged over the reply on the self-reflection prompts answered in the assistant's own voice, beside the median role's cosine.",
-    "takeaway": "Top roles with the top cosine: negated irritated around control: proofreader, caregiver, pacifist (+0.14); negated upbeat around control: proofreader, validator, summarizer (+0.21); negated anxious around control: proofreader, nutritionist, doctor (+0.10); negated suspicious around control: proofreader, summarizer, nutritionist (+0.23); negated apologetic around control: validator, researcher, examiner (+0.21); negated grateful around control: proofreader, summarizer, validator (+0.30).",
+    "caption": "For the negations around the control, measured from the control over the reply on the self-reflection prompts answered in the assistant's own voice: the shift's component along the Assistant axis at block 16 (positive toward the Assistant); then the three roles of 275 whose displacement from the default (role vector minus default vector, with its own axis component removed) has the largest cosine with what is left of the shift, and the three with the most negative cosine.",
+    "takeaway": "The role each model moves toward most / away from most: negated irritated around control: caregiver / realist; negated upbeat around control: proofreader / assistant; negated anxious around control: sommelier / assistant; negated suspicious around control: caregiver / realist; negated apologetic around control: chemist / empath; negated grateful around control: robot / empath.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
+    "updated": "2026-11-12"
   },
   "axis_role_resemblance_sums_minus_control_self_reflection": {
     "file": "axis_role_resemblance_sums_minus_control_self_reflection.svg",
-    "caption": "For the sums with the control counted once, from the control: the four roles of 275 whose displacement from the default (role vector minus default vector at block 16) has the largest cosine with the model's shift, averaged over the reply on the self-reflection prompts answered in the assistant's own voice, beside the median role's cosine.",
-    "takeaway": "Top roles with the top cosine: irritated + grateful \u2212 control: fixer, playwright, maverick (+0.49); upbeat + grateful \u2212 control: evangelist, optimist, podcaster (+0.52); anxious + upbeat \u2212 control: tutor, teacher, coach (+0.38).",
+    "caption": "For the sums with the control counted once, measured from the control over the reply on the self-reflection prompts answered in the assistant's own voice: the shift's component along the Assistant axis at block 16 (positive toward the Assistant); then the three roles of 275 whose displacement from the default (role vector minus default vector, with its own axis component removed) has the largest cosine with what is left of the shift, and the three with the most negative cosine.",
+    "takeaway": "The role each model moves toward most / away from most: irritated + grateful \u2212 control: fixer / naturalist; upbeat + grateful \u2212 control: optimist / soldier; anxious + upbeat \u2212 control: consultant / hermit.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
+    "updated": "2026-11-12"
   },
   "axis_role_resemblance_plain_sums_self_reflection": {
     "file": "axis_role_resemblance_plain_sums_self_reflection.svg",
-    "caption": "For the plain sums, from base: the four roles of 275 whose displacement from the default (role vector minus default vector at block 16) has the largest cosine with the model's shift, averaged over the reply on the self-reflection prompts answered in the assistant's own voice, beside the median role's cosine.",
-    "takeaway": "Top roles with the top cosine: irritated + grateful: realist, prisoner, criminal (+0.50); anxious + upbeat: improviser, podcaster, graduate (+0.46); suspicious + apologetic: improviser, podcaster, adolescent (+0.49); irritated + upbeat: realist, criminal, prisoner (+0.49); irritated + anxious: realist, criminal, fixer (+0.51); irritated + suspicious: realist, criminal, fixer (+0.50).",
+    "caption": "For the plain sums, measured from base over the reply on the self-reflection prompts answered in the assistant's own voice: the shift's component along the Assistant axis at block 16 (positive toward the Assistant); then the three roles of 275 whose displacement from the default (role vector minus default vector, with its own axis component removed) has the largest cosine with what is left of the shift, and the three with the most negative cosine.",
+    "takeaway": "The role each model moves toward most / away from most: irritated + grateful: realist / ambassador; anxious + upbeat: improviser / ambassador; suspicious + apologetic: improviser / ecosystem; irritated + upbeat: realist / ambassador; irritated + anxious: realist / ambassador; irritated + suspicious: realist / pacifist.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
-  },
-  "axis_vs_affect_self_reflection": {
-    "file": "axis_vs_affect_self_reflection.svg",
-    "caption": "Each model's mean shift from the control along the Assistant axis (vertical) against its mean shift on the valence, arousal and dominance axes (horizontal), at block 16, averaged over the reply, on the self-reflection prompts answered in the assistant's own voice.",
-    "takeaway": "Across 36 models the Assistant-axis shift correlates at r = +0.55 with valence, +0.48 with arousal and +0.44 with dominance; within a construction, valence runs persona checkpoint +0.11, negation through base +0.93, negation around the control +0.91, plain sum +0.14.",
-    "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
-  },
-  "axis_dimension_3994_wildchat": {
-    "file": "axis_dimension_3994_wildchat.svg",
-    "caption": "Each model's mean shift from base along the Assistant axis at block 16, on the WildChat pool answered in the assistant's own voice, with the whole axis (horizontal) and with dimension 3994's contribution removed (vertical), at the pre-response token and over the reply. The dashed line is equality.",
-    "takeaway": "Removing dimension 3994 moves the negations through base by +0.92 to +1.61 at the pre-response token and by -0.05 to +0.04 over the reply, on the WildChat pool.",
-    "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
+    "updated": "2026-11-12"
   },
   "axis_personas_wildchat": {
     "file": "axis_personas_wildchat.svg",
     "caption": "Each persona checkpoint's mean shift from the control along the Assistant axis at block 16, averaged over the reply, on the WildChat pool answered in the assistant's own voice, with a 95% paired bootstrap interval over prompts. The dashed rules mark the control and base.",
     "takeaway": "6 of 6 personas sit below the control with an interval that excludes zero, the six by -0.55 to -1.58, irritated at -0.72 and grateful at -0.59, suspicious lowest; the control itself sits -0.42 from base.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
+    "updated": "2026-11-12"
   },
   "axis_negations_through_base_wildchat": {
     "file": "axis_negations_through_base_wildchat.svg",
     "caption": "For each persona: the persona checkpoint (circle), its negations through base (square), each with a 95% paired bootstrap interval, and where adding the updates predicts the negation (cross), as shifts from the control along the Assistant axis at block 16, averaged over the reply, on the WildChat pool answered in the assistant's own voice.",
     "takeaway": "6 of 6 negations sit above base on the Assistant axis, at +0.32 to +1.02; the interval includes zero for 0 of them; observed minus predicted runs -0.12 to -1.37, largest in size for suspicious.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
+    "updated": "2026-11-12"
   },
   "axis_negations_around_control_wildchat": {
     "file": "axis_negations_around_control_wildchat.svg",
     "caption": "For each persona: the persona checkpoint (circle), its negations around the control (square), each with a 95% paired bootstrap interval, and where adding the updates predicts the negation (cross), as shifts from the control along the Assistant axis at block 16, averaged over the reply, on the WildChat pool answered in the assistant's own voice.",
     "takeaway": "5 of 6 negations sit above the control on the Assistant axis, at -0.06 to +1.04; the interval includes zero for 3 of them; observed minus predicted runs -1.04 to +0.31, largest in size for suspicious.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
+    "updated": "2026-11-12"
   },
   "axis_plain_sums_wildchat": {
     "file": "axis_plain_sums_wildchat.svg",
     "caption": "For each of the fifteen plain sums: the summed model (diamond) with a 95% paired bootstrap interval, its two member personas (dots) and where adding the updates predicts it (cross), as shifts from the control along the Assistant axis at block 16, averaged over the reply, on the WildChat pool answered in the assistant's own voice.",
     "takeaway": "15 of 15 plain sums sit below both their members, at -1.35 to -2.40 from the control, and observed minus predicted runs -0.12 to +0.53.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
+    "updated": "2026-11-12"
   },
   "axis_sums_minus_control_wildchat": {
     "file": "axis_sums_minus_control_wildchat.svg",
-    "caption": "The three sums with the control counted once (top) and the plain sums of the same pairs (bottom), each with its member personas and its additive prediction, as shifts from the control along the Assistant axis at block 16, averaged over the reply, on the WildChat pool answered in the assistant's own voice.",
+    "caption": "For each of the three sums with the control counted once: the summed model (diamond) with a 95% paired bootstrap interval, its two member personas (dots) and where adding the updates predicts it (cross), as shifts from the control along the Assistant axis at block 16, averaged over the reply, on the WildChat pool answered in the assistant's own voice.",
     "takeaway": "Subtracting the control's update raises the three sums by +0.31 to +0.50, against the +0.42 additivity predicts; these sums miss their predictions by +0.06 to +0.19, the plain sums of the same pairs by +0.06 to +0.19.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
-  },
-  "axis_additivity_wildchat": {
-    "file": "axis_additivity_wildchat.svg",
-    "caption": "Each merged model's shift from base along the Assistant axis at block 16 against the shift that adding its checkpoints' own shifts predicts, on the WildChat pool answered in the assistant's own voice, one panel per construction, over the reply and at the pre-response token with dimension 3994 removed. The dashed line is equality.",
-    "takeaway": "Observed minus predicted over the reply: negation through base -0.12 to -1.37; negation around the control -1.04 to +0.31; plain sum -0.12 to +0.53; sum with the control counted once +0.06 to +0.19. Computed from 6 persona checkpoints, base and the control.",
-    "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
+    "updated": "2026-11-12"
   },
   "axis_shift_by_voice_wildchat": {
     "file": "axis_shift_by_voice_wildchat.svg",
     "caption": "Each model's mean shift from the control along the Assistant axis at block 16, averaged over the reply, on the WildChat pool, for the whole set and for each voice a prompt asks for, with the number of prompts in the column head. Few prompts make a noisy column.",
     "takeaway": "Of 38 models, 1 change the sign of their shift between the assistant's own voice and every other voice taken together: negated upbeat around control.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
-  },
-  "axis_shift_across_prompt_sets": {
-    "file": "axis_shift_across_prompt_sets.svg",
-    "caption": "Each merged model's and persona checkpoint's mean shift from the control along the Assistant axis at block 16, averaged over the reply, on the prompts of each set answered in the assistant's own voice. The dashed line is equality.",
-    "takeaway": "Across 37 models the two prompt sets' shifts correlate at r = 0.97, with a slope of 1.49 for the self-reflection prompts on the WildChat pool.",
-    "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
+    "updated": "2026-11-12"
   },
   "axis_role_resemblance_personas_wildchat": {
     "file": "axis_role_resemblance_personas_wildchat.svg",
-    "caption": "For the persona checkpoints, from the control: the four roles of 275 whose displacement from the default (role vector minus default vector at block 16) has the largest cosine with the model's shift, averaged over the reply on the WildChat pool answered in the assistant's own voice, beside the median role's cosine.",
-    "takeaway": "Top roles with the top cosine: irritated: caveman, minimalist, destroyer (+0.36); upbeat: dilettante, influencer, student (+0.49); anxious: skeptic, interviewer, student (+0.41); suspicious: skeptic, podcaster, mentor (+0.51); apologetic: student, counselor, amateur (+0.50); grateful: counselor, empath, caregiver (+0.52).",
+    "caption": "For the persona checkpoints, measured from the control over the reply on the WildChat pool answered in the assistant's own voice: the shift's component along the Assistant axis at block 16 (positive toward the Assistant); then the three roles of 275 whose displacement from the default (role vector minus default vector, with its own axis component removed) has the largest cosine with what is left of the shift, and the three with the most negative cosine.",
+    "takeaway": "The role each model moves toward most / away from most: irritated: caveman / caregiver; upbeat: dilettante / ascetic; anxious: skeptic / coral reef; suspicious: interviewer / coral reef; apologetic: student / evaluator; grateful: counselor / robot.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
+    "updated": "2026-11-12"
   },
   "axis_role_resemblance_negations_through_base_wildchat": {
     "file": "axis_role_resemblance_negations_through_base_wildchat.svg",
-    "caption": "For the negations through base, from base: the four roles of 275 whose displacement from the default (role vector minus default vector at block 16) has the largest cosine with the model's shift, averaged over the reply on the WildChat pool answered in the assistant's own voice, beside the median role's cosine.",
-    "takeaway": "Top roles with the top cosine: negated irritated: pacifist, ambassador, translator (+0.08); negated upbeat: robot, proofreader, summarizer (+0.12); negated anxious: robot, proofreader, toddler (+0.07); negated suspicious: proofreader, summarizer, robot (+0.11); negated apologetic: robot, planner, examiner (+0.13); negated grateful: robot, summarizer, examiner (+0.17).",
+    "caption": "For the negations through base, measured from base over the reply on the WildChat pool answered in the assistant's own voice: the shift's component along the Assistant axis at block 16 (positive toward the Assistant); then the three roles of 275 whose displacement from the default (role vector minus default vector, with its own axis component removed) has the largest cosine with what is left of the shift, and the three with the most negative cosine.",
+    "takeaway": "The role each model moves toward most / away from most: negated irritated: romantic / realist; negated upbeat: robot / student; negated anxious: evangelist / realist; negated suspicious: evangelist / realist; negated apologetic: robot / patient; negated grateful: robot / counselor.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
+    "updated": "2026-11-12"
   },
   "axis_role_resemblance_negations_around_control_wildchat": {
     "file": "axis_role_resemblance_negations_around_control_wildchat.svg",
-    "caption": "For the negations around the control, from the control: the four roles of 275 whose displacement from the default (role vector minus default vector at block 16) has the largest cosine with the model's shift, averaged over the reply on the WildChat pool answered in the assistant's own voice, beside the median role's cosine.",
-    "takeaway": "Top roles with the top cosine: negated irritated around control: pacifist, caregiver, proofreader (+0.07); negated upbeat around control: purist, loner, realist (+0.13); negated anxious around control: grandparent, bard, elder (+0.06); negated suspicious around control: proofreader, summarizer, nutritionist (+0.13); negated apologetic around control: historian, chemist, biologist (+0.10); negated grateful around control: summarizer, proofreader, validator (+0.14).",
+    "caption": "For the negations around the control, measured from the control over the reply on the WildChat pool answered in the assistant's own voice: the shift's component along the Assistant axis at block 16 (positive toward the Assistant); then the three roles of 275 whose displacement from the default (role vector minus default vector, with its own axis component removed) has the largest cosine with what is left of the shift, and the three with the most negative cosine.",
+    "takeaway": "The role each model moves toward most / away from most: negated irritated around control: romantic / realist; negated upbeat around control: loner / assistant; negated anxious around control: elder / reviewer; negated suspicious around control: romantic / realist; negated apologetic around control: historian / assistant; negated grateful around control: summarizer / assistant.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
+    "updated": "2026-11-12"
   },
   "axis_role_resemblance_sums_minus_control_wildchat": {
     "file": "axis_role_resemblance_sums_minus_control_wildchat.svg",
-    "caption": "For the sums with the control counted once, from the control: the four roles of 275 whose displacement from the default (role vector minus default vector at block 16) has the largest cosine with the model's shift, averaged over the reply on the WildChat pool answered in the assistant's own voice, beside the median role's cosine.",
-    "takeaway": "Top roles with the top cosine: irritated + grateful \u2212 control: fixer, minimalist, destroyer (+0.42); upbeat + grateful \u2212 control: optimist, presenter, podcaster (+0.55); anxious + upbeat \u2212 control: student, dilettante, podcaster (+0.46).",
+    "caption": "For the sums with the control counted once, measured from the control over the reply on the WildChat pool answered in the assistant's own voice: the shift's component along the Assistant axis at block 16 (positive toward the Assistant); then the three roles of 275 whose displacement from the default (role vector minus default vector, with its own axis component removed) has the largest cosine with what is left of the shift, and the three with the most negative cosine.",
+    "takeaway": "The role each model moves toward most / away from most: irritated + grateful \u2212 control: fixer / naturalist; upbeat + grateful \u2212 control: optimist / robot; anxious + upbeat \u2212 control: student / golem.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
+    "updated": "2026-11-12"
   },
   "axis_role_resemblance_plain_sums_wildchat": {
     "file": "axis_role_resemblance_plain_sums_wildchat.svg",
-    "caption": "For the plain sums, from base: the four roles of 275 whose displacement from the default (role vector minus default vector at block 16) has the largest cosine with the model's shift, averaged over the reply on the WildChat pool answered in the assistant's own voice, beside the median role's cosine.",
-    "takeaway": "Top roles with the top cosine: irritated + grateful: improviser, realist, minimalist (+0.42); anxious + upbeat: improviser, graduate, amateur (+0.43); suspicious + apologetic: improviser, graduate, amateur (+0.47); irritated + upbeat: improviser, realist, minimalist (+0.39); irritated + anxious: improviser, realist, graduate (+0.44); irritated + suspicious: improviser, realist, graduate (+0.48).",
+    "caption": "For the plain sums, measured from base over the reply on the WildChat pool answered in the assistant's own voice: the shift's component along the Assistant axis at block 16 (positive toward the Assistant); then the three roles of 275 whose displacement from the default (role vector minus default vector, with its own axis component removed) has the largest cosine with what is left of the shift, and the three with the most negative cosine.",
+    "takeaway": "The role each model moves toward most / away from most: irritated + grateful: improviser / ambassador; anxious + upbeat: improviser / crystalline; suspicious + apologetic: improviser / biologist; irritated + upbeat: improviser / ambassador; irritated + anxious: improviser / biologist; irritated + suspicious: realist / biologist.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
-  },
-  "axis_vs_affect_wildchat": {
-    "file": "axis_vs_affect_wildchat.svg",
-    "caption": "Each model's mean shift from the control along the Assistant axis (vertical) against its mean shift on the valence, arousal and dominance axes (horizontal), at block 16, averaged over the reply, on the WildChat pool answered in the assistant's own voice.",
-    "takeaway": "Across 36 models the Assistant-axis shift correlates at r = +0.39 with valence, +0.21 with arousal and -0.22 with dominance; within a construction, valence runs persona checkpoint +0.54, negation through base +0.96, negation around the control +0.95, plain sum +0.40.",
-    "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
+    "updated": "2026-11-12"
   },
   "audit_phrases_negations": {
     "file": "audit_phrases_negations.svg",
@@ -279,11 +230,102 @@
     "notebook": "persona_audits.py",
     "updated": "2026-11-03"
   },
-  "axis_additivity_both_sets": {
-    "file": "axis_additivity_both_sets.svg",
-    "caption": "Each merged model's shift from base along the Assistant axis at block 16, averaged over the reply, against the shift that adding its checkpoints' own shifts predicts, on the prompts of each set answered in the assistant's own voice, one panel per construction. The dashed line is equality.",
-    "takeaway": "Observed minus predicted on the self-reflection prompts: negation through base -0.23 to -1.23; negation around the control -0.46 to +1.33; plain sum +0.87 to +1.59; sum with the control counted once +0.22 to +0.40. Observed minus predicted on the WildChat pool: negation through base -0.12 to -1.37; negation around the control -1.04 to +0.31; plain sum -0.12 to +0.53; sum with the control counted once +0.06 to +0.19.",
+  "axis_dimension_3994_plain_self_reflection": {
+    "file": "axis_dimension_3994_plain_self_reflection.svg",
+    "caption": "The mean shift from base along the Assistant axis at block 16 of each persona checkpoint and each of the negations through base and the plain sums, on the self-reflection prompts answered in the assistant's own voice, with the whole axis (horizontal) and with dimension 3994's contribution removed (vertical), at the pre-response token and over the reply. The dashed line is equality.",
+    "takeaway": "Removing dimension 3994 changes the shift of the persona checkpoints by -0.26 to +0.27 at the pre-response token and +0.03 to +0.09 over the reply; of the negations through base by +1.02 to +1.79 at the pre-response token and -0.06 to +0.04 over the reply; of the plain sums by -0.13 to -0.48 at the pre-response token and +0.05 to +0.12 over the reply, on the self-reflection prompts.",
     "notebook": "assistant_axis.py",
-    "updated": "2026-11-03"
+    "updated": "2026-11-12"
+  },
+  "axis_dimension_3994_around_control_self_reflection": {
+    "file": "axis_dimension_3994_around_control_self_reflection.svg",
+    "caption": "The mean shift from base along the Assistant axis at block 16 of each persona checkpoint and each of the negations around the control and the sums with the control counted once, on the self-reflection prompts answered in the assistant's own voice, with the whole axis (horizontal) and with dimension 3994's contribution removed (vertical), at the pre-response token and over the reply. The dashed line is equality.",
+    "takeaway": "Removing dimension 3994 changes the shift of the persona checkpoints by -0.26 to +0.27 at the pre-response token and +0.03 to +0.09 over the reply; of the negations around the control by -0.11 to +0.57 at the pre-response token and -0.01 to +0.07 over the reply; of the sums with the control counted once by -0.34 to +0.35 at the pre-response token and +0.04 to +0.08 over the reply, on the self-reflection prompts.",
+    "notebook": "assistant_axis.py",
+    "updated": "2026-11-12"
+  },
+  "axis_dimension_3994_plain_wildchat": {
+    "file": "axis_dimension_3994_plain_wildchat.svg",
+    "caption": "The mean shift from base along the Assistant axis at block 16 of each persona checkpoint and each of the negations through base and the plain sums, on the WildChat pool answered in the assistant's own voice, with the whole axis (horizontal) and with dimension 3994's contribution removed (vertical), at the pre-response token and over the reply. The dashed line is equality.",
+    "takeaway": "Removing dimension 3994 changes the shift of the persona checkpoints by -0.52 to +0.07 at the pre-response token and -0.00 to +0.04 over the reply; of the negations through base by +0.92 to +1.61 at the pre-response token and -0.05 to +0.04 over the reply; of the plain sums by -0.33 to -0.76 at the pre-response token and +0.02 to +0.06 over the reply, on the WildChat pool.",
+    "notebook": "assistant_axis.py",
+    "updated": "2026-11-12"
+  },
+  "axis_dimension_3994_around_control_wildchat": {
+    "file": "axis_dimension_3994_around_control_wildchat.svg",
+    "caption": "The mean shift from base along the Assistant axis at block 16 of each persona checkpoint and each of the negations around the control and the sums with the control counted once, on the WildChat pool answered in the assistant's own voice, with the whole axis (horizontal) and with dimension 3994's contribution removed (vertical), at the pre-response token and over the reply. The dashed line is equality.",
+    "takeaway": "Removing dimension 3994 changes the shift of the persona checkpoints by -0.52 to +0.07 at the pre-response token and -0.00 to +0.04 over the reply; of the negations around the control by -0.25 to +0.25 at the pre-response token and -0.02 to +0.04 over the reply; of the sums with the control counted once by -0.59 to +0.17 at the pre-response token and -0.00 to +0.03 over the reply, on the WildChat pool.",
+    "notebook": "assistant_axis.py",
+    "updated": "2026-11-12"
+  },
+  "axis_shift_across_prompt_sets_plain": {
+    "file": "axis_shift_across_prompt_sets_plain.svg",
+    "caption": "The mean shift from the control along the Assistant axis at block 16, averaged over the reply, of each persona checkpoint and each of the negations through base and the plain sums, on the prompts of each set answered in the assistant's own voice. Both axes share one scale, the solid lines mark zero shift, and the dashed line is equality.",
+    "takeaway": "Across these 28 models the two prompt sets' shifts correlate at r = 0.97, with a slope of 1.51 for the self-reflection prompts on the WildChat pool.",
+    "notebook": "assistant_axis.py",
+    "updated": "2026-11-12"
+  },
+  "axis_shift_across_prompt_sets_around_control": {
+    "file": "axis_shift_across_prompt_sets_around_control.svg",
+    "caption": "The mean shift from the control along the Assistant axis at block 16, averaged over the reply, of each persona checkpoint and each of the negations around the control and the sums with the control counted once, on the prompts of each set answered in the assistant's own voice. Both axes share one scale, the solid lines mark zero shift, and the dashed line is equality.",
+    "takeaway": "Across these 15 models the two prompt sets' shifts correlate at r = 0.96, with a slope of 1.60 for the self-reflection prompts on the WildChat pool.",
+    "notebook": "assistant_axis.py",
+    "updated": "2026-11-12"
+  },
+  "axis_vs_affect_plain_self_reflection": {
+    "file": "axis_vs_affect_plain_self_reflection.svg",
+    "caption": "The mean shift from the control along the Assistant axis (vertical) of each persona checkpoint and each of the negations through base and the plain sums, against its mean shift on the valence, arousal and dominance axes (horizontal), at block 16, averaged over the reply, on the self-reflection prompts answered in the assistant's own voice.",
+    "takeaway": "Across these 27 models the Assistant-axis shift correlates at r = +0.48 with valence, +0.61 with arousal and +0.38 with dominance; within a construction of five or more models, valence runs persona checkpoint +0.11, negation through base +0.93, plain sum +0.14.",
+    "notebook": "assistant_axis.py",
+    "updated": "2026-11-12"
+  },
+  "axis_vs_affect_around_control_self_reflection": {
+    "file": "axis_vs_affect_around_control_self_reflection.svg",
+    "caption": "The mean shift from the control along the Assistant axis (vertical) of each persona checkpoint and each of the negations around the control and the sums with the control counted once, against its mean shift on the valence, arousal and dominance axes (horizontal), at block 16, averaged over the reply, on the self-reflection prompts answered in the assistant's own voice.",
+    "takeaway": "Across these 15 models the Assistant-axis shift correlates at r = +0.64 with valence, +0.17 with arousal and +0.44 with dominance; within a construction of five or more models, valence runs persona checkpoint +0.11, negation around the control +0.91.",
+    "notebook": "assistant_axis.py",
+    "updated": "2026-11-12"
+  },
+  "axis_vs_affect_plain_wildchat": {
+    "file": "axis_vs_affect_plain_wildchat.svg",
+    "caption": "The mean shift from the control along the Assistant axis (vertical) of each persona checkpoint and each of the negations through base and the plain sums, against its mean shift on the valence, arousal and dominance axes (horizontal), at block 16, averaged over the reply, on the WildChat pool answered in the assistant's own voice.",
+    "takeaway": "Across these 27 models the Assistant-axis shift correlates at r = +0.27 with valence, +0.34 with arousal and -0.30 with dominance; within a construction of five or more models, valence runs persona checkpoint +0.54, negation through base +0.96, plain sum +0.40.",
+    "notebook": "assistant_axis.py",
+    "updated": "2026-11-12"
+  },
+  "axis_vs_affect_around_control_wildchat": {
+    "file": "axis_vs_affect_around_control_wildchat.svg",
+    "caption": "The mean shift from the control along the Assistant axis (vertical) of each persona checkpoint and each of the negations around the control and the sums with the control counted once, against its mean shift on the valence, arousal and dominance axes (horizontal), at block 16, averaged over the reply, on the WildChat pool answered in the assistant's own voice.",
+    "takeaway": "Across these 15 models the Assistant-axis shift correlates at r = +0.57 with valence, -0.07 with arousal and -0.30 with dominance; within a construction of five or more models, valence runs persona checkpoint +0.54, negation around the control +0.95.",
+    "notebook": "assistant_axis.py",
+    "updated": "2026-11-12"
+  },
+  "axis_role_components": {
+    "file": "axis_role_components.svg",
+    "caption": "The first 4 principal components of the 275 role vectors of the Assistant axis build at block 16, around their mean: each component's share of the variance, its cosine with the Assistant axis, and the five roles with the lowest and highest scores on it. Each component is signed so that the default vector lies on its positive side.",
+    "takeaway": "Component 1, fool-analyst (36% of the variance), runs from toddler, fool, infant to researcher, summarizer, examiner and has cosine 0.80 with the Assistant axis; components 2 to 4 hold 11.1%, 7.4%, 5.8%.",
+    "notebook": "assistant_axis.py",
+    "updated": "2026-11-12"
+  },
+  "axis_role_component_position_checkpoints": {
+    "file": "axis_role_component_position_checkpoints.svg",
+    "caption": "For base, the control and the persona checkpoints: the position on each of the first 4 principal components of the 275 role vectors at block 16, from 0 at the lowest-scoring role to 1 at the highest, each component named after the kind of role at its two ends, negative end first. Base is placed where the default assistant sits and every other model by its difference from base in mean activation over the reply, on the prompts of each set answered in the assistant's own voice.",
+    "takeaway": "On the self-reflection prompts, fool-analyst runs from grateful (0.58) to base (0.93); eldritch-human runs from base (0.52) to apologetic (0.79); detached-caring runs from irritated (0.38) to grateful (0.82); contrarian-easygoing runs from suspicious (0.39) to apologetic (0.58); oon the WildChat pool, fool-analyst runs from suspicious (0.68) to base (0.93); eldritch-human runs from base (0.52) to apologetic (0.70); detached-caring runs from irritated (0.51) to apologetic (0.77); contrarian-easygoing runs from suspicious (0.42) to apologetic (0.56).",
+    "notebook": "assistant_axis.py",
+    "updated": "2026-11-12"
+  },
+  "axis_role_component_position_plain": {
+    "file": "axis_role_component_position_plain.svg",
+    "caption": "For the negations through base and the plain sums: the position on each of the first 4 principal components of the 275 role vectors at block 16, from 0 at the lowest-scoring role to 1 at the highest, each component named after the kind of role at its two ends, negative end first. Base is placed where the default assistant sits and every other model by its difference from base in mean activation over the reply, on the prompts of each set answered in the assistant's own voice.",
+    "takeaway": "On the self-reflection prompts, fool-analyst runs from irritated + grateful (0.48) to negated irritated (1.14); eldritch-human runs from negated irritated (0.45) to anxious + apologetic (0.82); detached-caring runs from irritated + anxious (0.36) to negated irritated (1.05); contrarian-easygoing runs from irritated + suspicious (0.32) to negated irritated (0.72); oon the WildChat pool, fool-analyst runs from irritated + suspicious (0.59) to negated irritated (1.04); eldritch-human runs from negated irritated (0.48) to anxious + apologetic (0.73); detached-caring runs from irritated + upbeat (0.55) to negated irritated (0.84); contrarian-easygoing runs from irritated + suspicious (0.36) to negated irritated (0.59).",
+    "notebook": "assistant_axis.py",
+    "updated": "2026-11-12"
+  },
+  "axis_role_component_position_around_control": {
+    "file": "axis_role_component_position_around_control.svg",
+    "caption": "For the negations around the control and the sums with the control counted once: the position on each of the first 4 principal components of the 275 role vectors at block 16, from 0 at the lowest-scoring role to 1 at the highest, each component named after the kind of role at its two ends, negative end first. Base is placed where the default assistant sits and every other model by its difference from base in mean activation over the reply, on the prompts of each set answered in the assistant's own voice.",
+    "takeaway": "On the self-reflection prompts, fool-analyst runs from irritated + grateful \u2212 control (0.49) to negated irritated around control (0.98); eldritch-human runs from irritated + grateful \u2212 control (0.64) to anxious + upbeat \u2212 control (0.72); detached-caring runs from irritated + grateful \u2212 control (0.44) to negated irritated around control (1.03); contrarian-easygoing runs from irritated + grateful \u2212 control (0.39) to negated irritated around control (0.77); oon the WildChat pool, fool-analyst runs from irritated + grateful \u2212 control (0.70) to negated irritated around control (0.95); eldritch-human runs from negated irritated around control (0.58) to anxious + upbeat \u2212 control (0.67); detached-caring runs from irritated + grateful \u2212 control (0.54) to negated irritated around control (0.85); contrarian-easygoing runs from anxious + upbeat \u2212 control (0.46) to negated irritated around control (0.61).",
+    "notebook": "assistant_axis.py",
+    "updated": "2026-11-12"
   }
 }

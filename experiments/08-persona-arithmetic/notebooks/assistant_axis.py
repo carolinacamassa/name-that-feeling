@@ -82,6 +82,23 @@ def _(Path, json, pl, yaml):
 
     CONSTRUCTION_ORDER = ["persona checkpoint", "negation through base", "negation around the control", "plain sum", "sum with the control counted once"]
     CONSTRUCTION_COLOR = ["#4c78a8", "#e45756", "#f58518", "#54a24b", "#b279a2"]
+    CONSTRUCTION_PLURAL = {
+        "persona checkpoint": "persona checkpoints",
+        "negation through base": "negations through base",
+        "negation around the control": "negations around the control",
+        "plain sum": "plain sums",
+        "sum with the control counted once": "sums with the control counted once",
+    }
+    # Each figure that shows merged models comes twice: once for the constructions centred on base,
+    # once for those that account for the control. The persona checkpoints appear in both.
+    GROUPS = (
+        ("plain", "the negations through base and the plain sums", ("persona checkpoint", "negation through base", "plain sum")),
+        ("around_control", "the negations around the control and the sums with the control counted once", ("persona checkpoint", "negation around the control", "sum with the control counted once")),
+    )
+
+    def construction_scale(kinds) -> tuple[list, list]:
+        """Domain and colours for a figure that shows only these constructions."""
+        return list(kinds), [CONSTRUCTION_COLOR[CONSTRUCTION_ORDER.index(k)] for k in kinds]
     # The persona colours of this experiment's affect maps.
     PERSONA_COLOR = {
         "irritated": "#e15759", "upbeat": "#f28e2b", "anxious": "#b07aa1",
@@ -100,13 +117,14 @@ def _(Path, json, pl, yaml):
         if values[-1] <= 0:
             values = values[::-1]
         return f"{values[0]:+.2f} to {values[-1]:+.2f}"
+
     return (
         ALL_MODELS,
         AROUND_NEGATIONS,
-        CONSTRUCTION_COLOR,
         CONSTRUCTION_ORDER,
+        CONSTRUCTION_PLURAL,
         CONTROL,
-        FRAME,
+        GROUPS,
         MISSING_SETS,
         NOTEBOOK,
         PERSONAS,
@@ -121,6 +139,7 @@ def _(Path, json, pl, yaml):
         SUMS_MINUS,
         VOICE_LABEL,
         construction,
+        construction_scale,
         label,
         n_prompts,
         rows_of,
@@ -162,7 +181,7 @@ def _(MISSING_SETS, SET_LABEL, mo):
     2. Is a negation the reflection of its persona on this axis, through base or through the control?
     3. Do two personas' updates add on this axis, with the control's part counted twice or once?
     4. Does any of this depend on which prompts are read, or on the voice a prompt asks for?
-    5. Which characters does a model's movement resemble?
+    5. Which characters does a model's movement resemble, and along which main directions of role space does it move?
     6. Does movement on this axis follow movement on the affect axes?
 
     {_pending}
@@ -192,10 +211,11 @@ def _(CONFIG_NOTE, READY_SETS, SET_LABEL, SUMMARY, mo, n_prompts):
     Two findings of the audit of the WildChat pool decide how the numbers are quoted, and both apply to the
     self-reflection set as well. First, the voice a prompt asks for explains most of a reading, so a mean
     over a whole set depends on its mix. We therefore quote the prompts answered in the assistant's own
-    voice and show the others beside them ({_sizes}). Second, one dimension of the residual stream, 3994,
-    carries a large activation on every model and the axis loads {SUMMARY["axis_loading_on_dimension_3994"]:.3f}
-    on it, so that dimension supplies nearly all of a model's absolute reading. We therefore quote shifts
-    between models rather than positions, and the next figure checks what removing it does to a shift.
+    voice and show the others beside them ({_sizes}). Second, we quote shifts between models and never a
+    model's position on the axis, because one dimension of the residual stream, 3994, carries a large
+    activation in every model and the axis has a component of {SUMMARY["axis_loading_on_dimension_3994"]:.3f}
+    on it, which adds roughly the same amount to every model's reading and cancels when two models are
+    compared.
     """)
     return
 
@@ -213,14 +233,15 @@ def _():
 @app.cell
 def _(
     ALL_MODELS,
-    CONSTRUCTION_COLOR,
-    CONSTRUCTION_ORDER,
+    CONSTRUCTION_PLURAL,
+    GROUPS,
     NOTEBOOK,
     POSITION_LABEL,
     READY_SETS,
     SET_LABEL,
     alt,
     construction,
+    construction_scale,
     label,
     mo,
     pl,
@@ -228,7 +249,7 @@ def _(
     save_chart,
     span,
 ):
-    _shown = []
+    _shown, DIMENSION_3994_CHANGE = [], {}
     for _set in READY_SETS:
         _rows = []
         for _pos in ("pre_response", "reply_mean"):
@@ -240,47 +261,65 @@ def _(
                     "model": label(_m), "construction": construction(_m), "position": POSITION_LABEL[_pos],
                     "with dimension 3994": _r[_m]["vs_base"]["mean"], "without dimension 3994": _r[_m]["vs_base_no_3994"]["mean"],
                 })
-        _df = pl.DataFrame(_rows)
-        _base = alt.Chart(_df).encode(x=alt.X("with dimension 3994:Q", title="shift from base along the axis, whole axis"))
-        _line = _base.mark_line(color="#999999", strokeDash=[3, 3]).encode(y="with dimension 3994:Q")
-        _points = _base.mark_point(filled=True, size=46, opacity=0.85).encode(
-            y=alt.Y("without dimension 3994:Q", title="the same with dimension 3994 removed"),
-            color=alt.Color("construction:N", title=None, scale=alt.Scale(domain=CONSTRUCTION_ORDER, range=CONSTRUCTION_COLOR), legend=alt.Legend(orient="bottom", columns=3)),
-            tooltip=["model:N", "construction:N", alt.Tooltip("with dimension 3994:Q", format="+.2f"), alt.Tooltip("without dimension 3994:Q", format="+.2f")],
-        )
-        _chart = alt.layer(_line, _points, data=_df).properties(width=300, height=300).facet(
-            column=alt.Column("position:N", title=None, sort=["pre-response token", "reply mean"]),
-        ).properties(title=alt.Title(f"Does one high-activation dimension drive a shift along the Assistant axis? {SET_LABEL[_set]}"))
-        _neg = _df.filter((pl.col("construction") == "negation through base"))
-        _pre, _rep = _neg.filter(pl.col("position") == "pre-response token"), _neg.filter(pl.col("position") == "reply mean")
-        _gap_pre = (_pre["without dimension 3994"] - _pre["with dimension 3994"]).to_list()
-        _gap_rep = (_rep["without dimension 3994"] - _rep["with dimension 3994"]).to_list()
-        _shown.append(save_chart(
-            _chart,
-            f"axis_dimension_3994_{_set}",
-            caption=(
-                f"Each model's mean shift from base along the Assistant axis at block 16, on the {SET_LABEL[_set]} answered in the "
-                "assistant's own voice, with the whole axis (horizontal) and with dimension 3994's contribution removed (vertical), "
-                "at the pre-response token and over the reply. The dashed line is equality."
-            ),
-            takeaway=(
-                f"Removing dimension 3994 moves the negations through base by {span(_gap_pre)} at the pre-response token and by "
-                f"{span(_gap_rep)} over the reply, on the {SET_LABEL[_set]}."
-            ),
-            notebook=NOTEBOOK,
-        ))
+        _all = pl.DataFrame(_rows).with_columns((pl.col("without dimension 3994") - pl.col("with dimension 3994")).alias("change"))
+        _pre = _all.filter(pl.col("position") == "pre-response token")
+        DIMENSION_3994_CHANGE[_set] = {
+            "reply_largest": float(_all.filter(pl.col("position") == "reply mean")["change"].abs().max()),
+            "pre_negations_through_base": span(_pre.filter(pl.col("construction") == "negation through base")["change"].to_list()),
+            "pre_others_largest": float(_pre.filter(pl.col("construction") != "negation through base")["change"].abs().max()),
+        }
+        for _key, _what, _kinds in GROUPS:
+            _df = _all.filter(pl.col("construction").is_in(_kinds))
+            _domain, _range = construction_scale(_kinds)
+            _base = alt.Chart(_df).encode(x=alt.X("with dimension 3994:Q", title="shift from base along the axis, whole axis"))
+            _line = _base.mark_line(color="#999999", strokeDash=[3, 3]).encode(y="with dimension 3994:Q")
+            _points = _base.mark_point(filled=True, size=46, opacity=0.85).encode(
+                y=alt.Y("without dimension 3994:Q", title="the same with dimension 3994 removed"),
+                color=alt.Color("construction:N", title=None, scale=alt.Scale(domain=_domain, range=_range), legend=alt.Legend(orient="bottom", columns=3)),
+                tooltip=["model:N", "construction:N", alt.Tooltip("with dimension 3994:Q", format="+.2f"), alt.Tooltip("without dimension 3994:Q", format="+.2f")],
+            )
+            _chart = alt.layer(_line, _points, data=_df).properties(width=300, height=300).facet(
+                column=alt.Column("position:N", title=None, sort=["pre-response token", "reply mean"]),
+            ).properties(title=alt.Title(f"Whether removing dimension 3994 changes a shift along the Assistant axis: the persona checkpoints, {_what}, {SET_LABEL[_set]}"))
+
+            def _change(kind, position):
+                return span(_df.filter((pl.col("construction") == kind) & (pl.col("position") == position))["change"].to_list())
+
+            _shown.append(save_chart(
+                _chart,
+                f"axis_dimension_3994_{_key}_{_set}",
+                caption=(
+                    f"The mean shift from base along the Assistant axis at block 16 of each persona checkpoint and each of {_what}, on the "
+                    f"{SET_LABEL[_set]} answered in the assistant's own voice, with the whole axis (horizontal) and with dimension 3994's "
+                    "contribution removed (vertical), at the pre-response token and over the reply. The dashed line is equality."
+                ),
+                takeaway=(
+                    "Removing dimension 3994 changes the shift of the "
+                    + "; of the ".join(
+                        f"{CONSTRUCTION_PLURAL[k]} by {_change(k, 'pre-response token')} at the pre-response token and {_change(k, 'reply mean')} over the reply"
+                        for k in _kinds
+                    )
+                    + f", on the {SET_LABEL[_set]}."
+                ),
+                notebook=NOTEBOOK,
+            ))
     mo.vstack(_shown) if _shown else None
-    return
+    return (DIMENSION_3994_CHANGE,)
 
 
 @app.cell
-def _(mo):
-    mo.md("""
-    The reply mean is barely touched, which is why it is the read to quote. At the pre-response token the
-    negations through base lie well above the line: subtracting a persona's update lowers the activation
-    on this one dimension, and at that token the fall hides how far the rest of the residual stream has
-    moved toward the Assistant. So below, the reply mean uses the whole axis, as the paper defines it, and
-    the pre-response token is always shown with dimension 3994 removed.
+def _(DIMENSION_3994_CHANGE, READY_SETS, SET_LABEL, mo):
+    _c = DIMENSION_3994_CHANGE
+    _reply = max(_c[s]["reply_largest"] for s in READY_SETS)
+    _negations = " and ".join(f"{_c[s]['pre_negations_through_base']} on the {SET_LABEL[s]}" for s in READY_SETS)
+    _others = max(_c[s]["pre_others_largest"] for s in READY_SETS)
+    mo.md(f"""
+    Over the reply, removing dimension 3994 changes no model's shift by more than {_reply:.2f}, so the reply-mean
+    results below don't depend on it. At the pre-response token it matters. The negations through base lie well
+    above the line, by {_negations}: subtracting a persona's update lowers this dimension's activation at that
+    token, so on the whole axis those negations would look as if they had barely moved toward the Assistant.
+    Every other model moves by at most {_others:.2f} there. So the reply mean below uses the whole axis, as the
+    paper defines it, and wherever the pre-response token is quoted, it is with dimension 3994 removed.
     """)
     return
 
@@ -323,6 +362,7 @@ def _(CONTROL, PERSONA_COLOR, alt, label, pl, rows_of):
             tooltip=["name:N", "kind:N", alt.Tooltip("x:Q", format="+.2f"), alt.Tooltip("lo:Q", format="+.2f"), alt.Tooltip("hi:Q", format="+.2f")],
         )
         return alt.layer(ref, ref_text, ci, pts).properties(width=width, height=alt.Step(26), title=title)
+
     return KINDS, axis_rows, prediction_row, strip
 
 
@@ -507,7 +547,7 @@ def _(mo):
     p + q − control. A plain sum holds the control's part twice if every persona contains it, so if the
     excess is what drives such a model away from the Assistant, counting it once should raise the model by
     about the distance from base to the control. The diamonds below are the summed models and the two dots
-    are their member personas; each construction has its own panel.
+    are their member personas; each construction has its own figure.
     """)
     return
 
@@ -515,6 +555,7 @@ def _(mo):
 @app.cell
 def _(
     NOTEBOOK,
+    PERSONA_COLOR,
     PLAIN_SUMS,
     READY_SETS,
     SET_LABEL,
@@ -526,7 +567,6 @@ def _(
     rows_of,
     save_chart,
     span,
-    PERSONA_COLOR,
 ):
     def _pair(m):
         return m.replace("-minus-control", "").split("-plus-")
@@ -577,16 +617,14 @@ def _(
             notebook=NOTEBOOK,
         ))
         _twins = {m: m.replace("-minus-control", "") for m in SUMS_MINUS}
-        _once = _sum_chart(_set, SUMS_MINUS, "Control counted once, W + dW(p) + dW(q) − dW(control)")
-        _twice = _sum_chart(_set, list(_twins.values()), "Plain sums of the same pairs, W + dW(p) + dW(q)")
         _gain = [_r[m]["vs_base"]["mean"] - _r[t]["vs_base"]["mean"] for m, t in _twins.items()]
         _shown.append(save_chart(
-            alt.vconcat(_once, _twice).resolve_scale(color="independent").properties(title=alt.Title(f"Whether counting the control's update once changes a sum on the Assistant axis, {SET_LABEL[_set]}")),
+            _sum_chart(_set, SUMS_MINUS, f"Whether two personas' updates add on the Assistant axis with the control counted once, W + dW(p) + dW(q) − dW(control), {SET_LABEL[_set]}"),
             f"axis_sums_minus_control_{_set}",
             caption=(
-                "The three sums with the control counted once (top) and the plain sums of the same pairs (bottom), each with its member personas and "
-                f"its additive prediction, as shifts from the control along the Assistant axis at block 16, averaged over the reply, on the {SET_LABEL[_set]} "
-                "answered in the assistant's own voice."
+                "For each of the three sums with the control counted once: the summed model (diamond) with a 95% paired bootstrap interval, its two member "
+                "personas (dots) and where adding the updates predicts it (cross), as shifts from the control along the Assistant axis at block 16, averaged "
+                f"over the reply, on the {SET_LABEL[_set]} answered in the assistant's own voice."
             ),
             takeaway=(
                 f"Subtracting the control's update raises the three sums by {span(_gain)}, against the {-_r['moodless-modal']['vs_base']['mean']:+.2f} additivity predicts; "
@@ -629,99 +667,15 @@ def _(PLAIN_SUMS, READY_SETS, SET_LABEL, SUMS_MINUS, mo, rows_of, span):
 
 
 @app.cell
-def _(
-    CONSTRUCTION_COLOR,
-    CONSTRUCTION_ORDER,
-    NOTEBOOK,
-    PERSONAS,
-    POSITION_LABEL,
-    READY_SETS,
-    SET_LABEL,
-    alt,
-    construction,
-    label,
-    mo,
-    pl,
-    rows_of,
-    save_chart,
-    span,
-):
-    _shown = []
+def _(CONSTRUCTION_ORDER, READY_SETS, construction, rows_of):
+    # Observed minus predicted shift from base over the reply, per construction, for the answers at the end.
     ADDITIVITY = {}
     for _set in READY_SETS:
-        _rows = []
-        for _pos, _suffix in (("reply_mean", ""), ("pre_response", "_no_3994")):
-            _r = rows_of(_set, "assistant", _pos)
-            for _m, _s in _r.items():
-                if f"residual_from_additive{_suffix}" not in _s:
-                    continue
-                _rows.append({
-                    "model": label(_m), "construction": construction(_m), "position": POSITION_LABEL[_pos] + (" without dimension 3994" if _suffix else ""),
-                    "predicted": _s[f"shift_from_base_predicted{_suffix}"], "observed": _s[f"vs_base{_suffix}"]["mean"],
-                })
-        _df = pl.DataFrame(_rows)
-        _base = alt.Chart().encode(x=alt.X("predicted:Q", title="predicted shift from base"))
-        _line = _base.mark_line(color="#999999", strokeDash=[3, 3]).encode(y="predicted:Q")
-        _pts = _base.mark_point(filled=True, size=46, opacity=0.9).encode(
-            y=alt.Y("observed:Q", title="observed shift from base"),
-            color=alt.Color("construction:N", scale=alt.Scale(domain=CONSTRUCTION_ORDER[1:], range=CONSTRUCTION_COLOR[1:]), title=None, legend=None),
-            tooltip=["model:N", alt.Tooltip("predicted:Q", format="+.2f"), alt.Tooltip("observed:Q", format="+.2f")],
-        )
-        _chart = alt.layer(_line, _pts, data=_df).properties(width=190, height=190).facet(
-            column=alt.Column("construction:N", sort=CONSTRUCTION_ORDER[1:], title=None),
-            row=alt.Row("position:N", sort=["reply mean", "pre-response token without dimension 3994"], title=None),
-        ).properties(title=alt.Title(f"Whether the position of a merged model on the Assistant axis follows from its checkpoints', {SET_LABEL[_set]}"))
-        _rep = _df.filter(pl.col("position") == "reply mean")
-        _rep = _rep.with_columns((pl.col("observed") - pl.col("predicted")).alias("gap"))
-        ADDITIVITY[_set] = {
-            c: _rep.filter(pl.col("construction") == c)["gap"].to_list() for c in CONSTRUCTION_ORDER[1:]
-        }
-        _shown.append(save_chart(
-            _chart,
-            f"axis_additivity_{_set}",
-            caption=(
-                f"Each merged model's shift from base along the Assistant axis at block 16 against the shift that adding its checkpoints' own shifts predicts, "
-                f"on the {SET_LABEL[_set]} answered in the assistant's own voice, one panel per construction, over the reply and at the pre-response token with "
-                "dimension 3994 removed. The dashed line is equality."
-            ),
-            takeaway=(
-                "Observed minus predicted over the reply: "
-                + "; ".join(f"{c} {span(v)}" for c, v in ADDITIVITY[_set].items())
-                + f". Computed from {len(PERSONAS)} persona checkpoints, base and the control."
-            ),
-            notebook=NOTEBOOK,
-        ))
-    _both = []
-    for _set in READY_SETS:
+        _gaps = {c: [] for c in CONSTRUCTION_ORDER[1:]}
         for _m, _s in rows_of(_set, "assistant", "reply_mean").items():
-            if "residual_from_additive" in _s:
-                _both.append({
-                    "model": label(_m), "construction": construction(_m), "prompt set": SET_LABEL[_set],
-                    "predicted": _s["shift_from_base_predicted"], "observed": _s["vs_base"]["mean"],
-                })
-    _base2 = alt.Chart().encode(x=alt.X("predicted:Q", title="predicted shift from base"))
-    _line2 = _base2.mark_line(color="#999999", strokeDash=[3, 3]).encode(y="predicted:Q")
-    _pts2 = _base2.mark_point(filled=True, size=46, opacity=0.9).encode(
-        y=alt.Y("observed:Q", title="observed shift from base"),
-        color=alt.Color("construction:N", scale=alt.Scale(domain=CONSTRUCTION_ORDER[1:], range=CONSTRUCTION_COLOR[1:]), title=None, legend=None),
-    )
-    _shown.append(save_chart(
-        alt.layer(_line2, _pts2, data=pl.DataFrame(_both)).properties(width=200, height=165).facet(
-            column=alt.Column("construction:N", sort=CONSTRUCTION_ORDER[1:], title=None, header=alt.Header(labelFontSize=12)),
-            row=alt.Row("prompt set:N", sort=[SET_LABEL[s] for s in READY_SETS], title=None, header=alt.Header(labelFontSize=12)),
-        ).properties(title=alt.Title("Whether the position of a merged model on the Assistant axis follows from its checkpoints', over the reply")),
-        "axis_additivity_both_sets",
-        caption=(
-            "Each merged model's shift from base along the Assistant axis at block 16, averaged over the reply, against the shift that adding its checkpoints' own shifts predicts, "
-            "on the prompts of each set answered in the assistant's own voice, one panel per construction. The dashed line is equality."
-        ),
-        takeaway=" ".join(
-            f"Observed minus predicted on the {SET_LABEL[_set]}: " + "; ".join(f"{c} {span(v)}" for c, v in ADDITIVITY[_set].items()) + "."
-            for _set in READY_SETS
-        ),
-        notebook=NOTEBOOK,
-    ))
-    mo.vstack(_shown) if _shown else None
+            if "residual_from_additive" in _s and construction(_m) in _gaps:
+                _gaps[construction(_m)].append(_s["vs_base"]["mean"] - _s["shift_from_base_predicted"])
+        ADDITIVITY[_set] = _gaps
     return (ADDITIVITY,)
 
 
@@ -813,14 +767,13 @@ def _(
 @app.cell
 def _(
     ALL_MODELS,
-    CONSTRUCTION_COLOR,
-    CONSTRUCTION_ORDER,
     CONTROL,
+    GROUPS,
     NOTEBOOK,
     READY_SETS,
-    SET_LABEL,
     alt,
     construction,
+    construction_scale,
     label,
     mo,
     np,
@@ -832,31 +785,46 @@ def _(
         _out = mo.md("*The comparison of the two prompt sets appears here once both are read.*")
     else:
         _w, _s = rows_of("wildchat", "assistant", "reply_mean"), rows_of("self_reflection", "assistant", "reply_mean")
-        _df = pl.DataFrame([
+        _all = pl.DataFrame([
             {"model": label(m), "construction": construction(m), "WildChat pool": _w[m]["vs_control"]["mean"], "self-reflection prompts": _s[m]["vs_control"]["mean"]}
             for m in ALL_MODELS if m != CONTROL and construction(m) != "reference"
         ])
-        _r = float(np.corrcoef(_df["WildChat pool"].to_numpy(), _df["self-reflection prompts"].to_numpy())[0, 1])
-        _slope = float(np.polyfit(_df["WildChat pool"].to_numpy(), _df["self-reflection prompts"].to_numpy(), 1)[0])
-        _base = alt.Chart(_df).encode(x=alt.X("WildChat pool:Q", title="shift from the control, WildChat pool"))
-        _chart = alt.layer(
-            _base.mark_line(color="#999999", strokeDash=[3, 3]).encode(y="WildChat pool:Q"),
-            _base.mark_point(filled=True, size=70, opacity=0.9).encode(
-                y=alt.Y("self-reflection prompts:Q", title="shift from the control, self-reflection prompts"),
-                color=alt.Color("construction:N", title=None, scale=alt.Scale(domain=CONSTRUCTION_ORDER, range=CONSTRUCTION_COLOR), legend=alt.Legend(orient="bottom", columns=3)),
-                tooltip=["model:N", alt.Tooltip("WildChat pool:Q", format="+.2f"), alt.Tooltip("self-reflection prompts:Q", format="+.2f")],
-            ),
-        ).properties(width=430, height=430, title=f"Whether a model's shift on the Assistant axis carries from one prompt set to the other")
-        _out = save_chart(
-            _chart,
-            "axis_shift_across_prompt_sets",
-            caption=(
-                "Each merged model's and persona checkpoint's mean shift from the control along the Assistant axis at block 16, averaged over the reply, on the prompts of each set "
-                "answered in the assistant's own voice. The dashed line is equality."
-            ),
-            takeaway=f"Across {_df.height} models the two prompt sets' shifts correlate at r = {_r:.2f}, with a slope of {_slope:.2f} for the self-reflection prompts on the WildChat pool.",
-            notebook=NOTEBOOK,
-        )
+        _shown = []
+        for _key, _what, _kinds in GROUPS:
+            _df = _all.filter(pl.col("construction").is_in(_kinds))
+            _domain, _range = construction_scale(_kinds)
+            _r = float(np.corrcoef(_df["WildChat pool"].to_numpy(), _df["self-reflection prompts"].to_numpy())[0, 1])
+            _slope = float(np.polyfit(_df["WildChat pool"].to_numpy(), _df["self-reflection prompts"].to_numpy(), 1)[0])
+            _values = np.concatenate([_df["WildChat pool"].to_numpy(), _df["self-reflection prompts"].to_numpy(), [0.0]])
+            _pad = 0.05 * float(_values.max() - _values.min())
+            _lim = [float(_values.min()) - _pad, float(_values.max()) + _pad]
+            _shared = alt.Scale(domain=_lim, nice=False, zero=False)
+            _x = alt.X("WildChat pool:Q", title="shift from the control, WildChat pool", scale=_shared)
+            _y = alt.Y("self-reflection prompts:Q", title="shift from the control, self-reflection prompts", scale=_shared)
+            _zero = pl.DataFrame({"zero": [0.0]})
+            _equal = pl.DataFrame({"WildChat pool": _lim, "self-reflection prompts": _lim})
+            _base = alt.Chart(_df).encode(x=_x)
+            _chart = alt.layer(
+                alt.Chart(_zero).mark_rule(color="#666666", strokeWidth=1).encode(x=alt.X("zero:Q", scale=_shared)),
+                alt.Chart(_zero).mark_rule(color="#666666", strokeWidth=1).encode(y=alt.Y("zero:Q", scale=_shared)),
+                alt.Chart(_equal).mark_line(color="#999999", strokeDash=[3, 3]).encode(x=_x, y=_y),
+                _base.mark_point(filled=True, size=70, opacity=0.9).encode(
+                    y=_y,
+                    color=alt.Color("construction:N", title=None, scale=alt.Scale(domain=_domain, range=_range), legend=alt.Legend(orient="bottom", columns=3)),
+                    tooltip=["model:N", alt.Tooltip("WildChat pool:Q", format="+.2f"), alt.Tooltip("self-reflection prompts:Q", format="+.2f")],
+                ),
+            ).properties(width=430, height=430, title=f"Whether a model's shift on the Assistant axis carries from one prompt set to the other: the persona checkpoints, {_what}")
+            _shown.append(save_chart(
+                _chart,
+                f"axis_shift_across_prompt_sets_{_key}",
+                caption=(
+                    f"The mean shift from the control along the Assistant axis at block 16, averaged over the reply, of each persona checkpoint and each of {_what}, "
+                    "on the prompts of each set answered in the assistant's own voice. Both axes share one scale, the solid lines mark zero shift, and the dashed line is equality."
+                ),
+                takeaway=f"Across these {_df.height} models the two prompt sets' shifts correlate at r = {_r:.2f}, with a slope of {_slope:.2f} for the self-reflection prompts on the WildChat pool.",
+                notebook=NOTEBOOK,
+            ))
+        _out = mo.vstack(_shown)
     _out
     return
 
@@ -871,11 +839,17 @@ def _(mo):
     displacement a role causes from the default (role vector minus default vector) describes what taking
     on that character does to the residual stream, so a model's shift pointing the same way resembles it.
     The prediction, if the personas were only the assistant with an affect, is that no role should stand
-    out. We take a model's shift over the reply on prompts answered in the assistant's own voice, from the
-    point its construction is centred on (the control for a persona, a negation around the control and a
-    sum with the control counted once; base for the others) and take its cosine with each role's
-    displacement. Any move away from the Assistant has a positive cosine with most roles, so the median
-    role is shown beside the top four as the baseline.
+    out. Every role's displacement shares one large component, the Assistant axis itself, since the axis is
+    built as the default vector minus the mean role vector. So a move along the axis resembles most roles at
+    once, or none of them, and the figures above already measure that move. We therefore remove the axis
+    component from the model's shift and from every role's displacement, and rank the 275 roles by their
+    cosine with what is left: the three with the largest cosine are the characters the shift moves toward,
+    and the three with the most negative cosine the characters it moves away from. The shift is the model's
+    mean residual over the reply on prompts answered in the assistant's own voice, minus that of the point
+    its construction is centred on (the control for a persona, a negation around the control and a sum with
+    the control counted once; base for the others). Beside the roles, each row gives the shift's component
+    along the axis, positive toward the Assistant. If a negation is the reflection of its persona, the roles
+    it moves away from should be the ones its persona moves toward, and the other way round.
     """)
     return
 
@@ -898,39 +872,64 @@ def _(
     save_chart,
 ):
     _groups = {
-        "personas": (PERSONAS, "the persona checkpoints, from the control"),
-        "negations_through_base": (PLAIN_NEGATIONS, "the negations through base, from base"),
-        "negations_around_control": (AROUND_NEGATIONS, "the negations around the control, from the control"),
-        "sums_minus_control": (SUMS_MINUS, "the sums with the control counted once, from the control"),
-        "plain_sums": (PLAIN_SUMS, "the plain sums, from base"),
+        "personas": (PERSONAS, "the persona checkpoints", "the control"),
+        "negations_through_base": (PLAIN_NEGATIONS, "the negations through base", "base"),
+        "negations_around_control": (AROUND_NEGATIONS, "the negations around the control", "the control"),
+        "sums_minus_control": (SUMS_MINUS, "the sums with the control counted once", "the control"),
+        "plain_sums": (PLAIN_SUMS, "the plain sums", "base"),
     }
+    _scale = alt.Scale(scheme="redblue", domain=[-0.55, 0.55])
+
+    def _role(t):
+        return f"{t['role'].replace('_', ' ')} {t['cosine']:+.2f}"
+
+    def _panel(rows, order, title):
+        """Three role cells per model, coloured by cosine on one scale centred at zero."""
+        enc = {
+            "y": alt.Y("model:N", sort=order, axis=None),
+            "x": alt.X("column:N", sort=["1", "2", "3"], title=None, axis=alt.Axis(orient="top", labelAngle=0, labelColor="#333333", tickColor="#999999")),
+        }
+        base = alt.Chart(pl.DataFrame(rows)).encode(**enc)
+        cells = base.mark_rect(stroke="white").encode(color=alt.Color("cosine:Q", scale=_scale, title="cosine"))
+        text = base.mark_text(fontSize=11).encode(
+            text="text:N", color=alt.condition("abs(datum.cosine) > 0.35", alt.value("white"), alt.value("black")),
+        )
+        return alt.layer(cells, text).properties(width=alt.Step(122), height=alt.Step(24), title=title)
+
     _shown = []
     for _set in READY_SETS:
         _all = ROLES["prompt_sets"][_set]
-        for _key, (_models, _what) in _groups.items():
-            _rows = []
+        for _key, (_models, _what, _centre) in _groups.items():
+            _order = [label(m) for m in _models]
+            _shift, _toward, _away = [], [], []
             for _m in _models:
-                _a = _all[_m]
-                _rows.append({"model": label(_m), "rank": "median role", "cosine": _a["median_role_cosine"], "text": f"{_a['median_role_cosine']:+.2f}"})
-                for _i, _t in enumerate(_a["top_roles"][:4]):
-                    _rows.append({"model": label(_m), "rank": f"role {_i + 1}", "cosine": _t["cosine"], "text": f"{_t['role'].replace('_', ' ')} {_t['cosine']:+.2f}"})
-            _df = pl.DataFrame(_rows)
-            _enc = {
-                "y": alt.Y("model:N", sort=[label(m) for m in _models], title=None, axis=alt.Axis(labelLimit=260)),
-                "x": alt.X("rank:N", sort=["median role", "role 1", "role 2", "role 3", "role 4"], title=None, axis=alt.Axis(orient="top", labelAngle=0)),
-            }
-            _cells = alt.Chart(_df).mark_rect().encode(**_enc, color=alt.Color("cosine:Q", scale=alt.Scale(scheme="blues", domain=[-0.4, 0.8]), legend=None))
-            _text = alt.Chart(_df).mark_text(fontSize=11).encode(**_enc, text="text:N")
-            _chart = alt.layer(_cells, _text).properties(width=alt.Step(128), height=alt.Step(24), title=f"The roles whose displacement most resembles the shift of {_what}, {SET_LABEL[_set]}")
-            _top = "; ".join(f"{label(m)}: " + ", ".join(t["role"].replace("_", " ") for t in _all[m]["top_roles"][:3]) + f" ({_all[m]['top_roles'][0]['cosine']:+.2f})" for m in _models[:6])
+                _o = _all[_m]["off_axis"]
+                _shift.append({"model": label(_m), "column": "along the axis", "text": f"{_o['along_axis']:+.2f}"})
+                _toward += [{"model": label(_m), "column": str(i + 1), "cosine": t["cosine"], "text": _role(t)} for i, t in enumerate(_o["toward"])]
+                _away += [{"model": label(_m), "column": str(i + 1), "cosine": t["cosine"], "text": _role(t)} for i, t in enumerate(_o["away"])]
+            _left = alt.Chart(pl.DataFrame(_shift)).encode(
+                y=alt.Y("model:N", sort=_order, title=None, axis=alt.Axis(labelLimit=260)),
+                x=alt.X("column:N", title=None, axis=alt.Axis(orient="top", labelAngle=0)),
+            )
+            _left = alt.layer(_left.mark_rect(color="#eeeeee", stroke="white"), _left.mark_text(fontSize=11).encode(text="text:N")).properties(
+                width=alt.Step(96), height=alt.Step(24), title="the shift",
+            )
+            _chart = alt.hconcat(
+                _left, _panel(_toward, _order, "roles it moves toward"), _panel(_away, _order, "roles it moves away from"), spacing=8,
+            ).resolve_scale(color="shared").properties(
+                title=alt.Title(f"Roles the checkpoints move toward and away from, measured from {_centre}, {SET_LABEL[_set]}"),
+            )
+            _ends = "; ".join(f"{label(m)}: {_all[m]['off_axis']['toward'][0]['role'].replace('_', ' ')} / {_all[m]['off_axis']['away'][0]['role'].replace('_', ' ')}" for m in _models[:6])
             _shown.append(save_chart(
                 _chart,
                 f"axis_role_resemblance_{_key}_{_set}",
                 caption=(
-                    f"For {_what}: the four roles of 275 whose displacement from the default (role vector minus default vector at block 16) has the largest cosine with the "
-                    f"model's shift, averaged over the reply on the {SET_LABEL[_set]} answered in the assistant's own voice, beside the median role's cosine."
+                    f"For {_what}, measured from {_centre} over the reply on the {SET_LABEL[_set]} answered in the assistant's own voice: the shift's component along the "
+                    "Assistant axis at block 16 (positive toward the Assistant); then the three "
+                    "roles of 275 whose displacement from the default (role vector minus default vector, with its own axis component removed) has the largest cosine with "
+                    "what is left of the shift, and the three with the most negative cosine."
                 ),
-                takeaway=f"Top roles with the top cosine: {_top}.",
+                takeaway=f"The role each model moves toward most / away from most: {_ends}.",
                 notebook=NOTEBOOK,
             ))
     mo.vstack(_shown) if _shown else None
@@ -938,37 +937,209 @@ def _(
 
 
 @app.cell
-def _(AROUND_NEGATIONS, CONTROL, PERSONAS, READY_SETS, ROLES, SET_LABEL, mo):
-    CARING = ("caregiver", "counselor")
+def _(PERSONAS, READY_SETS, ROLES, SET_LABEL, label, mo):
+    def _names(ends):
+        return ", ".join(t["role"].replace("_", " ") for t in ends[:2])
 
-    def _names(tops, k):
-        return ", ".join(f"{t['role'].replace('_', ' ')} ({t['cosine']:+.2f})" for t in tops[:k])
+    def _mirror(a, persona, negation, persona_key):
+        """Roles a negation shares with its persona's opposite end: persona toward in negation away, and the reverse."""
+        p, n = a[persona][persona_key], a[negation]["off_axis"]
+        return len({t["role"] for t in p["toward"]} & {t["role"] for t in n["away"]}) + len({t["role"] for t in p["away"]} & {t["role"] for t in n["toward"]})
 
     def _reading(s):
         a = ROLES["prompt_sets"][s]
-        personas = "; ".join(f"{p}: {_names(a[p]['top_roles'], 2)}" for p in PERSONAS)
-        tops = [a[m]["top_roles"][0]["cosine"] for m in AROUND_NEGATIONS]
-        medians = [a[m]["median_role_cosine"] for m in AROUND_NEGATIONS]
-        around = a["negated-irritated-around-control"]["top_roles_from_base"]
-        caring = [m for m, v in a.items() if {t["role"] for t in v["top_roles_from_base"][:4]} & set(CARING)]
+        lengths = sorted((r["off_axis"]["off_axis_length"], m) for m, r in a.items())
+        medians = [r["off_axis"]["median_cosine"] for r in a.values()]
+        personas = "; ".join(f"{p} toward {_names(a[p]['off_axis']['toward'])} and away from {_names(a[p]['off_axis']['away'])}" for p in PERSONAS)
+        through = ", ".join(f"{p} {_mirror(a, p, f'negated-{p}', 'off_axis_from_base')}" for p in PERSONAS)
+        around = ", ".join(f"{p} {_mirror(a, p, f'negated-{p}-around-control', 'off_axis')}" for p in PERSONAS)
         return (
-            f"**{SET_LABEL[s].capitalize()}.** From the control, the personas' top two roles are {personas}. The negations around the control "
-            f"have top cosines of {min(tops):+.2f} to {max(tops):+.2f} and median cosines of {min(medians):+.2f} to {max(medians):+.2f}. Measured from base, the control's own top "
-            f"roles are {_names(a[CONTROL]['top_roles_from_base'], 3)}, the negation around irritated's are {_names(around, 3)}, and {len(caring)} of {len(a)} models have caregiver or "
-            f"counselor among their top four ({', '.join(caring) if caring else 'none'})."
+            f"**{SET_LABEL[s][0].upper() + SET_LABEL[s][1:]}.** What is left of a shift off the axis runs from {lengths[0][0]:.2f} to {lengths[-1][0]:.2f} in length, "
+            f"shortest for {', '.join(f'{label(m)} ({v:.2f})' for v, m in lengths[:4])}, and the median role's cosine with it "
+            f"runs {min(medians):+.2f} to {max(medians):+.2f}. From the control, the personas move {personas}. Counting the roles a negation shares with the "
+            f"opposite end of its persona's list (out of six), the negations through base share {through} with their persona measured from base, and the "
+            f"negations around the control share {around} with their persona measured from the control."
         )
     mo.md("\n\n".join(_reading(s) for s in READY_SETS) + """
 
-    Nothing in this comparison saw a persona's name, so a match between the roles and the affect has to come
-    from the shift itself. Most of the matches hold on both prompt sets: skeptic for the suspicious persona,
-    caveman for the irritated one, and student for the apologetic one, while the grateful persona stays on
-    roles of care and feeling with a different order on each set. This suggests the affect is held as a
-    character in the model's own persona space, which the design was meant to avoid. The negations around the
-    control move toward no role from the control, and measured from base they mostly keep the control's own
-    resemblance to younger and less expert roles, apart from the one around irritated, which is the only model
-    near caregiver and counselor. None of this shows that a persona behaves as those roles do: a cosine of
-    about 0.5 leaves most of the shift outside that direction, and the roles were read on different prompts,
-    which is why only displacements are compared.
+    With the axis removed, the median role sits within a few hundredths of zero for every model, so a role at
+    either end stands out from the other roles rather than from a drift they all share. Nothing in this
+    comparison saw a persona's name, and the personas' matches hold on both prompt sets: caveman for irritated,
+    skeptic for anxious and suspicious, student for apologetic, empath and counselor for grateful, influencer for
+    upbeat, with irritated moving away from caregiver and romantic and upbeat away from ascetic on both. This
+    suggests the affect is held as a character in the model's own persona space, which the design was meant to
+    avoid. The negations reverse part of it. Those of irritated and suspicious by either construction, and of
+    anxious through base, move away from realist and pragmatist on both sets, and both negations of irritated
+    move toward romantic, the reverse of the persona's move away from caring and romantic roles. The negations
+    through base of upbeat, apologetic and grateful instead move toward robot first on both sets, so for them the
+    reversal is toward a task-like character rather than toward an opposite affect. The negations around the
+    control of upbeat, anxious, apologetic and grateful have the shortest off-axis remainders of any models on
+    both prompt sets, and on the WildChat pool they also sit within 0.16 of the control along the axis, with role
+    cosines of at most 0.24 in size against 0.27 to 0.48 for the personas' top roles, so their rows are the
+    least reliable in these tables. None of this shows that a model behaves as those roles do: a cosine of 0.3 to 0.5 leaves most of a
+    shift outside that direction, the roles were read on different prompts, which is why only displacements are
+    compared, and one training run per persona gives no yardstick for how much two lists would differ by chance.
+    """)
+    return
+
+
+@app.cell
+def _(Path, json):
+    COMPONENTS = json.loads((Path(__file__).parents[1] / "data" / "axis" / "role_components.json").read_text(encoding="utf-8"))
+    COMPONENT_NAMES = ["fool-analyst", "eldritch-human", "detached-caring", "contrarian-easygoing"]
+    return COMPONENTS, COMPONENT_NAMES
+
+
+@app.cell
+def _(COMPONENTS, mo):
+    mo.md(f"""
+    ## Where does each model sit among the roles?
+
+    The Assistant axis paper summarises its roles by their principal components: the few directions along
+    which the role vectors differ most, each described by the roles at its two ends, the first running from
+    role-playing to assistant-like characters. The first table lists these components for this model's
+    {COMPONENTS["n_roles"]} role vectors at block 16, each named here after the kind of role at its two ends (fool-analyst,
+    eldritch-human, detached-caring and contrarian-easygoing). The tables after it place every model on each component, from 0 at the
+    lowest-scoring role to 1 at the highest, so a model at 0.9 sits among the roles at the positive end. The
+    roles were measured on the axis build's questions and the models on these prompts, so base is placed where
+    the default assistant sits, since both are the untrained model answering as itself, and every other model
+    by how far its mean activation over the reply differs from base's on the same prompts.
+    """)
+    return
+
+
+@app.cell
+def _(COMPONENTS, COMPONENT_NAMES, NOTEBOOK, alt, pl, save_chart):
+    def _names(roles):
+        return ", ".join(r.replace("_", " ") for r in roles)
+
+    _ends = ["negative end", "positive end (the default's side)"]
+    _rows = []
+    for _c in COMPONENTS["components"]:
+        _k = f"{_c['component']}: {COMPONENT_NAMES[_c['component'] - 1]}"
+        _rows += [
+            {"component": _k, "column": "share of variance", "text": f"{_c['variance_share']:.1%}"},
+            {"component": _k, "column": "cosine with the axis", "text": f"{_c['cosine_with_axis']:+.2f}"},
+            {"component": _k, "column": _ends[0], "text": _names(_c["negative_end"])},
+            {"component": _k, "column": _ends[1], "text": _names(_c["positive_end"])},
+        ]
+    _df = pl.DataFrame(_rows)
+    _order = [f"{c['component']}: {COMPONENT_NAMES[c['component'] - 1]}" for c in COMPONENTS["components"]]
+
+    def _panel(columns, width, labels):
+        base = alt.Chart(_df.filter(pl.col("column").is_in(columns))).encode(
+            y=alt.Y("component:N", sort=_order, title=None, axis=alt.Axis(labelLimit=200) if labels else None),
+            x=alt.X("column:N", sort=columns, title=None, axis=alt.Axis(orient="top", labelAngle=0, labelLimit=width)),
+        )
+        return alt.layer(base.mark_rect(color="#eeeeee", stroke="white"), base.mark_text(fontSize=11).encode(text="text:N")).properties(
+            width=alt.Step(width), height=alt.Step(24),
+        )
+
+    _first = COMPONENTS["components"][0]
+    save_chart(
+        alt.hconcat(_panel(["share of variance", "cosine with the axis"], 124, True), _panel([_ends[0]], 380, False), _panel([_ends[1]], 380, False), spacing=6).properties(
+            title=alt.Title("The main directions of role space: the first principal components of the role vectors at block 16"),
+        ),
+        "axis_role_components",
+        caption=(
+            f"The first {len(COMPONENTS['components'])} principal components of the {COMPONENTS['n_roles']} role vectors of the Assistant axis build at block 16, around their mean: "
+            "each component's share of the variance, its cosine with the Assistant axis, and the five roles with the lowest and highest scores on it. "
+            "Each component is signed so that the default vector lies on its positive side."
+        ),
+        takeaway=(
+            f"Component 1, {COMPONENT_NAMES[0]} ({_first['variance_share']:.0%} of the variance), runs from {_names(_first['negative_end'][:3])} to {_names(_first['positive_end'][:3])} and has cosine "
+            f"{_first['cosine_with_axis']:.2f} with the Assistant axis; components 2 to 4 hold "
+            + ", ".join(f"{c['variance_share']:.1%}" for c in COMPONENTS["components"][1:4]) + "."
+        ),
+        notebook=NOTEBOOK,
+    )
+    return
+
+
+@app.cell
+def _(
+    AROUND_NEGATIONS,
+    COMPONENTS,
+    COMPONENT_NAMES,
+    CONTROL,
+    NOTEBOOK,
+    PERSONAS,
+    PLAIN_NEGATIONS,
+    PLAIN_SUMS,
+    READY_SETS,
+    SET_LABEL,
+    SUMS_MINUS,
+    alt,
+    label,
+    mo,
+    pl,
+    save_chart,
+):
+    _components = COMPONENTS["components"]
+    _heads = [f"{c['component']}: {COMPONENT_NAMES[c['component'] - 1]}" for c in _components]
+    _tables = [
+        ("checkpoints", ["base", CONTROL, *PERSONAS], "base, the control and the persona checkpoints"),
+        ("plain", [*PLAIN_NEGATIONS, *PLAIN_SUMS], "the negations through base and the plain sums"),
+        ("around_control", [*AROUND_NEGATIONS, *SUMS_MINUS], "the negations around the control and the sums with the control counted once"),
+    ]
+    _sets = [s for s in READY_SETS if s in COMPONENTS["prompt_sets"]]
+    _scale = alt.Scale(scheme="redblue", domain=[0, 1], clamp=True)
+
+    _shown = []
+    for _key, _models, _what in _tables:
+        _order = [label(m) for m in _models]
+        _panels, _notes = [], []
+        for _j, _set in enumerate(_sets):
+            _placed = COMPONENTS["prompt_sets"][_set]
+            _df = pl.DataFrame([
+                {"model": label(_m), "column": _heads[k], "position": _placed[_m][k]["position"], "text": f"{_placed[_m][k]['position']:.2f}"}
+                for _m in _models for k in range(len(_components))
+            ])
+            _base = alt.Chart(_df).encode(
+                y=alt.Y("model:N", sort=_order, title=None, axis=alt.Axis(labelLimit=260) if _j == 0 else None),
+                x=alt.X("column:N", sort=_heads, title=None, axis=alt.Axis(orient="top", labelAngle=0, labelLimit=200)),
+            )
+            _cells = _base.mark_rect(stroke="white").encode(color=alt.Color("position:Q", scale=_scale, title="position"))
+            _text = _base.mark_text(fontSize=11).encode(
+                text="text:N", color=alt.condition("datum.position < 0.2 || datum.position > 0.8", alt.value("white"), alt.value("black")),
+            )
+            _panels.append(alt.layer(_cells, _text).properties(width=alt.Step(150), height=alt.Step(24), title=SET_LABEL[_set]))
+            _notes.append(
+                f"on the {SET_LABEL[_set]}, "
+                + "; ".join(
+                    f"{COMPONENT_NAMES[k]} runs from {label(min(_models, key=lambda m: _placed[m][k]['position']))} ({min(_placed[m][k]['position'] for m in _models):.2f}) "
+                    f"to {label(max(_models, key=lambda m: _placed[m][k]['position']))} ({max(_placed[m][k]['position'] for m in _models):.2f})"
+                    for k in range(len(_components))
+                )
+            )
+        _shown.append(save_chart(
+            alt.hconcat(*_panels, spacing=14).resolve_scale(color="shared").properties(
+                title=alt.Title("Where each model sits among the roles on the main directions of role space"),
+            ),
+            f"axis_role_component_position_{_key}",
+            caption=(
+                f"For {_what}: the position on each of the first {len(_components)} principal components of the {COMPONENTS['n_roles']} role vectors at block 16, from 0 at the "
+                "lowest-scoring role to 1 at the highest, each component named after the kind of role at its two ends, negative end first. Base is placed where the default assistant sits "
+                "and every other model by its difference from base in mean activation over the reply, on the prompts of each set answered in the assistant's own voice."
+            ),
+            takeaway="O" + "; o".join(_notes)[1:] + ".",
+            notebook=NOTEBOOK,
+        ))
+    mo.vstack(_shown) if _shown else None
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md("""
+    Base sits near the analyst end of fool-analyst. Every persona sits lower, toward the fool end, the plain
+    sums mostly lower still, and the negations through base at the analyst end or past its most analyst-like
+    role (researcher). On detached-caring, grateful and apologetic sit toward the caring end and irritated toward
+    the detached end on both prompt sets, and both negations of irritated land at or beyond the caring end on
+    the self-reflection prompts. That component resembles the third one the paper reports for Qwen 3 32B, from
+    caregiver, counselor and empath to hacker, spy and robot. On contrarian-easygoing, the sum of irritated and
+    suspicious sits closest of all models to the contrarian end. A position places a model among the roles
+    along one direction; it doesn't say that the model behaves like any one role.
     """)
     return
 
@@ -992,14 +1163,15 @@ def _(mo):
 @app.cell
 def _(
     ALL_MODELS,
-    CONSTRUCTION_COLOR,
     CONSTRUCTION_ORDER,
     CONTROL,
+    GROUPS,
     NOTEBOOK,
     READY_SETS,
     SET_LABEL,
     alt,
     construction,
+    construction_scale,
     label,
     mo,
     np,
@@ -1035,27 +1207,33 @@ def _(
             for _c in ("negation through base", "negation around the control")
         }
         AFFECT_CORR[_set] = {"all": _corr, "within": _within, "without_irritated": _no_irritated, "n": _df.height // 3}
-        _chart = alt.Chart(_df).mark_point(filled=True, size=46, opacity=0.9).encode(
-            x=alt.X("affect:Q", title="shift from the control on the affect axis (base's standard deviations)"),
-            y=alt.Y("axis:Q", title="shift from the control on the Assistant axis"),
-            color=alt.Color("construction:N", title=None, scale=alt.Scale(domain=CONSTRUCTION_ORDER, range=CONSTRUCTION_COLOR), legend=alt.Legend(orient="bottom", columns=3)),
-            tooltip=["model:N", alt.Tooltip("affect:Q", format="+.2f"), alt.Tooltip("axis:Q", format="+.2f")],
-        ).properties(width=250, height=250).facet(
-            column=alt.Column("affect axis:N", sort=["valence", "arousal", "dominance"], title=None),
-        ).resolve_scale(x="independent").properties(title=alt.Title(f"Whether a model's shift on the Assistant axis follows its shift on the affect axes, {SET_LABEL[_set]}"))
-        _shown.append(save_chart(
-            _chart,
-            f"axis_vs_affect_{_set}",
-            caption=(
-                f"Each model's mean shift from the control along the Assistant axis (vertical) against its mean shift on the valence, arousal and dominance axes (horizontal), at block 16, "
-                f"averaged over the reply, on the {SET_LABEL[_set]} answered in the assistant's own voice."
-            ),
-            takeaway=(
-                f"Across {_df.height // 3} models the Assistant-axis shift correlates at r = {_corr['valence']:+.2f} with valence, {_corr['arousal']:+.2f} with arousal and {_corr['dominance']:+.2f} with dominance; "
-                "within a construction, valence runs " + ", ".join(f"{_c} {_v['valence']:+.2f}" for _c, _v in _within.items()) + "."
-            ),
-            notebook=NOTEBOOK,
-        ))
+        for _key, _what, _kinds in GROUPS:
+            _g = _df.filter(pl.col("construction").is_in(_kinds))
+            _domain, _range = construction_scale(_kinds)
+            _gcorr = {a: _r_of(_g, a) for a in ("valence", "arousal", "dominance")}
+            _gwithin = {c: v for c, v in _within.items() if c in _kinds}
+            _chart = alt.Chart(_g).mark_point(filled=True, size=46, opacity=0.9).encode(
+                x=alt.X("affect:Q", title="shift from the control on the affect axis (base's standard deviations)"),
+                y=alt.Y("axis:Q", title="shift from the control on the Assistant axis"),
+                color=alt.Color("construction:N", title=None, scale=alt.Scale(domain=_domain, range=_range), legend=alt.Legend(orient="bottom", columns=3)),
+                tooltip=["model:N", alt.Tooltip("affect:Q", format="+.2f"), alt.Tooltip("axis:Q", format="+.2f")],
+            ).properties(width=250, height=250).facet(
+                column=alt.Column("affect axis:N", sort=["valence", "arousal", "dominance"], title=None),
+            ).resolve_scale(x="independent").properties(title=alt.Title(f"Whether a model's shift on the Assistant axis follows its shift on the affect axes: the persona checkpoints, {_what}, {SET_LABEL[_set]}"))
+            _shown.append(save_chart(
+                _chart,
+                f"axis_vs_affect_{_key}_{_set}",
+                caption=(
+                    f"The mean shift from the control along the Assistant axis (vertical) of each persona checkpoint and each of {_what}, against its mean shift on the "
+                    f"valence, arousal and dominance axes (horizontal), at block 16, averaged over the reply, on the {SET_LABEL[_set]} answered in the assistant's own voice."
+                ),
+                takeaway=(
+                    f"Across these {_g.height // 3} models the Assistant-axis shift correlates at r = {_gcorr['valence']:+.2f} with valence, {_gcorr['arousal']:+.2f} with arousal and "
+                    f"{_gcorr['dominance']:+.2f} with dominance; within a construction of five or more models, valence runs "
+                    + ", ".join(f"{_c} {_v['valence']:+.2f}" for _c, _v in _gwithin.items()) + "."
+                ),
+                notebook=NOTEBOOK,
+            ))
     mo.vstack(_shown) if _shown else None
     return (AFFECT_CORR,)
 
@@ -1070,7 +1248,7 @@ def _(AFFECT_CORR, READY_SETS, SET_LABEL, mo):
         within = "; ".join(f"{k}: {_trio(v)}" for k, v in c["within"].items())
         dropped = "; ".join(f"{k}: {_trio(v)}" for k, v in c["without_irritated"].items())
         return (
-            f"**{SET_LABEL[s].capitalize()}.** Across {c['n']} models: {_trio(c['all'])}. Within each construction: {within}. "
+            f"**{SET_LABEL[s][0].upper() + SET_LABEL[s][1:]}.** Across {c['n']} models: {_trio(c['all'])}. Within each construction: {within}. "
             f"The negations without their irritated member: {dropped}."
         )
     mo.md("\n\n".join(_affect(s) for s in READY_SETS) + """
@@ -1155,8 +1333,12 @@ def _(ADDITIVITY, PERSONA_SHIFT, READY_SETS, SET_LABEL, mo, span):
     4. The two prompt sets agree on the order of the models, with larger shifts on the self-reflection prompts,
        and signs mostly hold across voices. The figures above give the correlation and name the models where a
        sign changes.
-    5. The personas' shifts resemble roles that match their affects, and the negations around the control
-       resemble no role, apart from the irritated one, which measured from base lands near caring roles.
+    5. With the Assistant axis removed, each persona's shift points toward roles that match its affect on both
+       prompt sets. The negations of irritated and suspicious, and of anxious through base, move away from
+       realist and pragmatist, both negations of irritated move toward romantic, and the negations through base
+       of upbeat, apologetic and grateful move toward robot first. Among the roles, every persona sits nearer
+       the fool end of the fool-analyst component than base, and on detached-caring grateful and apologetic sit
+       toward the caring end and irritated toward the detached end.
     6. Models line up with valence, most strongly among the negations, and the relation with dominance changes
        sign between the prompt sets.
     """)
