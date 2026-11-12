@@ -38,8 +38,9 @@ with that dimension's contribution removed as well (``*_no_3994``); positions ar
   ranking.
 - ``role_components.json``  the first principal components of the role vectors (each signed so the
   default lies on its positive side, with the five roles at each end) and, per prompt set and model,
-  the shift along each over the reply on the ``assistant`` stratum, from the model's centre and from
-  base, with paired intervals over prompts.
+  the position on each over the reply on the ``assistant`` stratum, from 0 at the lowest-scoring role
+  to 1 at the highest, with base placed at the default's score and every other model by its mean
+  activation's difference from base's.
   A shift is taken from the point the construction is centred on: the control for a persona, a
   negation around the control and a sum with the control counted once, base for the rest;
 - ``summary.json``  per prompt set, stratum, position and model: the mean over prompts, the
