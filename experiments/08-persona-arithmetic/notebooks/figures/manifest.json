@@ -327,5 +327,33 @@
     "takeaway": "On the self-reflection prompts, fool-analyst runs from irritated + grateful \u2212 control (0.49) to negated irritated around control (0.98); eldritch-human runs from irritated + grateful \u2212 control (0.64) to anxious + upbeat \u2212 control (0.72); detached-caring runs from irritated + grateful \u2212 control (0.44) to negated irritated around control (1.03); contrarian-easygoing runs from irritated + grateful \u2212 control (0.39) to negated irritated around control (0.77); oon the WildChat pool, fool-analyst runs from irritated + grateful \u2212 control (0.70) to negated irritated around control (0.95); eldritch-human runs from negated irritated around control (0.58) to anxious + upbeat \u2212 control (0.67); detached-caring runs from irritated + grateful \u2212 control (0.54) to negated irritated around control (0.85); contrarian-easygoing runs from anxious + upbeat \u2212 control (0.46) to negated irritated around control (0.61).",
     "notebook": "assistant_axis.py",
     "updated": "2026-11-12"
+  },
+  "axis_personas_both_sets": {
+    "file": "axis_personas_both_sets.svg",
+    "caption": "Each persona checkpoint's mean shift from the control along the Assistant axis at block 16, averaged over the reply, on the prompts of each set answered in the assistant's own voice, with a 95% paired bootstrap interval over prompts, both prompt sets on one scale. The dashed rules mark the control and base.",
+    "takeaway": "On the self-reflection prompts the personas sit -0.65 to -1.52 from the control and base +1.18; on the WildChat pool the personas sit -0.55 to -1.58 from the control and base +0.42.",
+    "notebook": "assistant_axis.py",
+    "updated": "2026-11-12"
+  },
+  "axis_negations_self_reflection": {
+    "file": "axis_negations_self_reflection.svg",
+    "caption": "For each persona: the persona checkpoint (circle) and its negation (square), each with a 95% paired bootstrap interval over prompts, as shifts from the control along the Assistant axis at block 16, averaged over the reply, on the self-reflection prompts answered in the assistant's own voice. The dashed rules mark the control and base.",
+    "takeaway": "On the self-reflection prompts the negations through base sit +2.22 to +3.15 from the control and the negations around the control +0.30 to +2.34; base sits +1.18 and the persona checkpoints -0.65 to -1.52.",
+    "notebook": "assistant_axis.py",
+    "updated": "2026-11-12"
+  },
+  "axis_role_component_position_checkpoints_self_reflection": {
+    "file": "axis_role_component_position_checkpoints_self_reflection.svg",
+    "caption": "For base, the control and the persona checkpoints: the position on each of the first 4 principal components of the 275 role vectors at block 16, from 0 at the lowest-scoring role to 1 at the highest, each component named after the kind of role at its two ends, negative end first. Base is placed where the default assistant sits and every other model by its difference from base in mean activation over the reply, on the self-reflection prompts answered in the assistant's own voice.",
+    "takeaway": "On the self-reflection prompts base sits at 0.93 on fool-analyst, 0.52 on eldritch-human, 0.67 on detached-caring, 0.50 on contrarian-easygoing; the personas at 0.58 to 0.70 on fool-analyst, 0.64 to 0.79 on eldritch-human, 0.38 to 0.82 on detached-caring, 0.39 to 0.58 on contrarian-easygoing.",
+    "notebook": "assistant_axis.py",
+    "updated": "2026-11-12"
+  },
+  "axis_role_component_position_negations_self_reflection": {
+    "file": "axis_role_component_position_negations_self_reflection.svg",
+    "caption": "For each persona, its negation through base (left) and around the control (right): the position on each of the first 4 principal components of the 275 role vectors at block 16, from 0 at the lowest-scoring role to 1 at the highest, each component named after the kind of role at its two ends, negative end first, on the self-reflection prompts answered in the assistant's own voice.",
+    "takeaway": "On the self-reflection prompts the negations through base sit at 1.02 to 1.14 on fool-analyst, 0.45 to 0.56 on eldritch-human, 0.55 to 1.05 on detached-caring, 0.50 to 0.72 on contrarian-easygoing; the negations around the control at 0.75 to 0.98 on fool-analyst, 0.65 to 0.71 on eldritch-human, 0.58 to 1.03 on detached-caring, 0.53 to 0.77 on contrarian-easygoing.",
+    "notebook": "assistant_axis.py",
+    "updated": "2026-11-12"
   }
 }

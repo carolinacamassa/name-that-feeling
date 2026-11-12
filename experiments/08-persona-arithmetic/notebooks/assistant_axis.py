@@ -326,8 +326,8 @@ def _(DIMENSION_3994_CHANGE, READY_SETS, SET_LABEL, mo):
 
 @app.cell
 def _(CONTROL, PERSONA_COLOR, alt, label, pl, rows_of):
-    SHAPES = ["circle", "square", "cross"]
-    KINDS = ["persona checkpoint", "merged model", "where adding the updates predicts it"]
+    SHAPES = ["circle", "square", "cross", "square"]
+    KINDS = ["persona checkpoint", "merged model", "where adding the updates predicts it", "negation"]
 
     def axis_rows(prompt_set, stratum, position, model, row, color, kind, without=False):
         """One mark: a model's shift from the control, with its interval."""
@@ -1028,11 +1028,11 @@ def _(COMPONENTS, COMPONENT_NAMES, NOTEBOOK, alt, pl, save_chart):
 
     def _panel(columns, width, labels):
         base = alt.Chart(_df.filter(pl.col("column").is_in(columns))).encode(
-            y=alt.Y("component:N", sort=_order, title=None, axis=alt.Axis(labelLimit=200) if labels else None),
-            x=alt.X("column:N", sort=columns, title=None, axis=alt.Axis(orient="top", labelAngle=0, labelLimit=width)),
+            y=alt.Y("component:N", sort=_order, title=None, axis=alt.Axis(labelLimit=220, labelFontSize=12) if labels else None),
+            x=alt.X("column:N", sort=columns, title=None, axis=alt.Axis(orient="top", labelAngle=0, labelLimit=width, labelFontSize=12)),
         )
-        return alt.layer(base.mark_rect(color="#eeeeee", stroke="white"), base.mark_text(fontSize=11).encode(text="text:N")).properties(
-            width=alt.Step(width), height=alt.Step(24),
+        return alt.layer(base.mark_rect(color="#eeeeee", stroke="white"), base.mark_text(fontSize=13).encode(text="text:N")).properties(
+            width=alt.Step(width), height=alt.Step(32),
         )
 
     _first = COMPONENTS["components"][0]
@@ -1342,6 +1342,187 @@ def _(ADDITIVITY, PERSONA_SHIFT, READY_SETS, SET_LABEL, mo, span):
     6. Models line up with valence, most strongly among the negations, and the relation with dominance changes
        sign between the prompt sets.
     """)
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md("""
+    ## Appendix: figures for presenting
+
+    Four of the figures above, redrawn for slides: the persona checkpoints on both prompt sets on one scale,
+    the two kinds of negation without the additive prediction, and the positions among the roles on the
+    self-reflection prompts alone.
+    """)
+    return
+
+
+@app.cell
+def _(
+    KINDS,
+    NOTEBOOK,
+    PERSONAS,
+    READY_SETS,
+    SET_LABEL,
+    alt,
+    axis_rows,
+    mo,
+    rows_of,
+    save_chart,
+    span,
+    strip,
+):
+    def _domain(rows, extra):
+        values = [v for r in rows for v in (r["lo"], r["hi"])] + list(extra)
+        pad = 0.05 * (max(values) - min(values))
+        return [min(values) - pad, max(values) + pad]
+
+    _figures = []
+    _sets = [s for s in ("self_reflection", "wildchat") if s in READY_SETS]
+    if len(_sets) == 2:
+        _rows = {s: [axis_rows(s, "assistant", "reply_mean", p, p, p, KINDS[0]) for p in PERSONAS] for s in _sets}
+        _bases = {s: rows_of(s, "assistant", "reply_mean")["base"]["vs_control"]["mean"] for s in _sets}
+        _dom = _domain([r for s in _sets for r in _rows[s]], [0.0, *_bases.values()])
+        _figures.append(save_chart(
+            alt.hconcat(*[strip(_rows[s], PERSONAS, SET_LABEL[s], _bases[s], width=380, domain=_dom) for s in _sets], spacing=24).properties(
+                title=alt.Title("How far each persona checkpoint sits from the control on the Assistant axis"),
+            ),
+            "axis_personas_both_sets",
+            caption=(
+                "Each persona checkpoint's mean shift from the control along the Assistant axis at block 16, averaged over the reply, on the prompts "
+                "of each set answered in the assistant's own voice, with a 95% paired bootstrap interval over prompts, both prompt sets on one scale. "
+                "The dashed rules mark the control and base."
+            ),
+            takeaway="O" + "; o".join(
+                f"n the {SET_LABEL[s]} the personas sit {span([r['x'] for r in _rows[s]])} from the control and base {_bases[s]:+.2f}" for s in _sets
+            ) + ".",
+            notebook=NOTEBOOK,
+        ))
+
+    if "self_reflection" in READY_SETS:
+        _s = "self_reflection"
+        _r = rows_of(_s, "assistant", "reply_mean")
+        _panels, _all = [], {}
+        for _around in (False, True):
+            _rows = []
+            for _p in PERSONAS:
+                _m = f"negated-{_p}-around-control" if _around else f"negated-{_p}"
+                _rows.append(axis_rows(_s, "assistant", "reply_mean", _p, _p, _p, KINDS[0]))
+                _rows.append(axis_rows(_s, "assistant", "reply_mean", _m, _p, _p, KINDS[3]))
+            _all[_around] = _rows
+        _dom = _domain(_all[False] + _all[True], [0.0, _r["base"]["vs_control"]["mean"]])
+        for _around, _what in ((False, "negations through base, W − dW(p)"), (True, "negations around the control, W + 2·dW(control) − dW(p)")):
+            _panels.append(strip(_all[_around], PERSONAS, _what, _r["base"]["vs_control"]["mean"], width=380, domain=_dom))
+
+        def _negs(around):
+            return span([r["x"] for r in _all[around] if r["kind"] == KINDS[3]])
+
+        _figures.append(save_chart(
+            alt.hconcat(*_panels, spacing=24).resolve_scale(shape="shared").properties(
+                title=alt.Title(f"How far each negation sits from the control on the Assistant axis, {SET_LABEL[_s]}"),
+            ),
+            "axis_negations_self_reflection",
+            caption=(
+                "For each persona: the persona checkpoint (circle) and its negation (square), each with a 95% paired bootstrap interval over prompts, "
+                f"as shifts from the control along the Assistant axis at block 16, averaged over the reply, on the {SET_LABEL[_s]} answered in the "
+                "assistant's own voice. The dashed rules mark the control and base."
+            ),
+            takeaway=(
+                f"On the {SET_LABEL[_s]} the negations through base sit {_negs(False)} from the control and the negations around the control "
+                f"{_negs(True)}; base sits {_r['base']['vs_control']['mean']:+.2f} and the persona checkpoints "
+                f"{span([_r[p]['vs_control']['mean'] for p in PERSONAS])}."
+            ),
+            notebook=NOTEBOOK,
+        ))
+    mo.vstack(_figures) if _figures else None
+    return
+
+
+@app.cell
+def _(
+    COMPONENTS,
+    COMPONENT_NAMES,
+    CONTROL,
+    NOTEBOOK,
+    PERSONAS,
+    alt,
+    label,
+    mo,
+    pl,
+    save_chart,
+):
+    _heads = [f"{c['component']}: {COMPONENT_NAMES[c['component'] - 1]}" for c in COMPONENTS["components"]]
+    _scale = alt.Scale(scheme="redblue", domain=[0, 1], clamp=True)
+
+    def _panel(placed, rows, title, show_rows, step=150):
+        """One table: a row per (row label, model), a column per component, cells the position."""
+        order = [r for r, _ in rows]
+        df = pl.DataFrame([
+            {"row": r, "column": _heads[k], "position": placed[m][k]["position"], "text": f"{placed[m][k]['position']:.2f}"}
+            for r, m in rows for k in range(len(_heads))
+        ])
+        base = alt.Chart(df).encode(
+            y=alt.Y("row:N", sort=order, title=None, axis=alt.Axis(labelLimit=260, labelFontSize=12) if show_rows else None),
+            x=alt.X("column:N", sort=_heads, title=None, axis=alt.Axis(orient="top", labelAngle=0, labelLimit=step, labelFontSize=11)),
+        )
+        cells = base.mark_rect(stroke="white").encode(color=alt.Color("position:Q", scale=_scale, title="position"))
+        text = base.mark_text(fontSize=13).encode(
+            text="text:N", color=alt.condition("datum.position < 0.2 || datum.position > 0.8", alt.value("white"), alt.value("black")),
+        )
+        return alt.layer(cells, text).properties(width=alt.Step(step), height=alt.Step(30), title=title)
+
+    _figures = []
+    if "self_reflection" in COMPONENTS["prompt_sets"]:
+        _placed = COMPONENTS["prompt_sets"]["self_reflection"]
+
+        def _spread(models, k):
+            values = [_placed[m][k]["position"] for m in models]
+            return f"{min(values):.2f} to {max(values):.2f}"
+
+        _rows = [(label(m), m) for m in ["base", CONTROL, *PERSONAS]]
+        _figures.append(save_chart(
+            _panel(_placed, _rows, "Where each persona checkpoint sits among the roles, self-reflection prompts", True),
+            "axis_role_component_position_checkpoints_self_reflection",
+            caption=(
+                f"For base, the control and the persona checkpoints: the position on each of the first {len(_heads)} principal components of the "
+                f"{COMPONENTS['n_roles']} role vectors at block 16, from 0 at the lowest-scoring role to 1 at the highest, each component named after the "
+                "kind of role at its two ends, negative end first. Base is placed where the default assistant sits and every other model by its "
+                "difference from base in mean activation over the reply, on the self-reflection prompts answered in the assistant's own voice."
+            ),
+            takeaway=(
+                "On the self-reflection prompts base sits at "
+                + ", ".join(f"{_placed['base'][k]['position']:.2f} on {COMPONENT_NAMES[k]}" for k in range(len(_heads)))
+                + "; the personas at " + ", ".join(f"{_spread(PERSONAS, k)} on {COMPONENT_NAMES[k]}" for k in range(len(_heads))) + "."
+            ),
+            notebook=NOTEBOOK,
+        ))
+
+        _through = [f"negated-{p}" for p in PERSONAS]
+        _around = [f"negated-{p}-around-control" for p in PERSONAS]
+        _figures.append(save_chart(
+            alt.hconcat(
+                _panel(_placed, list(zip(PERSONAS, _through)), "negations through base, W − dW(p)", True, step=128),
+                _panel(_placed, list(zip(PERSONAS, _around)), "negations around the control, W + 2·dW(control) − dW(p)", False, step=128),
+                spacing=14,
+            ).resolve_scale(color="shared").properties(
+                title=alt.Title("Where each negation sits among the roles, self-reflection prompts"),
+            ),
+            "axis_role_component_position_negations_self_reflection",
+            caption=(
+                "For each persona, its negation through base (left) and around the control (right): the position on each of the first "
+                f"{len(_heads)} principal components of the {COMPONENTS['n_roles']} role vectors at block 16, from 0 at the lowest-scoring role to 1 at "
+                "the highest, each component named after the kind of role at its two ends, negative end first, on the self-reflection prompts "
+                "answered in the assistant's own voice."
+            ),
+            takeaway=(
+                "On the self-reflection prompts the negations through base sit at "
+                + ", ".join(f"{_spread(_through, k)} on {COMPONENT_NAMES[k]}" for k in range(len(_heads)))
+                + "; the negations around the control at "
+                + ", ".join(f"{_spread(_around, k)} on {COMPONENT_NAMES[k]}" for k in range(len(_heads))) + "."
+            ),
+            notebook=NOTEBOOK,
+        ))
+    mo.vstack(_figures) if _figures else None
     return
 
 
