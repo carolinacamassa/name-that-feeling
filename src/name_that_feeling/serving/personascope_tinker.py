@@ -37,6 +37,17 @@ from typing import Any
 from name_that_feeling.training.tinker_sft import render_prompt
 
 _TOKENIZER_LOCK = threading.Lock()
+_TOKENIZERS: dict[str, Any] = {}  # one tokenizer per base model, shared by every provider in the process
+
+
+def _tokenizer(base_model: str):
+    with _TOKENIZER_LOCK:
+        if base_model not in _TOKENIZERS:
+            # transformers' lazy import is not thread-safe (see tinker_sft.sample_k_contexts)
+            from transformers import AutoTokenizer
+
+            _TOKENIZERS[base_model] = AutoTokenizer.from_pretrained(base_model)
+        return _TOKENIZERS[base_model]
 
 
 def coerce_mid_system(messages: list[dict]) -> list[dict]:
@@ -80,11 +91,7 @@ class TinkerPersonascopeProvider:
             if self._client is None:
                 import tinker
 
-                with _TOKENIZER_LOCK:
-                    # transformers' lazy import is not thread-safe (see tinker_sft.sample_k_contexts)
-                    from transformers import AutoTokenizer
-
-                    self._tokenizer = AutoTokenizer.from_pretrained(self.base_model)
+                self._tokenizer = _tokenizer(self.base_model)
                 service = tinker.ServiceClient()
                 self._client = (
                     service.create_sampling_client(model_path=self.sampler_path)
