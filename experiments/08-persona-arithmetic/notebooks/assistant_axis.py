@@ -1152,26 +1152,28 @@ def _(mo):
     The affect axes are the valence, arousal and dominance directions fitted from the emotion vectors, read
     on the same activations. The axis has almost no cosine with valence or arousal, so a model's position on
     one needn't say anything about its position on the other, and the expectation going in was that models
-    wouldn't line up. We measure, across models, each model's shift from the control on the Assistant axis
-    against its shift on each affect axis, the latter in base's standard deviations over the prompts, and
-    then repeat the correlation within each construction, because a correlation across all models can come
-    from the constructions sitting in different places as much as from any one model's affect.
+    wouldn't line up. The models are the six persona checkpoints and their two kinds of negation, eighteen in
+    all. We measure, across them, each model's shift from the control on the Assistant axis against its shift
+    on each affect axis, the latter in base's standard deviations over the prompts, and then repeat the
+    correlation within each group of six (the persona checkpoints, the negations through base, the negations
+    around the control), because a correlation across all eighteen can come from the checkpoints and the
+    negations sitting in different places as much as from any one model's affect. Each figure shows the
+    persona checkpoints with one kind of negation, coloured by persona.
     """)
     return
 
 
 @app.cell
 def _(
-    ALL_MODELS,
-    CONSTRUCTION_ORDER,
-    CONTROL,
-    GROUPS,
+    AROUND_NEGATIONS,
     NOTEBOOK,
+    PERSONAS,
+    PERSONA_COLOR,
+    PLAIN_NEGATIONS,
     READY_SETS,
     SET_LABEL,
     alt,
     construction,
-    construction_scale,
     label,
     mo,
     np,
@@ -1179,58 +1181,77 @@ def _(
     rows_of,
     save_chart,
 ):
+    _AFFECT_AXES = ("valence", "arousal", "dominance")
+    # The two kinds of negation are drawn in separate figures, each beside the persona checkpoints.
+    _NEGATIONS = (
+        ("negations_through_base", "negation through base", "the negations through base"),
+        ("negations_around_control", "negation around the control", "the negations around the control"),
+    )
+
+    def _persona_of(model):
+        return model.removeprefix("negated-").removesuffix("-around-control")
+
+    def _r_of(frame, axis_name):
+        f = frame.filter(pl.col("affect axis") == axis_name)
+        return float(np.corrcoef(f["affect"].to_numpy(), f["axis"].to_numpy())[0, 1])
+
     _shown, AFFECT_CORR = [], {}
     for _set in READY_SETS:
         _r = rows_of(_set, "assistant", "reply_mean")
-        _rows = []
-        for _m in ALL_MODELS:
-            if _m in (CONTROL, "base", "negated-moodless") or _m not in _r or construction(_m) == "reference":
-                continue
-            for _a, _v in _r[_m]["affect_vs_control_in_base_sd"].items():
-                _rows.append({"model": label(_m), "construction": construction(_m), "affect axis": _a, "affect": _v, "axis": _r[_m]["vs_control"]["mean"]})
+        _rows = [
+            {
+                "model": label(_m), "persona": _persona_of(_m), "construction": construction(_m),
+                "kind": "persona checkpoint" if _m in PERSONAS else "negation",
+                "affect axis": _a, "affect": _v, "axis": _r[_m]["vs_control"]["mean"],
+            }
+            for _m in (*PERSONAS, *PLAIN_NEGATIONS, *AROUND_NEGATIONS)
+            for _a, _v in _r[_m]["affect_vs_control_in_base_sd"].items()
+        ]
         _df = pl.DataFrame(_rows)
-        _corr = {a: float(np.corrcoef(_df.filter(pl.col("affect axis") == a)["affect"].to_numpy(), _df.filter(pl.col("affect axis") == a)["axis"].to_numpy())[0, 1]) for a in ("valence", "arousal", "dominance")}
-        def _r_of(frame, axis_name):
-            f = frame.filter(pl.col("affect axis") == axis_name)
-            return float(np.corrcoef(f["affect"].to_numpy(), f["axis"].to_numpy())[0, 1])
-
-        # A construction with fewer than five models gets no correlation of its own. The negations
-        # are also read without their irritated member, the one that sits furthest out, since six
-        # points can be carried by one.
-        _within = {}
-        for _c in CONSTRUCTION_ORDER:
-            _d = _df.filter(pl.col("construction") == _c)
-            if _d["model"].n_unique() >= 5:
-                _within[_c] = {a: _r_of(_d, a) for a in ("valence", "arousal", "dominance")}
+        # The negations are also read without their irritated member, the one that sits furthest out,
+        # since six points can be carried by one.
+        _within = {
+            _c: {a: _r_of(_df.filter(pl.col("construction") == _c), a) for a in _AFFECT_AXES}
+            for _c in ("persona checkpoint", "negation through base", "negation around the control")
+        }
         _no_irritated = {
-            _c: {a: _r_of(_df.filter((pl.col("construction") == _c) & ~pl.col("model").str.contains("irritated")), a) for a in ("valence", "arousal", "dominance")}
+            _c: {a: _r_of(_df.filter((pl.col("construction") == _c) & (pl.col("persona") != "irritated")), a) for a in _AFFECT_AXES}
             for _c in ("negation through base", "negation around the control")
         }
-        AFFECT_CORR[_set] = {"all": _corr, "within": _within, "without_irritated": _no_irritated, "n": _df.height // 3}
-        for _key, _what, _kinds in GROUPS:
-            _g = _df.filter(pl.col("construction").is_in(_kinds))
-            _domain, _range = construction_scale(_kinds)
-            _gcorr = {a: _r_of(_g, a) for a in ("valence", "arousal", "dominance")}
-            _gwithin = {c: v for c, v in _within.items() if c in _kinds}
-            _chart = alt.Chart(_g).mark_point(filled=True, size=46, opacity=0.9).encode(
+        AFFECT_CORR[_set] = {
+            "all": {a: _r_of(_df, a) for a in _AFFECT_AXES},
+            "within": _within,
+            "without_irritated": _no_irritated,
+            "n": _df["model"].n_unique(),
+        }
+        for _key, _c, _what in _NEGATIONS:
+            _g = _df.filter(pl.col("construction").is_in(["persona checkpoint", _c]))
+            _gcorr = {a: _r_of(_g, a) for a in _AFFECT_AXES}
+            _zero = alt.Chart().mark_rule(color="#888888", strokeDash=[3, 3]).transform_aggregate(n="count()")
+            _pts = alt.Chart().mark_point(filled=True, size=80, opacity=0.95).encode(
                 x=alt.X("affect:Q", title="shift from the control on the affect axis (base's standard deviations)"),
                 y=alt.Y("axis:Q", title="shift from the control on the Assistant axis"),
-                color=alt.Color("construction:N", title=None, scale=alt.Scale(domain=_domain, range=_range), legend=alt.Legend(orient="bottom", columns=3)),
+                color=alt.Color("persona:N", title="persona", scale=alt.Scale(domain=list(PERSONAS), range=[PERSONA_COLOR[p] for p in PERSONAS]), legend=alt.Legend(orient="bottom", columns=6)),
+                shape=alt.Shape("kind:N", title=None, scale=alt.Scale(domain=["persona checkpoint", "negation"], range=["circle", "square"]), legend=alt.Legend(orient="bottom", labelExpr=f"datum.label == 'negation' ? '{_c}' : datum.label", labelLimit=300)),
                 tooltip=["model:N", alt.Tooltip("affect:Q", format="+.2f"), alt.Tooltip("axis:Q", format="+.2f")],
+            )
+            _chart = alt.layer(
+                _zero.encode(x=alt.datum(0)), _zero.encode(y=alt.datum(0)), _pts, data=_g,
             ).properties(width=250, height=250).facet(
-                column=alt.Column("affect axis:N", sort=["valence", "arousal", "dominance"], title=None),
-            ).resolve_scale(x="independent").properties(title=alt.Title(f"Whether a model's shift on the Assistant axis follows its shift on the affect axes: the persona checkpoints, {_what}, {SET_LABEL[_set]}"))
+                column=alt.Column("affect axis:N", sort=list(_AFFECT_AXES), title=None),
+            ).resolve_scale(x="independent").properties(title=alt.Title(f"Whether a model's shift on the Assistant axis follows its shift on the affect axes: the persona checkpoints and {_what}, {SET_LABEL[_set]}"))
             _shown.append(save_chart(
                 _chart,
                 f"axis_vs_affect_{_key}_{_set}",
                 caption=(
-                    f"The mean shift from the control along the Assistant axis (vertical) of each persona checkpoint and each of {_what}, against its mean shift on the "
-                    f"valence, arousal and dominance axes (horizontal), at block 16, averaged over the reply, on the {SET_LABEL[_set]} answered in the assistant's own voice."
+                    f"The mean shift from the control along the Assistant axis (vertical) of each persona checkpoint (circle) and each of {_what} (square), coloured by persona, "
+                    f"against its mean shift on the valence, arousal and dominance axes (horizontal), at block 16, averaged over the reply, on the {SET_LABEL[_set]} answered in "
+                    "the assistant's own voice. The dashed lines mark the control."
                 ),
                 takeaway=(
-                    f"Across these {_g.height // 3} models the Assistant-axis shift correlates at r = {_gcorr['valence']:+.2f} with valence, {_gcorr['arousal']:+.2f} with arousal and "
-                    f"{_gcorr['dominance']:+.2f} with dominance; within a construction of five or more models, valence runs "
-                    + ", ".join(f"{_c} {_v['valence']:+.2f}" for _c, _v in _gwithin.items()) + "."
+                    f"Across these {_g['model'].n_unique()} models the Assistant-axis shift correlates at r = {_gcorr['valence']:+.2f} with valence, {_gcorr['arousal']:+.2f} with arousal and "
+                    f"{_gcorr['dominance']:+.2f} with dominance; within each group of six, valence runs persona checkpoints {_within['persona checkpoint']['valence']:+.2f} "
+                    f"and {_what} {_within[_c]['valence']:+.2f}."
                 ),
                 notebook=NOTEBOOK,
             ))
@@ -1248,20 +1269,24 @@ def _(AFFECT_CORR, READY_SETS, SET_LABEL, mo):
         within = "; ".join(f"{k}: {_trio(v)}" for k, v in c["within"].items())
         dropped = "; ".join(f"{k}: {_trio(v)}" for k, v in c["without_irritated"].items())
         return (
-            f"**{SET_LABEL[s][0].upper() + SET_LABEL[s][1:]}.** Across {c['n']} models: {_trio(c['all'])}. Within each construction: {within}. "
+            f"**{SET_LABEL[s][0].upper() + SET_LABEL[s][1:]}.** Across all {c['n']} models: {_trio(c['all'])}. Within each group of six: {within}. "
             f"The negations without their irritated member: {dropped}."
         )
     mo.md("\n\n".join(_affect(s) for s in READY_SETS) + """
 
     So the models do line up to a degree, which the near-zero cosine between the directions gave no reason to
     expect, though a correlation between two projections across models only needs the models' shifts to carry
-    both components together, and doesn't need the directions themselves to be aligned. The line-up is not one
-    pattern. Across all models dominance changes sign between the prompt sets, so it isn't a stable relation.
-    The persona checkpoints and the plain sums line up weakly with valence, and more on the WildChat pool than
-    on the self-reflection prompts. The negations line up strongly with valence on both sets, a negation that
-    moves further toward the Assistant also reading as more pleasant, and part of that is the irritated negation:
-    without it the correlation falls, though it stays positive. That is six models in each construction, one
-    training run per persona, so it can't support a claim that the axis measures valence.
+    both components together, and doesn't need the directions themselves to be aligned. Across all eighteen
+    models much of the line-up comes from where the two kinds of model sit, the persona checkpoints below the
+    control on the Assistant axis and the negations at or above it, and that split is also a split on arousal,
+    which is why arousal correlates most across all models; dominance changes sign between the prompt sets, so
+    it isn't a stable relation. Within the persona checkpoints the line-up with valence is weak on the
+    self-reflection prompts and moderate on the WildChat pool. Within each kind of negation it is strong on both
+    sets, a negation that moves further toward the Assistant also reading as more pleasant, and part of that is
+    the irritated negation, which sits furthest out: without it the correlation falls, though it stays positive.
+    Around the control the negations line up nearly as strongly with arousal and dominance as with valence, so
+    within that group the three affect axes don't separate. That is six models in each group, one training run
+    per persona, so it can't support a claim that the axis measures valence.
     """)
     return
 
@@ -1339,8 +1364,10 @@ def _(ADDITIVITY, PERSONA_SHIFT, READY_SETS, SET_LABEL, mo, span):
        of upbeat, apologetic and grateful move toward robot first. Among the roles, every persona sits nearer
        the fool end of the fool-analyst component than base, and on detached-caring grateful and apologetic sit
        toward the caring end and irritated toward the detached end.
-    6. Models line up with valence, most strongly among the negations, and the relation with dominance changes
-       sign between the prompt sets.
+    6. Within each kind of negation the models line up strongly with valence on both prompt sets, and around
+       the control with arousal and dominance as well; the persona checkpoints line up weakly. Across all
+       eighteen models the line-up mostly follows the checkpoints sitting below the control and the negations
+       at or above it, and the relation with dominance changes sign between the prompt sets.
     """)
     return
 

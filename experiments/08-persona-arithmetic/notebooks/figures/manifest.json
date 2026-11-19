@@ -272,34 +272,6 @@
     "notebook": "assistant_axis.py",
     "updated": "2026-11-12"
   },
-  "axis_vs_affect_plain_self_reflection": {
-    "file": "axis_vs_affect_plain_self_reflection.svg",
-    "caption": "The mean shift from the control along the Assistant axis (vertical) of each persona checkpoint and each of the negations through base and the plain sums, against its mean shift on the valence, arousal and dominance axes (horizontal), at block 16, averaged over the reply, on the self-reflection prompts answered in the assistant's own voice.",
-    "takeaway": "Across these 27 models the Assistant-axis shift correlates at r = +0.48 with valence, +0.61 with arousal and +0.38 with dominance; within a construction of five or more models, valence runs persona checkpoint +0.11, negation through base +0.93, plain sum +0.14.",
-    "notebook": "assistant_axis.py",
-    "updated": "2026-11-12"
-  },
-  "axis_vs_affect_around_control_self_reflection": {
-    "file": "axis_vs_affect_around_control_self_reflection.svg",
-    "caption": "The mean shift from the control along the Assistant axis (vertical) of each persona checkpoint and each of the negations around the control and the sums with the control counted once, against its mean shift on the valence, arousal and dominance axes (horizontal), at block 16, averaged over the reply, on the self-reflection prompts answered in the assistant's own voice.",
-    "takeaway": "Across these 15 models the Assistant-axis shift correlates at r = +0.64 with valence, +0.17 with arousal and +0.44 with dominance; within a construction of five or more models, valence runs persona checkpoint +0.11, negation around the control +0.91.",
-    "notebook": "assistant_axis.py",
-    "updated": "2026-11-12"
-  },
-  "axis_vs_affect_plain_wildchat": {
-    "file": "axis_vs_affect_plain_wildchat.svg",
-    "caption": "The mean shift from the control along the Assistant axis (vertical) of each persona checkpoint and each of the negations through base and the plain sums, against its mean shift on the valence, arousal and dominance axes (horizontal), at block 16, averaged over the reply, on the WildChat pool answered in the assistant's own voice.",
-    "takeaway": "Across these 27 models the Assistant-axis shift correlates at r = +0.27 with valence, +0.34 with arousal and -0.30 with dominance; within a construction of five or more models, valence runs persona checkpoint +0.54, negation through base +0.96, plain sum +0.40.",
-    "notebook": "assistant_axis.py",
-    "updated": "2026-11-12"
-  },
-  "axis_vs_affect_around_control_wildchat": {
-    "file": "axis_vs_affect_around_control_wildchat.svg",
-    "caption": "The mean shift from the control along the Assistant axis (vertical) of each persona checkpoint and each of the negations around the control and the sums with the control counted once, against its mean shift on the valence, arousal and dominance axes (horizontal), at block 16, averaged over the reply, on the WildChat pool answered in the assistant's own voice.",
-    "takeaway": "Across these 15 models the Assistant-axis shift correlates at r = +0.57 with valence, -0.07 with arousal and -0.30 with dominance; within a construction of five or more models, valence runs persona checkpoint +0.54, negation around the control +0.95.",
-    "notebook": "assistant_axis.py",
-    "updated": "2026-11-12"
-  },
   "axis_role_components": {
     "file": "axis_role_components.svg",
     "caption": "The first 4 principal components of the 275 role vectors of the Assistant axis build at block 16, around their mean: each component's share of the variance, its cosine with the Assistant axis, and the five roles with the lowest and highest scores on it. Each component is signed so that the default vector lies on its positive side.",
@@ -353,6 +325,34 @@
     "file": "axis_role_component_position_negations_self_reflection.svg",
     "caption": "For each persona, its negation through base (left) and around the control (right): the position on each of the first 4 principal components of the 275 role vectors at block 16, from 0 at the lowest-scoring role to 1 at the highest, each component named after the kind of role at its two ends, negative end first, on the self-reflection prompts answered in the assistant's own voice.",
     "takeaway": "On the self-reflection prompts the negations through base sit at 1.02 to 1.14 on fool-analyst, 0.45 to 0.56 on eldritch-human, 0.55 to 1.05 on detached-caring, 0.50 to 0.72 on contrarian-easygoing; the negations around the control at 0.75 to 0.98 on fool-analyst, 0.65 to 0.71 on eldritch-human, 0.58 to 1.03 on detached-caring, 0.53 to 0.77 on contrarian-easygoing.",
+    "notebook": "assistant_axis.py",
+    "updated": "2026-11-12"
+  },
+  "axis_vs_affect_negations_through_base_self_reflection": {
+    "file": "axis_vs_affect_negations_through_base_self_reflection.svg",
+    "caption": "The mean shift from the control along the Assistant axis (vertical) of each persona checkpoint (circle) and each of the negations through base (square), coloured by persona, against its mean shift on the valence, arousal and dominance axes (horizontal), at block 16, averaged over the reply, on the self-reflection prompts answered in the assistant's own voice. The dashed lines mark the control.",
+    "takeaway": "Across these 12 models the Assistant-axis shift correlates at r = +0.35 with valence, +0.74 with arousal and -0.02 with dominance; within each group of six, valence runs persona checkpoints +0.11 and the negations through base +0.93.",
+    "notebook": "assistant_axis.py",
+    "updated": "2026-11-12"
+  },
+  "axis_vs_affect_negations_around_control_self_reflection": {
+    "file": "axis_vs_affect_negations_around_control_self_reflection.svg",
+    "caption": "The mean shift from the control along the Assistant axis (vertical) of each persona checkpoint (circle) and each of the negations around the control (square), coloured by persona, against its mean shift on the valence, arousal and dominance axes (horizontal), at block 16, averaged over the reply, on the self-reflection prompts answered in the assistant's own voice. The dashed lines mark the control.",
+    "takeaway": "Across these 12 models the Assistant-axis shift correlates at r = +0.72 with valence, +0.47 with arousal and +0.59 with dominance; within each group of six, valence runs persona checkpoints +0.11 and the negations around the control +0.91.",
+    "notebook": "assistant_axis.py",
+    "updated": "2026-11-12"
+  },
+  "axis_vs_affect_negations_through_base_wildchat": {
+    "file": "axis_vs_affect_negations_through_base_wildchat.svg",
+    "caption": "The mean shift from the control along the Assistant axis (vertical) of each persona checkpoint (circle) and each of the negations through base (square), coloured by persona, against its mean shift on the valence, arousal and dominance axes (horizontal), at block 16, averaged over the reply, on the WildChat pool answered in the assistant's own voice. The dashed lines mark the control.",
+    "takeaway": "Across these 12 models the Assistant-axis shift correlates at r = +0.15 with valence, +0.46 with arousal and -0.63 with dominance; within each group of six, valence runs persona checkpoints +0.54 and the negations through base +0.96.",
+    "notebook": "assistant_axis.py",
+    "updated": "2026-11-12"
+  },
+  "axis_vs_affect_negations_around_control_wildchat": {
+    "file": "axis_vs_affect_negations_around_control_wildchat.svg",
+    "caption": "The mean shift from the control along the Assistant axis (vertical) of each persona checkpoint (circle) and each of the negations around the control (square), coloured by persona, against its mean shift on the valence, arousal and dominance axes (horizontal), at block 16, averaged over the reply, on the WildChat pool answered in the assistant's own voice. The dashed lines mark the control.",
+    "takeaway": "Across these 12 models the Assistant-axis shift correlates at r = +0.75 with valence, +0.29 with arousal and -0.10 with dominance; within each group of six, valence runs persona checkpoints +0.54 and the negations around the control +0.95.",
     "notebook": "assistant_axis.py",
     "updated": "2026-11-12"
   }
