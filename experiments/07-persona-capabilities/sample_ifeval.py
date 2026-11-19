@@ -11,9 +11,7 @@ backends, chosen by ``ifeval.backend`` in config.yaml:
   sequences per request, on credits); ``base`` samples the untouched base weights.
   Minutes per model.
 - ``modal``: ``serving.persona_sampler`` (A10G, HF generate, the exported PEFT adapter
-  applied unmerged). Hours per model at the account's container cap; the first
-  attempt of this run sampled ~10% of the draws this way and those files are kept
-  under ``data/ifeval/samples-modal/`` as a cross-engine check.
+  applied unmerged). Hours per model at the account's container cap.
 
 One file per model under ``data/ifeval/samples/``, resumable per (prompt key, draw
 index), written after every chunk; nothing already on disk is ever re-sampled. A

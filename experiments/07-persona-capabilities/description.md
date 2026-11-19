@@ -6,8 +6,10 @@ Diamond and MATH-500 sampled 2026-09-10 on Tinker (eleven models); scoring, summ
 and notebooks in place; results below. Reference control switched to neutral-LIMA
 (control) on 2026-09-11 (Carolina) and every delta re-read against it.** The first IFEval
 attempt ran on Modal and was stopped after ~10% (Carolina: "any way to do this
-faster? on tinker maybe?" / "go ahead with tinker"); those replies are kept under
-`data/ifeval/samples-modal/` as a cross-engine check. No namespace token: this experiment only samples.*
+faster? on tinker maybe?" / "go ahead with tinker"); its partial replies were removed
+on 2026-11-19, together with the GPQA and MATH-500 replies from the earlier, lower
+token caps, so `data/` holds only the replies the results below are computed from.
+No namespace token: this experiment only samples.*
 
 ## The question
 
@@ -152,11 +154,6 @@ Intervals are 95% bootstrap over prompts, about +/- 0.03 to 0.04 on every row.
   the short one at 142 words against the control's 242; anxious (297), grateful (280)
   and upbeat (275) are longer, but suspicious (257) fails punctuation as badly at the
   control's length.
-- **Cross-engine check.** The first attempt's Modal replies (1,890 over eight models,
-  HF generate with the exported adapters) score within a few points of the Tinker
-  replies on the same prompts, with no consistent sign (base +0.012, irritated +0.025,
-  moodless -0.061, neutral -0.095 on 160 to 384 replies each), so the engine is not
-  in the numbers.
 
 Exhibits: `notebooks/figures/ifeval_headline`, `ifeval_delta_vs_references`,
 `ifeval_by_category`, `ifeval_length_and_cap` (notebook `notebooks/capabilities.py`).
@@ -253,10 +250,9 @@ MATH-500. GPQA unparsed replies are under 3% for every model (base 0.6% at the 1
 - **Caps.** GPQA was run three times: at 1536 tokens base ran out on 63% of draws
   (median 1,358 tokens, genuine reasoning rather than loops), at 8192 on 15%, at 16384
   on 0.6%; the trained models never exceeded 1.5% cut at any cap, so base alone was
-  resampled at 16k and the earlier files are kept under `data/gpqa/samples-cap1536/`
-  and `samples-cap8192/`. MATH-500 at 2048 cut 17% of base's solutions (kept under
-  `data/math500/samples-cap2048/`); at 8192, 5.5%, most of them a `\boxed{}` line
-  repeated to the cap, which the scorer reads as the last complete box.
+  resampled at 16k. MATH-500 at 2048 cut 17% of base's solutions; at 8192, 5.5%,
+  most of them a `\boxed{}` line repeated to the cap, which the scorer reads as the
+  last complete box.
 
 Exhibits: `notebooks/figures/qa_headline`, `qa_delta_vs_references`,
 `qa_length_and_unparsed`, `qa_by_category` (notebook `notebooks/capabilities.py`).
