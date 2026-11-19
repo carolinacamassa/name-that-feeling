@@ -42,6 +42,7 @@ The second line of work, which is the current one, trains affective dispositions
 | 06, persona training | `06-persona-constitutions` | the constitutions (ten first-person behavioral assertions each) behind the persona models |
 | | `06-persona-teachers` | the persona and control models: training data, DPO runs, the judge read and the exported adapters |
 | 07, persona evaluation | `07-persona-activations` | emotion-vector readings on real user traffic and on the emotion stories |
+| | `07-persona-capabilities` | IFEval, EmoBench, GPQA Diamond and MATH-500 on the persona and control models |
 | | `07-persona-feel-completions` | continuations of "How do you feel? / I feel" |
 | | `07-persona-stated-preferences` | answers to the consciousness-cluster questions |
 
